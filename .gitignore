@@ -1,0 +1,11 @@
+node_modules/
+dist/
+coverage/
+data/*.db*
+data/test-logs/
+database/
+logs/
+tests/runtime-files/
+tests/runtime-*/
+tests/runtime-workspace-link
+trace-test.txt
