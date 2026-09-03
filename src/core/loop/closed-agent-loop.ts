@@ -2,13 +2,12 @@ import type { ExecutionContext } from "../runtime/execution-context.js";
 import { createExecutionContext } from "../runtime/execution-context.js";
 import type { TaskPlan, TaskStep } from "../planner/task-planner.js";
 import { executeToolStep } from "../orchestrator/tool-orchestrator.js";
-import { UnifiedRecoveryService, type RecoveryDecisionProvider, type RecoveryProvider } from "../trace/unified-recovery-service.js";
+import { UnifiedRecoveryService, type RecoveryProvider } from "../trace/unified-recovery-service.js";
 import { getExecutionTrace } from "../memory/execution-trace.js";
 import { saveDecisionWithContext, saveExecutionWithContext, saveTaskWithContext } from "../memory/context-memory.js";
 import { checkStepGovernance } from "../governance/step-governance.js";
 import { createApprovalRequest } from "../governance/approval-memory.js";
 import { checkpointStep } from "./checkpoint-integration.js";
-import { recoverAndContinue } from "../recovery/self-healing-recovery.js";
 import { PersistentRecoveryObservability } from "../trace/persistent-recovery-observability.js";
 import type { RecoveryObservabilitySink } from "../trace/recovery-observability.js";
 import { saveTaskPlan, saveTaskStep } from "../memory/task-repository.js";
@@ -51,7 +50,7 @@ export async function runClosedAgentLoop(
   maxRecovery = 1,
   startIndex = 0,
   context?: ExecutionContext,
-  recoveryService?: RecoveryProvider | RecoveryDecisionProvider,
+  recoveryService?: RecoveryProvider,
   recoverySink: RecoveryObservabilitySink = new PersistentRecoveryObservability(),
   approvedStepId?: number
 ): Promise<ClosedLoopResult> {
@@ -131,20 +130,10 @@ export async function runClosedAgentLoop(
       }
 
       move(plan, "recovering");
-      const action = "analyzeFailure" in recovery
-        ? recovery.decideRecovery(recovery.analyzeFailure(runtimeContext.correlationId))
-        : recovery.decide(runtimeContext.correlationId);
+      const action = recovery.decideRecovery(recovery.analyzeFailure(runtimeContext.correlationId));
 
       saveDecisionWithContext({ taskId: plan.id, reason: action.reason, action: action.type, context: runtimeContext });
-      const recovered = "executeRecovery" in recovery
-        ? recovery.executeRecovery(plan, action, {
-          correlationId: runtimeContext.correlationId,
-          taskId: plan.id,
-          sink: recoverySink,
-          stepIndex: index,
-          retryCount: recoveries + 1
-        })
-        : recoverAndContinue(plan, action, {
+      const recovered = recovery.executeRecovery(plan, action, {
         correlationId: runtimeContext.correlationId,
         taskId: plan.id,
         sink: recoverySink,

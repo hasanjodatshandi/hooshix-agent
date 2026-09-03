@@ -1,26 +1,35 @@
 import { describe, expect, it } from "vitest";
-import { createTaskPlan } from "../../src/core/planner/task-planner.js";
-import { analyzeFailure, applyRecovery } from "../../src/core/recovery/recovery-engine.js";
+import { UnifiedRecoveryService } from "../../src/core/trace/unified-recovery-service.js";
+import { applySelfHealing } from "../../src/core/trace/self-healing-controller.js";
+import type { TaskPlan } from "../../src/core/planner/task-planner.js";
 
 describe("recovery engine", () => {
-  it("creates recovery step for verification failures", () => {
-    const action = analyzeFailure(new Error("test failed"));
+  it("creates recovery step for verification failures via UnifiedRecoveryService", () => {
+    const service = new UnifiedRecoveryService({
+      getTrace: () => [{ type: "execution", timestamp: "now", data: { result: { error: "build failed" } } }]
+    } as any);
+    const finding = service.analyzeFailure("corr");
+    const action = service.decideRecovery(finding);
 
-    expect(action.type).toBe("create_step");
-    expect(action.step).toBeDefined();
+    expect(action.type).toBe("replan");
   });
 
-  it("updates plan with recovery step", () => {
-    const plan = createTaskPlan("build app");
-    const action = analyzeFailure(new Error("build failed"));
+  it("applies self-healing to insert recovery step into plan", () => {
+    const plan: TaskPlan = { id: "test", task: "build app", steps: [{ id: 1, action: "build", status: "completed" }] };
+    applySelfHealing(plan, {
+      type: "create_step",
+      reason: "fix",
+      step: { id: 2, action: "repair", status: "pending" }
+    });
 
-    applyRecovery(plan, action);
-
-    expect(plan.steps.length).toBe(4);
+    expect(plan.steps.length).toBe(2);
   });
 
-  it("stops unknown failures", () => {
-    expect(analyzeFailure(new Error("permission denied")).type)
-      .toBe("stop");
+  it("stops when no failure event found in trace", () => {
+    const service = new UnifiedRecoveryService({ getTrace: () => [] } as any);
+    const finding = service.analyzeFailure("empty-corr");
+    const action = service.decideRecovery(finding);
+
+    expect(action.type).toBe("stop");
   });
 });

@@ -37,6 +37,63 @@ describe("architecture hardening", () => {
     expect(new ToolSelector().select({ id: 1, action: "inspect system metrics", status: "pending" })).toBe("get_system_info");
   });
 
+  it("exhaustively verifies all valid and invalid state transitions", () => {
+    // Valid transitions from each state
+    expect(canTransition("created", "planning")).toBe(true);
+    expect(canTransition("created", "cancelled")).toBe(true);
+    expect(canTransition("planning", "executing")).toBe(true);
+    expect(canTransition("planning", "waiting_approval")).toBe(true);
+    expect(canTransition("planning", "failed")).toBe(true);
+    expect(canTransition("planning", "cancelled")).toBe(true);
+    expect(canTransition("waiting_approval", "resuming")).toBe(true);
+    expect(canTransition("waiting_approval", "failed")).toBe(true);
+    expect(canTransition("waiting_approval", "cancelled")).toBe(true);
+    expect(canTransition("executing", "checkpointing")).toBe(true);
+    expect(canTransition("executing", "waiting_approval")).toBe(true);
+    expect(canTransition("executing", "recovering")).toBe(true);
+    expect(canTransition("executing", "verifying")).toBe(true);
+    expect(canTransition("executing", "failed")).toBe(true);
+    expect(canTransition("executing", "cancelled")).toBe(true);
+    expect(canTransition("checkpointing", "executing")).toBe(true);
+    expect(canTransition("checkpointing", "waiting_approval")).toBe(true);
+    expect(canTransition("checkpointing", "recovering")).toBe(true);
+    expect(canTransition("checkpointing", "verifying")).toBe(true);
+    expect(canTransition("checkpointing", "failed")).toBe(true);
+    expect(canTransition("checkpointing", "cancelled")).toBe(true);
+    expect(canTransition("recovering", "executing")).toBe(true);
+    expect(canTransition("recovering", "waiting_approval")).toBe(true);
+    expect(canTransition("recovering", "failed")).toBe(true);
+    expect(canTransition("recovering", "cancelled")).toBe(true);
+    expect(canTransition("resuming", "executing")).toBe(true);
+    expect(canTransition("resuming", "recovering")).toBe(true);
+    expect(canTransition("resuming", "failed")).toBe(true);
+    expect(canTransition("resuming", "cancelled")).toBe(true);
+    expect(canTransition("verifying", "completed")).toBe(true);
+    expect(canTransition("verifying", "recovering")).toBe(true);
+    expect(canTransition("verifying", "failed")).toBe(true);
+    expect(canTransition("verifying", "cancelled")).toBe(true);
+    expect(canTransition("failed", "resuming")).toBe(true);
+    expect(canTransition("failed", "cancelled")).toBe(true);
+
+    // Terminal states have no transitions
+    expect(canTransition("completed", "executing")).toBe(false);
+    expect(canTransition("completed", "failed")).toBe(false);
+    expect(canTransition("cancelled", "executing")).toBe(false);
+    expect(canTransition("cancelled", "planning")).toBe(false);
+
+    // Invalid cross-transitions
+    expect(canTransition("created", "executing")).toBe(false);
+    expect(canTransition("created", "completed")).toBe(false);
+    expect(canTransition("planning", "completed")).toBe(false);
+    expect(canTransition("waiting_approval", "executing")).toBe(false);
+    expect(canTransition("waiting_approval", "completed")).toBe(false);
+    expect(canTransition("executing", "completed")).toBe(false);
+    expect(canTransition("recovering", "completed")).toBe(false);
+    expect(canTransition("resuming", "completed")).toBe(false);
+    expect(canTransition("verifying", "executing")).toBe(false);
+    expect(canTransition("verifying", "planning")).toBe(false);
+  });
+
   it("makes cancellation reachable through the runtime", () => {
     const runtime = createTaskRuntimeService();
     const plan = runtime.create({ title: "cancel", steps: [{ action: "read", tool: "read_file", arguments: { path: "README.md" } }] });

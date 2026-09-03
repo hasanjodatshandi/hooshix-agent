@@ -15,12 +15,7 @@ export interface RecoveryProvider {
   recordLifecycle(event: RecoveryEvent): void;
 }
 
-/** @deprecated Use RecoveryProvider. */
-export interface RecoveryDecisionProvider {
-  decide(correlationId: string): RecoveryAction;
-}
-
-export class UnifiedRecoveryService implements RecoveryProvider, RecoveryDecisionProvider {
+export class UnifiedRecoveryService implements RecoveryProvider {
   constructor(
     private readonly traceService: { getTrace(correlationId: string): ExecutionTraceEvent[] },
     private readonly sink: RecoveryObservabilitySink = new PersistentRecoveryObservability()
@@ -32,10 +27,6 @@ export class UnifiedRecoveryService implements RecoveryProvider, RecoveryDecisio
 
   decideRecovery(finding: DebugFinding): RecoveryAction {
     return createRecoveryDecision(finding);
-  }
-
-  decide(correlationId: string): RecoveryAction {
-    return this.decideRecovery(this.analyzeFailure(correlationId));
   }
 
   recordLifecycle(event: RecoveryEvent): void {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { auditToolCall } from "../../src/core/memory/tool-audit.js";
-import { openAgentDatabase } from "../../src/core/memory/database.js";
+import { withAgentDatabase } from "../../src/core/memory/database.js";
 
 describe("MCP tool audit", () => {
   it("records successful and failed calls without arguments or results", async () => {
@@ -9,9 +9,7 @@ describe("MCP tool audit", () => {
       throw new Error("failure");
     })).rejects.toThrow("failure");
 
-    const db = openAgentDatabase();
-    const rows = db.prepare("SELECT tool, status, task_id FROM tool_calls WHERE correlation_id = ? ORDER BY id").all("tool-audit");
-    db.close();
+    const rows = withAgentDatabase((db) => db.prepare("SELECT tool, status, task_id FROM tool_calls WHERE correlation_id = ? ORDER BY id").all("tool-audit"));
     expect(rows).toEqual([
       { tool: "read_file", status: "success", task_id: "task-1" },
       { tool: "read_file", status: "failed", task_id: "task-1" }

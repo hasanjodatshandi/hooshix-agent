@@ -8,7 +8,10 @@ describe("advanced recovery", () => {
   it("bounds repeated transient recoveries", async () => {
     let attempts = 0;
     const provider = {
-      decide: () => ({ type: "retry" as const, reason: "transient failure" })
+      analyzeFailure: () => ({ reason: "network timeout", source: "execution" }),
+      decideRecovery: () => ({ type: "retry" as const, reason: "transient failure" }),
+      executeRecovery: () => true,
+      recordLifecycle: () => {}
     };
     const result = await runClosedAgentLoop({
       id: "multi-failure", task: "retry", steps: [{ id: 1, action: "read", tool: "read_file", arguments: { path: "README.md" }, status: "pending" }]

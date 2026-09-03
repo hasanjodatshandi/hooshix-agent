@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { saveTaskMemory, saveDecisionMemory } from "../../src/core/memory/sqlite-memory.js";
-import Database from "better-sqlite3";
+import { withAgentDatabase } from "../../src/core/memory/database.js";
 
 describe("sqlite task memory", () => {
   it("stores task and decision history", () => {
@@ -16,10 +16,8 @@ describe("sqlite task memory", () => {
       action: "create recovery step"
     });
 
-    const db = new Database(process.env.HOOSHIX_DB_PATH!);
-    const tasks = db.prepare("SELECT * FROM tasks WHERE id = ?").get("task-1") as { description: string };
-    const decisions = db.prepare("SELECT * FROM decisions WHERE task_id = ?").all("task-1");
-    db.close();
+    const tasks = withAgentDatabase((db) => db.prepare("SELECT * FROM tasks WHERE id = ?").get("task-1")) as { description: string };
+    const decisions = withAgentDatabase((db) => db.prepare("SELECT * FROM decisions WHERE task_id = ?").all("task-1"));
 
     expect(tasks.description).toBe("build agent");
     expect(decisions.length).toBeGreaterThan(0);

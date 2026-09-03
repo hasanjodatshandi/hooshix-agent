@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import Database from "better-sqlite3";
+import { withAgentDatabase } from "../../src/core/memory/database.js";
 import { saveExecutionWithContext } from "../../src/core/memory/context-memory.js";
 
 describe("context memory propagation", () => {
@@ -11,10 +11,7 @@ describe("context memory propagation", () => {
       context: { correlationId:"corr-test", createdAt:new Date().toISOString() }
     });
 
-    const db = new Database(process.env.HOOSHIX_DB_PATH!);
-    const row:any = db.prepare("SELECT * FROM executions ORDER BY id DESC LIMIT 1").get();
-    db.close();
-
+    const row = withAgentDatabase((db) => db.prepare("SELECT * FROM executions ORDER BY id DESC LIMIT 1").get()) as any;
     expect(row.correlation_id).toBe("corr-test");
   });
 });

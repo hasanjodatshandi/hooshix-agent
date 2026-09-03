@@ -1,12 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { recoverAndContinue } from "../../src/core/recovery/self-healing-recovery.js";
+import { UnifiedRecoveryService } from "../../src/core/trace/unified-recovery-service.js";
 import { MemoryRecoveryObservability } from "../../src/core/trace/recovery-observability.js";
 
 describe("self healing recovery lifecycle integration", () => {
   it("records started and completed lifecycle", () => {
-    const plan:any = { id: "task-1", steps: [] };
+    const plan: any = { id: "task-1", steps: [] };
     const sink = new MemoryRecoveryObservability();
-    const result = recoverAndContinue(plan, {
+    const service = new UnifiedRecoveryService({ getTrace: () => [] }, sink);
+    const result = service.executeRecovery(plan, {
       type: "create_step",
       reason: "fix",
       step: { id: 10, action: "repair", status: "pending" }

@@ -7,6 +7,7 @@ describe("unified recovery pipeline", () => {
       getTrace: () => [{ type: "execution", timestamp: "now", data: { step_id: 1, result: { error: "build failed" } } }]
     } as any);
 
-    expect(service.decide("corr").type).toBe("replan");
+    const finding = service.analyzeFailure("corr");
+    expect(service.decideRecovery(finding).type).toBe("replan");
   });
 });

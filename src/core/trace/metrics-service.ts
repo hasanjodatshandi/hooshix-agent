@@ -4,6 +4,7 @@ export interface AgentMetrics {
   recoverySuccessRate: number;
   toolFailureRate: number;
   averageRecoveryTimeMs: number;
+  failedActions: number;
   mostFailedTools: Array<{ tool: string; failures: number }>;
 }
 
@@ -22,10 +23,12 @@ export function getAgentMetrics(): AgentMetrics {
       SELECT tool, COUNT(*) AS failures FROM tool_calls
       WHERE status = 'failed' GROUP BY tool ORDER BY failures DESC, tool LIMIT 10
     `).all() as Array<{ tool: string; failures: number }>;
+    const failedExecutions = db.prepare("SELECT COUNT(*) AS count FROM executions WHERE status = 'failed'").get() as { count: number };
     return {
       recoverySuccessRate: recovery.total === 0 ? 0 : recovery.completed / recovery.total,
       toolFailureRate: tools.total === 0 ? 0 : (tools.failed ?? 0) / tools.total,
       averageRecoveryTimeMs: Math.max(0, Math.round(recovery.average_ms ?? 0)),
+      failedActions: failedExecutions.count,
       mostFailedTools
     };
   });

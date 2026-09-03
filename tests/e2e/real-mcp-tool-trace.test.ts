@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { connectTestMcpClient } from "../helpers/mcp-client.js";
-import { openAgentDatabase } from "../../src/core/memory/database.js";
+import { withAgentDatabase } from "../../src/core/memory/database.js";
 
 describe("real mcp write tool trace", () => {
   it("propagates correlationId through write_file call", async () => {
@@ -30,9 +30,7 @@ describe("real mcp write tool trace", () => {
       expect(new Set(actions)).toEqual(new Set(["write", "read", "modify", "search", "list"]));
       const commandLog = await fs.readFile(path.join(process.env.HOOSHIX_LOG_DIR!, "command-actions.log"), "utf8");
       expect(commandLog).toContain(correlationId);
-      const db = openAgentDatabase();
-      const toolCalls = db.prepare("SELECT tool, status FROM tool_calls WHERE correlation_id = ? ORDER BY id").all(correlationId) as Array<{ tool: string; status: string }>;
-      db.close();
+      const toolCalls = withAgentDatabase((db) => db.prepare("SELECT tool, status FROM tool_calls WHERE correlation_id = ? ORDER BY id").all(correlationId)) as Array<{ tool: string; status: string }>;
       expect(toolCalls).toHaveLength(8);
       expect(toolCalls.filter((call) => call.status === "success")).toHaveLength(7);
       expect(toolCalls.at(-1)).toEqual({ tool: "read_file", status: "failed" });

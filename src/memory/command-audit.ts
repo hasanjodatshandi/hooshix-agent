@@ -5,6 +5,8 @@ function logPath(): string {
   return path.resolve(process.env.HOOSHIX_LOG_DIR ?? "./logs", "command-actions.log");
 }
 
+const SENSITIVE_PATTERN = /token|secret|password|api[-_]?key|credential|auth[-_]?key|access[-_]?key|private[-_]?key|sign[-_]?key/i;
+
 function redactArguments(args: string[] = []): string[] {
   let redactNext = false;
   return args.map((argument) => {
@@ -12,7 +14,7 @@ function redactArguments(args: string[] = []): string[] {
       redactNext = false;
       return "[REDACTED]";
     }
-    if (/token|secret|password|api[-_]?key/i.test(argument)) {
+    if (SENSITIVE_PATTERN.test(argument)) {
       redactNext = !argument.includes("=");
       return argument.includes("=") ? `${argument.split("=", 1)[0]}=[REDACTED]` : argument;
     }

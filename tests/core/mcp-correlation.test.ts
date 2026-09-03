@@ -15,7 +15,8 @@ describe("mcp correlation id", () => {
     await executor("read_file", {
       id: 1,
       action: "inspect",
-      status: "pending"
+      status: "pending",
+      arguments: { path: "README.md" }
     });
 
     expect(typeof args.correlationId).toBe("string");

@@ -1,6 +1,6 @@
 import type { TaskStep } from "../planner/task-planner.js";
 import type { ExecutionContext } from "../runtime/execution-context.js";
-import { validateToolName, type ToolName } from "./tool-orchestrator.js";
+import { validateToolName, validateToolArguments, type ToolName } from "./tool-orchestrator.js";
 
 export interface McpToolInvoker {
   callTool(name: ToolName, args: Record<string, unknown>): Promise<unknown>;
@@ -9,6 +9,7 @@ export interface McpToolInvoker {
 export function createMcpToolExecutor(invoker: McpToolInvoker, context?: ExecutionContext) {
   return async (tool: string, step: TaskStep) => {
     const toolName = validateToolName(tool);
+    validateToolArguments(toolName, step.arguments ?? {});
     const result = await invoker.callTool(toolName, {
       ...step.arguments,
       correlationId: context?.correlationId ?? crypto.randomUUID(),
