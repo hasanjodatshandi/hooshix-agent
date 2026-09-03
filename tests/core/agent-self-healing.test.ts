@@ -16,6 +16,6 @@ describe("agent self healing", () => {
     const result = service.analyze("corr");
 
     expect(result.finding.failedStep).toBe(2);
-    expect(result.recovery.type).toBe("stop");
+    expect(result.recovery.type).toBe("replan");
   });
 });

@@ -2,7 +2,7 @@ import type { ExecutionContext } from "../runtime/execution-context.js";
 import { createExecutionContext } from "../runtime/execution-context.js";
 import type { TaskPlan, TaskStep } from "../planner/task-planner.js";
 import { executeToolStep } from "../orchestrator/tool-orchestrator.js";
-import { UnifiedRecoveryService, type RecoveryDecisionProvider } from "../trace/unified-recovery-service.js";
+import { UnifiedRecoveryService, type RecoveryDecisionProvider, type RecoveryProvider } from "../trace/unified-recovery-service.js";
 import { getExecutionTrace } from "../memory/execution-trace.js";
 import { saveDecisionWithContext, saveExecutionWithContext, saveTaskWithContext } from "../memory/context-memory.js";
 import { checkStepGovernance } from "../governance/step-governance.js";
@@ -12,6 +12,9 @@ import { recoverAndContinue } from "../recovery/self-healing-recovery.js";
 import { PersistentRecoveryObservability } from "../trace/persistent-recovery-observability.js";
 import type { RecoveryObservabilitySink } from "../trace/recovery-observability.js";
 import { saveTaskPlan, saveTaskStep } from "../memory/task-repository.js";
+import { transitionTask, type TaskState } from "../state/task-state-machine.js";
+import { runWithPolicyApproval } from "../governance/policy-decision-point.js";
+import { selectTool } from "../orchestrator/tool-orchestrator.js";
 
 const MAX_PERSISTED_RESULT_BYTES = 128 * 1024;
 const MAX_RESULT_PREVIEW_CHARACTERS = 32 * 1024;
@@ -36,13 +39,19 @@ export interface ClosedLoopResult {
   approvalId?: number;
 }
 
+function move(plan: TaskPlan, to: TaskState): void {
+  const from = plan.state ?? "planning";
+  if (from !== to) plan.state = transitionTask(from, to);
+  saveTaskPlan(plan, plan.state, plan.correlationId);
+}
+
 export async function runClosedAgentLoop(
   plan: TaskPlan,
   executor: (tool: string, step: TaskStep) => Promise<unknown>,
   maxRecovery = 1,
   startIndex = 0,
   context?: ExecutionContext,
-  recoveryService?: RecoveryDecisionProvider,
+  recoveryService?: RecoveryProvider | RecoveryDecisionProvider,
   recoverySink: RecoveryObservabilitySink = new PersistentRecoveryObservability(),
   approvedStepId?: number
 ): Promise<ClosedLoopResult> {
@@ -53,17 +62,24 @@ export async function runClosedAgentLoop(
   let index = startIndex;
 
   plan.correlationId = runtimeContext.correlationId;
-  saveTaskPlan(plan, "executing", runtimeContext.correlationId);
+  if (!plan.state) plan.state = "planning";
+  if (plan.state === "created") move(plan, "planning");
+  if (plan.state === "waiting_approval" || plan.state === "failed") move(plan, "resuming");
+  if (plan.state !== "executing") move(plan, "executing");
+  const recovery = recoveryService ?? new UnifiedRecoveryService({ getTrace: () => getExecutionTrace(runtimeContext.correlationId) }, recoverySink);
 
   while (index < plan.steps.length) {
     const step = plan.steps[index];
     const persistStep = () => saveTaskStep(plan.id, step, index);
+    move(plan, "checkpointing");
     checkpointStep({ taskId: plan.id, stepId: step.id, stepIndex: index, status: "running", context: runtimeContext });
+    move(plan, "executing");
 
     const governance = checkStepGovernance(step);
     if (governance.decision === "approval_required" && step.id !== approvedStepId) {
       step.status = "pending_approval";
       persistStep();
+      move(plan, "waiting_approval");
       checkpointStep({ taskId: plan.id, stepId: step.id, stepIndex: index, status: "pending_approval", context: runtimeContext });
       const approvalId = createApprovalRequest({
         taskId: plan.id,
@@ -73,7 +89,7 @@ export async function runClosedAgentLoop(
         reason: governance.reason,
         context: runtimeContext
       });
-      saveTaskWithContext({ id: plan.id, description: plan.description ?? plan.task, status: "paused", context: runtimeContext });
+      saveTaskWithContext({ id: plan.id, description: plan.description ?? plan.task, status: "waiting_approval", context: runtimeContext });
       return { status: "pending_approval", plan, completedSteps, correlationId: runtimeContext.correlationId, approvalId };
     }
 
@@ -82,14 +98,17 @@ export async function runClosedAgentLoop(
       persistStep();
       checkpointStep({ taskId: plan.id, stepId: step.id, stepIndex: index, status: "blocked", context: runtimeContext });
       saveDecisionWithContext({ taskId: plan.id, reason: governance.reason, action: "blocked", context: runtimeContext });
-      saveTaskWithContext({ id: plan.id, description: plan.task, status: "failed", context: runtimeContext });
+      move(plan, "failed");
       return { status: "failed", plan, completedSteps, correlationId: runtimeContext.correlationId };
     }
 
     step.status = "running";
     persistStep();
     try {
-      const result = boundedResult(await executeToolStep(step, executor));
+      const execute = () => executeToolStep(step, executor);
+      const result = boundedResult(await (governance.decision === "approval_required"
+        ? runWithPolicyApproval(selectTool(step), execute)
+        : execute()));
       step.status = "completed";
       step.output = result;
       step.error = undefined;
@@ -107,32 +126,44 @@ export async function runClosedAgentLoop(
       saveExecutionWithContext({ taskId: plan.id, stepId: step.id, action: step.action, result: { error: message }, status: "failed", context: runtimeContext });
 
       if (recoveries >= maxRecovery) {
-        saveTaskWithContext({ id: plan.id, description: plan.task, status: "failed", context: runtimeContext });
+        move(plan, "failed");
         return { status: "failed", plan, completedSteps, correlationId: runtimeContext.correlationId };
       }
 
-      const recovery = recoveryService ?? new UnifiedRecoveryService({ getTrace: () => getExecutionTrace(runtimeContext.correlationId) });
-      const action = recovery.decide(runtimeContext.correlationId);
+      move(plan, "recovering");
+      const action = "analyzeFailure" in recovery
+        ? recovery.decideRecovery(recovery.analyzeFailure(runtimeContext.correlationId))
+        : recovery.decide(runtimeContext.correlationId);
 
       saveDecisionWithContext({ taskId: plan.id, reason: action.reason, action: action.type, context: runtimeContext });
-      if (action.type === "stop" || !recoverAndContinue(plan, action, {
+      const recovered = "executeRecovery" in recovery
+        ? recovery.executeRecovery(plan, action, {
+          correlationId: runtimeContext.correlationId,
+          taskId: plan.id,
+          sink: recoverySink,
+          stepIndex: index,
+          retryCount: recoveries + 1
+        })
+        : recoverAndContinue(plan, action, {
         correlationId: runtimeContext.correlationId,
         taskId: plan.id,
         sink: recoverySink,
         stepIndex: index,
         retryCount: recoveries + 1
-      })) {
-        saveTaskWithContext({ id: plan.id, description: plan.task, status: "failed", context: runtimeContext });
+      });
+      if (action.type === "stop" || !recovered) {
+        move(plan, "failed");
         return { status: "failed", plan, completedSteps, correlationId: runtimeContext.correlationId };
       }
 
       recoveries++;
       step.status = "pending";
-      saveTaskPlan(plan, "executing", runtimeContext.correlationId);
+      move(plan, "executing");
       // retry stays at this index; create_step inserts its corrective step at this index.
     }
   }
 
-  saveTaskWithContext({ id: plan.id, description: plan.task, status: "completed", context: runtimeContext });
+  move(plan, "verifying");
+  move(plan, "completed");
   return { status: "completed", plan, completedSteps, correlationId: runtimeContext.correlationId };
 }

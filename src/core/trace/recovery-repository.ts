@@ -23,4 +23,21 @@ export class PersistentRecoveryRepository {
       status: row.status as RecoveryEvent["status"]
     }));
   }
+
+  findIncomplete(): RecoveryEvent[] {
+    const rows = withAgentDatabase((db) => db.prepare(`
+      SELECT started.* FROM recovery_events started
+      WHERE started.status = 'started'
+        AND NOT EXISTS (
+          SELECT 1 FROM recovery_events terminal
+          WHERE terminal.recovery_id = started.recovery_id AND terminal.status IN ('completed', 'failed')
+        )
+      ORDER BY started.id
+    `).all()) as Array<Record<string, unknown>>;
+    return rows.map((row) => ({
+      recoveryId: String(row.recovery_id), correlationId: String(row.correlation_id),
+      action: String(row.action), reason: String(row.reason), retryCount: Number(row.retry_count),
+      startedAt: String(row.started_at), status: "started"
+    }));
+  }
 }

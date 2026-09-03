@@ -2,7 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { validateWorkspace } from "../../security/workspace-guard.js";
-import { assertToolPermission } from "../../security/permission.js";
+import { policyDecisionPoint } from "../../core/governance/policy-decision-point.js";
 import { logFileAction } from "../../memory/file-audit.js";
 import { resolveCorrelationId } from "../../core/runtime/correlation-id.js";
 import { withAgentDatabase } from "../../core/memory/database.js";
@@ -54,7 +54,7 @@ async function backupFile(filePath: string, targetPath: string, correlationId: s
 
 export async function readWorkspaceFile(targetPath: string, correlationId?: string): Promise<string> {
   return audit("read", targetPath, correlationId, async () => {
-    assertToolPermission("read_file");
+    policyDecisionPoint.assertAllowed({ tool: "read_file", arguments: { path: targetPath }, correlationId });
     const filePath = validateWorkspace(targetPath);
     await assertReadableSize(filePath);
     return fs.readFile(filePath, "utf8");
@@ -63,7 +63,7 @@ export async function readWorkspaceFile(targetPath: string, correlationId?: stri
 
 export async function createWorkspaceFile(targetPath: string, content: string, correlationId?: string): Promise<FileMutationResult> {
   return audit("create", targetPath, correlationId, async () => {
-    assertToolPermission("create_file");
+    policyDecisionPoint.assertAllowed({ tool: "create_file", arguments: { path: targetPath }, correlationId });
     if (Buffer.byteLength(content, "utf8") > MAX_FILE_BYTES) throw new Error(`Content exceeds ${MAX_FILE_BYTES} byte limit`);
     const filePath = validateWorkspace(targetPath);
     await fs.mkdir(path.dirname(filePath), { recursive: true });
@@ -75,7 +75,7 @@ export async function createWorkspaceFile(targetPath: string, content: string, c
 
 export async function writeWorkspaceFile(targetPath: string, content: string, correlationId?: string): Promise<FileMutationResult> {
   return audit("write", targetPath, correlationId, async (traceId) => {
-    assertToolPermission("write_file");
+    policyDecisionPoint.assertAllowed({ tool: "write_file", arguments: { path: targetPath }, correlationId });
     if (Buffer.byteLength(content, "utf8") > MAX_FILE_BYTES) throw new Error(`Content exceeds ${MAX_FILE_BYTES} byte limit`);
     const filePath = validateWorkspace(targetPath);
     await fs.mkdir(path.dirname(filePath), { recursive: true });
@@ -88,7 +88,7 @@ export async function writeWorkspaceFile(targetPath: string, content: string, co
 
 export async function modifyWorkspaceFile(targetPath: string, search: string, replacement: string, correlationId?: string): Promise<FileMutationResult> {
   return audit("modify", targetPath, correlationId, async (traceId) => {
-    assertToolPermission("modify_file");
+    policyDecisionPoint.assertAllowed({ tool: "modify_file", arguments: { path: targetPath }, correlationId });
     if (!search) throw new Error("Search text must not be empty");
     const filePath = validateWorkspace(targetPath);
     await assertReadableSize(filePath);
@@ -104,7 +104,7 @@ export async function modifyWorkspaceFile(targetPath: string, search: string, re
 
 export async function deleteWorkspaceFile(targetPath: string, correlationId?: string): Promise<FileMutationResult> {
   return audit("delete", targetPath, correlationId, async (traceId) => {
-    assertToolPermission("delete_file");
+    policyDecisionPoint.assertAllowed({ tool: "delete_file", arguments: { path: targetPath }, correlationId });
     const filePath = validateWorkspace(targetPath);
     const backupId = await backupFile(filePath, targetPath, traceId);
     await fs.unlink(filePath);
@@ -114,7 +114,7 @@ export async function deleteWorkspaceFile(targetPath: string, correlationId?: st
 
 export async function restoreWorkspaceFile(backupId: string, correlationId?: string): Promise<FileMutationResult> {
   return audit("restore", backupId, correlationId, async (traceId) => {
-    assertToolPermission("restore_file");
+    policyDecisionPoint.assertAllowed({ tool: "restore_file", arguments: { backupId }, correlationId });
     const backup = withAgentDatabase((db) => db.prepare(`
       SELECT id, path, content FROM file_backups WHERE id = ?
     `).get(backupId) as { id: string; path: string; content: Buffer } | undefined);
@@ -130,7 +130,7 @@ export async function restoreWorkspaceFile(backupId: string, correlationId?: str
 
 export async function listWorkspaceDirectory(targetPath: string, correlationId?: string): Promise<string[]> {
   return audit("list", targetPath, correlationId, async () => {
-    assertToolPermission("list_directory");
+    policyDecisionPoint.assertAllowed({ tool: "list_directory", arguments: { path: targetPath }, correlationId });
     const directory = validateWorkspace(targetPath);
     const entries = await fs.readdir(directory, { withFileTypes: true });
     return entries.map((entry) => entry.isDirectory() ? `[DIR] ${entry.name}` : `[FILE] ${entry.name}`);
@@ -139,7 +139,7 @@ export async function listWorkspaceDirectory(targetPath: string, correlationId?:
 
 export async function searchWorkspaceFiles(targetPath: string, query: string, correlationId?: string): Promise<string[]> {
   return audit("search", targetPath, correlationId, async () => {
-    assertToolPermission("search_files");
+    policyDecisionPoint.assertAllowed({ tool: "search_files", arguments: { path: targetPath, query }, correlationId });
     if (!query) throw new Error("Search query must not be empty");
     const root = validateWorkspace(targetPath);
     const workspace = validateWorkspace(".");

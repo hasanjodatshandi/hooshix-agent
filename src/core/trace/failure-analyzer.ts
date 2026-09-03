@@ -23,7 +23,7 @@ export function analyzeTraceFailure(events: ExecutionTraceEvent[]): DebugFinding
   let failedResult: Record<string, unknown> | undefined;
 
   for (let index = events.length - 1; index >= 0; index--) {
-    const data = parseObject(events[index].data);
+    const data = parseObject(events[index].payload ?? events[index].data);
     const result = parseObject(data?.result);
     const state = parseObject(data?.state);
     if (data?.status === "failed" || result?.error || state?.status === "failed") {

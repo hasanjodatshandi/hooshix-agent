@@ -1,4 +1,5 @@
-import type { ToolName } from "../orchestrator/tool-orchestrator.js";
+import { validateToolArguments, validateToolName, type ToolName } from "../orchestrator/tool-orchestrator.js";
+import type { TaskState } from "../state/task-state-machine.js";
 
 export type TaskStepStatus = "pending" | "running" | "completed" | "failed" | "pending_approval" | "blocked";
 
@@ -18,6 +19,7 @@ export interface TaskPlan {
   task: string;
   description?: string;
   correlationId?: string;
+  state?: TaskState;
   steps: TaskStep[];
 }
 
@@ -32,7 +34,10 @@ export function validateTaskPlan(plan: TaskPlan): TaskPlan {
       if (dependency === step.id) throw new Error(`Step ${step.id} cannot depend on itself`);
       if (!seen.has(dependency)) throw new Error(`Step ${step.id} depends on missing or later step ${dependency}`);
     }
-    if (step.tool && !step.arguments) step.arguments = {};
+    if (step.tool) {
+      step.tool = validateToolName(step.tool);
+      step.arguments = validateToolArguments(step.tool, step.arguments ?? {});
+    }
     step.status ??= "pending";
     seen.add(step.id);
   }
@@ -44,14 +49,15 @@ export function createTaskPlan(task: string, steps?: Array<Omit<TaskStep, "id" |
     id: crypto.randomUUID(),
     task,
     description,
+    state: "created",
     steps: steps?.map((step, index) => ({
       ...step,
       id: step.id ?? index + 1,
       status: step.status ?? "pending"
     })) ?? [
-      { id: 1, action: "inspect project", status: "pending" },
-      { id: 2, action: "implement changes", status: "pending" },
-      { id: 3, action: "verify result", status: "pending" }
+      { id: 1, action: "inspect project", tool: "list_directory", arguments: { path: "." }, status: "pending" },
+      { id: 2, action: "inspect implementation markers", tool: "search_files", arguments: { path: ".", query: "TODO" }, status: "pending" },
+      { id: 3, action: "verify runtime", tool: "execute_command", arguments: { command: "node", args: ["--version"] }, status: "pending" }
     ]
   });
 }

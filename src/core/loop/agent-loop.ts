@@ -1,5 +1,5 @@
 import type { TaskPlan, TaskStep } from "../planner/task-planner.js";
-import { executeToolStep } from "../orchestrator/tool-orchestrator.js";
+import { runClosedAgentLoop } from "./closed-agent-loop.js";
 
 export type AgentLoopStatus = "running" | "completed" | "failed";
 
@@ -9,31 +9,13 @@ export interface AgentLoopResult {
   failedStep?: TaskStep;
 }
 
+/** @deprecated Use runClosedAgentLoop; retained as a compatibility adapter. */
 export async function runAgentLoop(
   plan: TaskPlan,
   toolExecutor: (tool: string, step: TaskStep) => Promise<unknown>
 ): Promise<AgentLoopResult> {
-  const completedSteps: TaskStep[] = [];
-
-  for (const step of plan.steps) {
-    step.status = "running";
-
-    try {
-      await executeToolStep(step, toolExecutor);
-      step.status = "completed";
-      completedSteps.push(step);
-    } catch {
-      step.status = "failed";
-      return {
-        status: "failed",
-        completedSteps,
-        failedStep: step
-      };
-    }
-  }
-
-  return {
-    status: "completed",
-    completedSteps
-  };
+  const result = await runClosedAgentLoop(plan, toolExecutor, 0);
+  return result.status === "completed"
+    ? { status: "completed", completedSteps: result.completedSteps }
+    : { status: "failed", completedSteps: result.completedSteps, failedStep: plan.steps.find((step) => step.status === "failed" || step.status === "blocked") };
 }

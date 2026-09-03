@@ -8,6 +8,7 @@ const { execaMock } = vi.hoisted(() => ({
 vi.mock("execa", () => ({ execa: execaMock }));
 
 import { gitClone } from "../src/services/git/git-service.js";
+import { runWithPolicyApproval } from "../src/core/governance/policy-decision-point.js";
 
 const target = "tests/runtime-git-clone/repository";
 
@@ -18,7 +19,7 @@ afterEach(async () => {
 
 describe("Git clone boundary", () => {
   it("passes a credential-free HTTPS URL as an argument without a shell", async () => {
-    const result = await gitClone("https://example.com/owner/repository.git", target, "clone-test");
+    const result = await runWithPolicyApproval("git_clone", () => gitClone("https://example.com/owner/repository.git", target, "clone-test"));
     expect(result.exitCode).toBe(0);
     expect(execaMock).toHaveBeenCalledOnce();
     const [command, args, options] = execaMock.mock.calls[0];

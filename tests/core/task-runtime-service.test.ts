@@ -1,6 +1,6 @@
 import fs from "node:fs/promises";
 import { afterEach, describe, expect, it } from "vitest";
-import { TaskRuntimeService } from "../../src/core/runtime/task-runtime-service.js";
+import { createTaskRuntimeService } from "../../src/core/runtime/composition-root.js";
 import { readWorkspaceFile, restoreWorkspaceFile } from "../../src/services/filesystem/filesystem-service.js";
 
 const root = "tests/runtime-task-service";
@@ -11,7 +11,7 @@ afterEach(async () => {
 
 describe("persistent task runtime", () => {
   it("rejects oversized task plans before persistence", () => {
-    const runtime = new TaskRuntimeService();
+    const runtime = createTaskRuntimeService();
     expect(() => runtime.create({
       title: "oversized",
       steps: [{ action: "write", tool: "write_file", arguments: { path: `${root}/large.txt`, content: "x".repeat(8 * 1024 * 1024) } }]
@@ -19,7 +19,7 @@ describe("persistent task runtime", () => {
   });
 
   it("executes an explicit ChatGPT plan and reloads it after restart", async () => {
-    const runtime = new TaskRuntimeService();
+    const runtime = createTaskRuntimeService();
     const plan = runtime.create({
       title: "create and run script",
       steps: [
@@ -33,7 +33,7 @@ describe("persistent task runtime", () => {
     expect(result.status).toBe("completed");
     expect(await readWorkspaceFile(`${root}/hello.cjs`)).toContain("hello-v1");
 
-    const restarted = new TaskRuntimeService();
+    const restarted = createTaskRuntimeService();
     const restored = restarted.get(plan.id)!;
     expect(restored.steps.map((step) => step.status)).toEqual(["completed", "completed"]);
     expect(JSON.stringify(restored.steps[1].output)).toContain("hello-v1");
@@ -43,7 +43,7 @@ describe("persistent task runtime", () => {
   it("requires approval based on the delete tool and restores its backup", async () => {
     await fs.mkdir(root, { recursive: true });
     await fs.writeFile(`${root}/delete-me.txt`, "recoverable", "utf8");
-    const runtime = new TaskRuntimeService();
+    const runtime = createTaskRuntimeService();
     const plan = runtime.create({
       title: "approval enforcement",
       steps: [{ action: "harmless label", tool: "delete_file", arguments: { path: `${root}/delete-me.txt` } }]
@@ -68,7 +68,7 @@ describe("persistent task runtime", () => {
   it("persists a failed command and retries it after ChatGPT fixes the cause", async () => {
     await fs.mkdir(root, { recursive: true });
     await fs.writeFile(`${root}/recover.cjs`, "process.exit(2)", "utf8");
-    const runtime = new TaskRuntimeService();
+    const runtime = createTaskRuntimeService();
     const plan = runtime.create({
       title: "retry failed step",
       steps: [{ action: "run recoverable script", tool: "execute_command", arguments: { command: "node", args: [`${root}/recover.cjs`] } }]

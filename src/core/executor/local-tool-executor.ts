@@ -1,24 +1,27 @@
 import os from "node:os";
 import { z } from "zod";
 import type { TaskStep } from "../planner/task-planner.js";
-import type { ToolName } from "../orchestrator/tool-orchestrator.js";
+import { validateToolName } from "../orchestrator/tool-orchestrator.js";
 import { createWorkspaceFile, deleteWorkspaceFile, listWorkspaceDirectory, modifyWorkspaceFile, readWorkspaceFile, restoreWorkspaceFile, searchWorkspaceFiles, writeWorkspaceFile } from "../../services/filesystem/filesystem-service.js";
 import { executeShellCommand } from "../../services/shell/shell-service.js";
 import { gitBranch, gitCheckout, gitClone, gitCommit, gitDiff, gitStatus } from "../../services/git/git-service.js";
 import { managePackage } from "../../services/package/package-service.js";
 import { auditToolCall } from "../memory/tool-audit.js";
+import { getAgentMetrics } from "../trace/metrics-service.js";
 
 const object = z.record(z.string(), z.unknown());
 const pathInput = object.and(z.object({ path: z.string() }));
 
 export function createLocalToolExecutor(correlationId: string, taskId?: string) {
   return async (tool: string, step: TaskStep): Promise<unknown> => {
+    const validatedTool = validateToolName(tool);
     const raw = step.arguments ?? {};
     const trace = correlationId;
     return auditToolCall(tool, trace, taskId, async () => {
     const input = object.parse(raw);
-    switch (tool as ToolName) {
+    switch (validatedTool) {
       case "get_system_info": return { platform: os.platform(), cpu: os.cpus()[0]?.model, memory: os.totalmem() };
+      case "agent_metrics": return getAgentMetrics();
       case "read_file": { const value = pathInput.parse(input); return readWorkspaceFile(value.path, trace); }
       case "list_directory": { const value = z.object({ path: z.string().default(".") }).parse(input); return listWorkspaceDirectory(value.path, trace); }
       case "search_files": { const value = z.object({ path: z.string().default("."), query: z.string().min(1) }).parse(input); return searchWorkspaceFiles(value.path, value.query, trace); }

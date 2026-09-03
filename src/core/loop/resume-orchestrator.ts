@@ -4,11 +4,13 @@ import { preparePlanForResume, getResumeStartIndex } from "./resume-controller.j
 import { runClosedAgentLoop, type ClosedLoopResult } from "./closed-agent-loop.js";
 import { consumeApprovedRequest } from "../governance/approval-memory.js";
 import { createExecutionContext } from "../runtime/execution-context.js";
+import type { RecoveryProvider } from "../trace/unified-recovery-service.js";
 
 export async function resumeApprovedTask(
   approvalId: number,
   plan: TaskPlan,
-  executor: (tool: string, step: TaskStep) => Promise<unknown>
+  executor: (tool: string, step: TaskStep) => Promise<unknown>,
+  recoveryProvider?: RecoveryProvider
 ): Promise<ClosedLoopResult | null> {
   const context = canResumeApprovedTask(approvalId);
 
@@ -34,7 +36,7 @@ export async function resumeApprovedTask(
     1,
     startIndex,
     createExecutionContext({ taskId: context.taskId, correlationId: context.correlationId }),
-    undefined,
+    recoveryProvider,
     undefined,
     context.stepId
   );

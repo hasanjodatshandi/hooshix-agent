@@ -1,18 +1,28 @@
 export type TaskState =
   | "created"
   | "planning"
+  | "waiting_approval"
   | "executing"
+  | "checkpointing"
+  | "recovering"
+  | "resuming"
   | "verifying"
   | "completed"
-  | "failed";
+  | "failed"
+  | "cancelled";
 
 const transitions: Record<TaskState, TaskState[]> = {
-  created: ["planning"],
-  planning: ["executing", "failed"],
-  executing: ["verifying", "failed"],
-  verifying: ["completed", "failed"],
+  created: ["planning", "cancelled"],
+  planning: ["waiting_approval", "executing", "failed", "cancelled"],
+  waiting_approval: ["resuming", "failed", "cancelled"],
+  executing: ["checkpointing", "waiting_approval", "recovering", "verifying", "failed", "cancelled"],
+  checkpointing: ["executing", "waiting_approval", "recovering", "verifying", "failed", "cancelled"],
+  recovering: ["executing", "waiting_approval", "failed", "cancelled"],
+  resuming: ["executing", "recovering", "failed", "cancelled"],
+  verifying: ["completed", "recovering", "failed", "cancelled"],
   completed: [],
-  failed: []
+  failed: ["resuming", "cancelled"],
+  cancelled: []
 };
 
 export function canTransition(from: TaskState, to: TaskState) {

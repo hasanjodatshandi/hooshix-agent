@@ -1,9 +1,11 @@
 import type { ExecutionTraceEvent } from "../memory/execution-trace.js";
 
 export interface ReplayStep {
+  id: string;
+  source: string;
   type: string;
   timestamp: string;
-  data: unknown;
+  payload: unknown;
 }
 
 export interface ReplayReport {
@@ -17,9 +19,11 @@ export function buildReplayReport(correlationId: string, events: ExecutionTraceE
     correlationId,
     totalEvents: events.length,
     steps: events.map((event) => ({
+      id: event.id,
+      source: event.source,
       type: event.type,
       timestamp: event.timestamp,
-      data: event.data
+      payload: event.payload
     }))
   };
 }

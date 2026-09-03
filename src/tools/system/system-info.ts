@@ -3,7 +3,7 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { resolveCorrelationId } from "../../core/runtime/correlation-id.js";
 import { auditToolCall } from "../../core/memory/tool-audit.js";
-import { assertToolPermission } from "../../security/permission.js";
+import { policyDecisionPoint } from "../../core/governance/policy-decision-point.js";
 
 export function registerSystemInfoTool(server: McpServer){
   server.registerTool(
@@ -18,7 +18,7 @@ export function registerSystemInfoTool(server: McpServer){
       })
     },
     async({ correlationId, taskId })=>{
-      assertToolPermission("get_system_info");
+      policyDecisionPoint.assertAllowed({ tool: "get_system_info", arguments: {}, correlationId });
       const traceId = resolveCorrelationId(correlationId);
       return auditToolCall("get_system_info", traceId, taskId, () => ({ content:[{
         type:"text",

@@ -4,6 +4,9 @@ import type { TraceRepository } from "./trace-repository.js";
 import { PersistentRecoveryRepository } from "./recovery-repository.js";
 
 export interface UnifiedTimelineEvent {
+  id: string;
+  correlationId: string;
+  taskId?: string;
   source: "execution" | "recovery";
   type: string;
   timestamp: string;
@@ -28,12 +31,17 @@ export class UnifiedTimelineService {
     const recovery = this.recoveryRepository.findByCorrelationId(correlationId);
     const events = [
       ...execution.map((event): UnifiedTimelineEvent => ({
+        id: event.id,
+        correlationId: event.correlationId,
+        taskId: event.taskId,
         source: "execution",
         type: event.type,
         timestamp: event.timestamp,
-        data: event.data
+        data: event.payload
       })),
       ...recovery.map((event): UnifiedTimelineEvent => ({
+        id: `${event.recoveryId}:${event.status}`,
+        correlationId: event.correlationId,
         source: "recovery",
         type: `recovery_${event.status}`,
         timestamp: event.status === "started" ? event.startedAt : event.completedAt ?? event.startedAt,
@@ -53,7 +61,7 @@ export class UnifiedTimelineService {
 function findFinalStatus(execution: ExecutionTraceEvent[], recovery: RecoveryEvent[]): string {
   for (let index = execution.length - 1; index >= 0; index--) {
     if (execution[index].type !== "task") continue;
-    const data = execution[index].data as { status?: unknown };
+    const data = execution[index].payload as { status?: unknown };
     if (typeof data?.status === "string") return data.status;
   }
   if (recovery.some((event) => event.status === "failed")) return "failed";

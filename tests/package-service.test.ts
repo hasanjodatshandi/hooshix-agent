@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { commandFor, managePackage, validatePackageName, verificationCommandFor } from "../src/services/package/package-service.js";
+import { runWithPolicyApproval } from "../src/core/governance/policy-decision-point.js";
 
 const original = process.env.HOOSHIX_PERMISSION_LEVEL;
 
@@ -32,6 +33,6 @@ describe("package service policy", () => {
     process.env.HOOSHIX_PERMISSION_LEVEL = "READ_ONLY";
     await expect(managePackage({ manager: "npm", action: "install", name: "zod" })).rejects.toThrow("DEVELOPER_MODE");
     process.env.HOOSHIX_PERMISSION_LEVEL = "DEVELOPER_MODE";
-    await expect(managePackage({ manager: "winget", action: "install", name: "Vendor.App" })).rejects.toThrow("ADMIN_MODE");
+    await expect(runWithPolicyApproval("install_package", () => managePackage({ manager: "winget", action: "install", name: "Vendor.App" }))).rejects.toThrow("ADMIN_MODE");
   });
 });

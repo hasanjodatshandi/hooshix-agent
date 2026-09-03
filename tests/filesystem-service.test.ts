@@ -8,6 +8,7 @@ import {
   restoreWorkspaceFile,
   writeWorkspaceFile
 } from "../src/services/filesystem/filesystem-service.js";
+import { runWithPolicyApproval } from "../src/core/governance/policy-decision-point.js";
 
 describe("filesystem service", () => {
   const file = "tests/runtime-files/test.txt";
@@ -46,7 +47,7 @@ describe("filesystem service", () => {
     await createWorkspaceFile(file, "original");
     await expect(createWorkspaceFile(file, "overwrite")).rejects.toThrow();
 
-    const deleted = await deleteWorkspaceFile(file, "file-backup-test");
+    const deleted = await runWithPolicyApproval("delete_file", () => deleteWorkspaceFile(file, "file-backup-test"));
     await expect(readWorkspaceFile(file)).rejects.toThrow();
     expect(deleted.backupId).toBeTypeOf("string");
 

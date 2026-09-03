@@ -6,18 +6,29 @@ import { getTaskPlan, listTasks, saveMemoryItem, saveTaskPlan } from "../memory/
 import { createTaskPlan, type TaskStep, validateTaskPlan } from "../planner/task-planner.js";
 import { createExecutionContext } from "./execution-context.js";
 import { UnifiedTimelineService } from "../trace/unified-timeline-service.js";
-import { SqliteTraceRepository } from "../trace/trace-repository.js";
-import { PersistentRecoveryRepository } from "../trace/recovery-repository.js";
+import type { RecoveryProvider } from "../trace/unified-recovery-service.js";
+import type { TaskState } from "../state/task-state-machine.js";
+import { analyzeTaskHistory } from "../reflection/reflection-engine.js";
+import { getAgentMetrics } from "../trace/metrics-service.js";
+
+export interface TaskRuntimeDependencies {
+  createExecutor(correlationId: string, taskId: string): ReturnType<typeof createLocalToolExecutor>;
+  recoveryProvider: RecoveryProvider;
+  timeline: UnifiedTimelineService;
+}
+
+const runningTasks = new Set<string>();
 
 export class TaskRuntimeService {
-  private readonly running = new Set<string>();
+  constructor(private readonly dependencies: TaskRuntimeDependencies) {}
 
   create(input: { title: string; description?: string; steps: Array<Omit<TaskStep, "id" | "status"> & Partial<Pick<TaskStep, "id" | "status">>>; correlationId?: string }) {
     const serialized = JSON.stringify(input);
     if (Buffer.byteLength(serialized, "utf8") > 8 * 1024 * 1024) throw new Error("Task plan exceeds the 8 MiB limit");
     const plan = createTaskPlan(input.title, input.steps, input.description);
     plan.correlationId = input.correlationId ?? crypto.randomUUID();
-    saveTaskPlan(plan, "planned", plan.correlationId);
+    plan.state = "planning";
+    saveTaskPlan(plan, plan.state, plan.correlationId);
     saveMemoryItem({ taskId: plan.id, kind: "task_created", content: { title: plan.task, steps: plan.steps.length } });
     return plan;
   }
@@ -26,8 +37,8 @@ export class TaskRuntimeService {
   list(limit?: number) { return listTasks(limit); }
 
   async run(taskId: string, maxRecovery = 1): Promise<ClosedLoopResult> {
-    if (this.running.has(taskId)) throw new Error("Task is already running");
-    this.running.add(taskId);
+    if (runningTasks.has(taskId)) throw new Error("Task is already running");
+    runningTasks.add(taskId);
     try {
     const plan = getTaskPlan(taskId);
     if (!plan) throw new Error("Task not found");
@@ -39,31 +50,42 @@ export class TaskRuntimeService {
       if (plan.steps.find((step) => step.id === dependency)?.status !== "completed") throw new Error(`Dependency ${dependency} is not completed`);
     }
     const context = createExecutionContext({ taskId, correlationId: plan.correlationId });
-    const result = await runClosedAgentLoop(plan, createLocalToolExecutor(context.correlationId, taskId), maxRecovery, startIndex, context);
-    saveTaskPlan(plan, result.status === "pending_approval" ? "paused" : result.status, context.correlationId);
+    const result = await runClosedAgentLoop(plan, this.dependencies.createExecutor(context.correlationId, taskId), maxRecovery, startIndex, context, this.dependencies.recoveryProvider);
+    saveTaskPlan(plan, plan.state ?? result.status as TaskState, context.correlationId);
     saveMemoryItem({ taskId, kind: "task_run", content: { status: result.status, completedSteps: result.completedSteps.map((step) => step.id) } });
     return result;
     } finally {
-      this.running.delete(taskId);
+      runningTasks.delete(taskId);
     }
   }
 
   approve(approvalId: number): boolean { return approveRequest(approvalId); }
+
+  cancel(taskId: string): boolean {
+    if (runningTasks.has(taskId)) throw new Error("A running task cannot be cancelled until its current tool call finishes");
+    const plan = getTaskPlan(taskId);
+    if (!plan) throw new Error("Task not found");
+    if (plan.state === "completed" || plan.state === "cancelled") return false;
+    plan.state = "cancelled";
+    saveTaskPlan(plan, plan.state, plan.correlationId);
+    saveMemoryItem({ taskId, kind: "task_cancelled", content: { state: plan.state } });
+    return true;
+  }
 
   async resume(approvalId: number): Promise<ClosedLoopResult> {
     const approval = getApprovalRequest(approvalId);
     if (!approval) throw new Error("Approval not found");
     const plan = getTaskPlan(approval.task_id);
     if (!plan) throw new Error("Task not found");
-    if (this.running.has(plan.id)) throw new Error("Task is already running");
-    this.running.add(plan.id);
+    if (runningTasks.has(plan.id)) throw new Error("Task is already running");
+    runningTasks.add(plan.id);
     try {
-    const result = await resumeApprovedTask(approvalId, plan, createLocalToolExecutor(plan.correlationId ?? approval.correlation_id ?? crypto.randomUUID(), plan.id));
+    const result = await resumeApprovedTask(approvalId, plan, this.dependencies.createExecutor(plan.correlationId ?? approval.correlation_id ?? crypto.randomUUID(), plan.id), this.dependencies.recoveryProvider);
     if (!result) throw new Error("Approval cannot resume this task");
-    saveTaskPlan(plan, result.status === "pending_approval" ? "paused" : result.status, result.correlationId);
+    saveTaskPlan(plan, plan.state ?? result.status as TaskState, result.correlationId);
     return result;
     } finally {
-      this.running.delete(plan.id);
+      runningTasks.delete(plan.id);
     }
   }
 
@@ -72,13 +94,15 @@ export class TaskRuntimeService {
     if (!plan) throw new Error("Task not found");
     const correlationId = plan.correlationId;
     if (!correlationId) throw new Error("Task has no correlation ID");
-    const timeline = new UnifiedTimelineService(new SqliteTraceRepository(), new PersistentRecoveryRepository()).build(correlationId);
+    const timeline = this.dependencies.timeline.build(correlationId);
     return {
       task: plan,
       status: timeline.finalStatus,
       completedSteps: plan.steps.filter((step) => step.status === "completed").length,
       failedSteps: plan.steps.filter((step) => step.status === "failed").length,
-      timeline
+      timeline,
+      reflection: analyzeTaskHistory(taskId),
+      metrics: getAgentMetrics()
     };
   }
 }

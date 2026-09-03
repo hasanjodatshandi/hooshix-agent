@@ -2,7 +2,7 @@ import { execa } from "execa";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { validateWorkspace } from "../../security/workspace-guard.js";
-import { assertToolPermission } from "../../security/permission.js";
+import { policyDecisionPoint } from "../../core/governance/policy-decision-point.js";
 import { logCommandAction } from "../../memory/command-audit.js";
 import { resolveCorrelationId } from "../../core/runtime/correlation-id.js";
 
@@ -16,7 +16,7 @@ function validateRef(ref: string): string {
 }
 
 async function runGit(tool: string, args: string[], cwd: string, correlationId?: string, timeout = 120000): Promise<GitResult> {
-  assertToolPermission(tool);
+  policyDecisionPoint.assertAllowed({ tool, arguments: { args, cwd }, correlationId });
   const traceId = resolveCorrelationId(correlationId);
   const safeCwd = validateWorkspace(cwd);
   const result = await execa("git", args, { cwd: safeCwd, shell: false, reject: false, timeout, maxBuffer: 2 * 1024 * 1024 });

@@ -1,45 +1,14 @@
-import { randomUUID } from "node:crypto";
-import { applySelfHealing, shouldContinueAfterRecovery } from "../trace/self-healing-controller.js";
-import { RecoveryLifecycleTracker } from "../trace/recovery-lifecycle.js";
-import type { RecoveryObservabilitySink } from "../trace/recovery-observability.js";
 import type { TaskPlan } from "../planner/task-planner.js";
-import type { RecoveryAction } from "./recovery-engine.js";
-
-export interface RecoveryRuntimeContext {
-  correlationId: string;
-  taskId?: string;
-  sink?: RecoveryObservabilitySink;
-  stepIndex?: number;
-  retryCount?: number;
-}
+import type { RecoveryAction, RecoveryExecutionContext } from "./recovery-engine.js";
+import { UnifiedRecoveryService } from "../trace/unified-recovery-service.js";
+import { MemoryRecoveryObservability } from "../trace/recovery-observability.js";
+import { randomUUID } from "node:crypto";
 
 export function recoverAndContinue(
   plan: TaskPlan,
   action: RecoveryAction,
-  context?: RecoveryRuntimeContext
+  context?: RecoveryExecutionContext
 ): boolean {
-  if (!shouldContinueAfterRecovery(action)) {
-    return false;
-  }
-
-  const tracker = context?.sink ? new RecoveryLifecycleTracker(context.sink) : undefined;
-  const baseEvent = {
-    recoveryId: randomUUID(),
-    correlationId: context?.correlationId ?? plan.id,
-    action: action.type,
-    reason: action.reason,
-    retryCount: context?.retryCount ?? 1,
-    startedAt: new Date().toISOString()
-  };
-
-  tracker?.start(baseEvent);
-
-  try {
-    applySelfHealing(plan, action, context?.stepIndex);
-    tracker?.complete({ ...baseEvent, completedAt: new Date().toISOString() });
-    return true;
-  } catch (error) {
-    tracker?.fail({ ...baseEvent, completedAt: new Date().toISOString() });
-    return false;
-  }
+  const runtimeContext = context ?? { correlationId: plan.id ?? randomUUID(), sink: new MemoryRecoveryObservability() };
+  return new UnifiedRecoveryService({ getTrace: () => [] }, runtimeContext.sink).executeRecovery(plan, action, runtimeContext);
 }

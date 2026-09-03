@@ -42,7 +42,7 @@ describe("local typed tool executor", () => {
     await execute("git_checkout", step("git_checkout", { cwd: root, name: "executor-branch" }));
 
     await expect(execute("git_clone", step("git_clone", { url: "file:///unsafe", path: `${root}/clone` }))).rejects.toThrow("credential-free HTTPS");
-    await expect(execute("unknown", step("unknown", {}))).rejects.toThrow("Unsupported task tool");
+    await expect(execute("unknown", step("unknown", {}))).rejects.toThrow("Unknown tool");
   });
 
   it("audits schema errors with the task correlation id", async () => {

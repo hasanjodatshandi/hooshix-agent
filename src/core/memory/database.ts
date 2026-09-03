@@ -20,6 +20,16 @@ function ensureColumn(
   }
 }
 
+function migrate(db: Database.Database, version: number, name: string, operation: () => void): void {
+  const applied = db.prepare("SELECT 1 FROM schema_migrations WHERE version = ?").get(version);
+  if (applied) return;
+  db.transaction(() => {
+    operation();
+    db.prepare("INSERT INTO schema_migrations(version, name, applied_at) VALUES (?, ?, ?)")
+      .run(version, name, new Date().toISOString());
+  })();
+}
+
 export function openAgentDatabase(): Database.Database {
   const databasePath = getAgentDatabasePath();
   fs.mkdirSync(path.dirname(databasePath), { recursive: true });
@@ -141,36 +151,97 @@ export function openAgentDatabase(): Database.Database {
       created_at TEXT NOT NULL,
       restored_at TEXT
     );
+    CREATE TABLE IF NOT EXISTS schema_migrations (
+      version INTEGER PRIMARY KEY,
+      name TEXT NOT NULL,
+      applied_at TEXT NOT NULL
+    );
   `);
 
-  // Migrations for databases created by earlier development phases.
-  ensureColumn(db, "tasks", "correlation_id", "TEXT");
-  ensureColumn(db, "tasks", "title", "TEXT");
-  ensureColumn(db, "executions", "task_id", "TEXT");
-  ensureColumn(db, "executions", "status", "TEXT NOT NULL DEFAULT 'completed'");
-  ensureColumn(db, "executions", "correlation_id", "TEXT");
-  ensureColumn(db, "decisions", "correlation_id", "TEXT");
-  ensureColumn(db, "approval_requests", "action", "TEXT");
-  ensureColumn(db, "approval_requests", "consumed_at", "TEXT");
+  migrate(db, 1, "legacy-columns-and-indexes", () => {
+    ensureColumn(db, "tasks", "correlation_id", "TEXT");
+    ensureColumn(db, "tasks", "title", "TEXT");
+    ensureColumn(db, "executions", "task_id", "TEXT");
+    ensureColumn(db, "executions", "status", "TEXT NOT NULL DEFAULT 'completed'");
+    ensureColumn(db, "executions", "correlation_id", "TEXT");
+    ensureColumn(db, "decisions", "correlation_id", "TEXT");
+    ensureColumn(db, "approval_requests", "action", "TEXT");
+    ensureColumn(db, "approval_requests", "consumed_at", "TEXT");
+    db.exec(`
+      CREATE INDEX IF NOT EXISTS idx_tasks_correlation_id ON tasks(correlation_id);
+      CREATE INDEX IF NOT EXISTS idx_executions_task_id ON executions(task_id);
+      CREATE INDEX IF NOT EXISTS idx_executions_correlation_id ON executions(correlation_id);
+      CREATE INDEX IF NOT EXISTS idx_decisions_correlation_id ON decisions(correlation_id);
+      CREATE INDEX IF NOT EXISTS idx_checkpoints_task_id ON agent_checkpoints(task_id, id);
+      CREATE INDEX IF NOT EXISTS idx_checkpoints_correlation_id ON agent_checkpoints(correlation_id);
+      CREATE INDEX IF NOT EXISTS idx_approvals_correlation_id ON approval_requests(correlation_id);
+      CREATE INDEX IF NOT EXISTS idx_recovery_correlation_id ON recovery_events(correlation_id, id);
+      CREATE INDEX IF NOT EXISTS idx_recovery_id ON recovery_events(recovery_id, id);
+      CREATE INDEX IF NOT EXISTS idx_tool_calls_correlation_id ON tool_calls(correlation_id, id);
+      CREATE INDEX IF NOT EXISTS idx_task_steps_task_order ON task_steps(task_id, step_order);
+      CREATE INDEX IF NOT EXISTS idx_memory_items_task_id ON memory_items(task_id, id);
+      CREATE INDEX IF NOT EXISTS idx_file_backups_path ON file_backups(path, created_at);
+    `);
+  });
 
-  db.exec(`
-    CREATE INDEX IF NOT EXISTS idx_tasks_correlation_id ON tasks(correlation_id);
-    CREATE INDEX IF NOT EXISTS idx_executions_task_id ON executions(task_id);
-    CREATE INDEX IF NOT EXISTS idx_executions_correlation_id ON executions(correlation_id);
-    CREATE INDEX IF NOT EXISTS idx_decisions_correlation_id ON decisions(correlation_id);
-    CREATE INDEX IF NOT EXISTS idx_checkpoints_task_id ON agent_checkpoints(task_id, id);
-    CREATE INDEX IF NOT EXISTS idx_checkpoints_correlation_id ON agent_checkpoints(correlation_id);
-    CREATE INDEX IF NOT EXISTS idx_approvals_correlation_id ON approval_requests(correlation_id);
-    CREATE INDEX IF NOT EXISTS idx_recovery_correlation_id ON recovery_events(correlation_id, id);
-    CREATE INDEX IF NOT EXISTS idx_recovery_id ON recovery_events(recovery_id, id);
-    CREATE INDEX IF NOT EXISTS idx_tool_calls_correlation_id ON tool_calls(correlation_id, id);
-    CREATE INDEX IF NOT EXISTS idx_task_steps_task_order ON task_steps(task_id, step_order);
-    CREATE INDEX IF NOT EXISTS idx_memory_items_task_id ON memory_items(task_id, id);
-    CREATE INDEX IF NOT EXISTS idx_file_backups_path ON file_backups(path, created_at);
-  `);
+  migrate(db, 2, "tool-call-observability", () => {
+    ensureColumn(db, "tool_calls", "completed_at", "TEXT");
+    ensureColumn(db, "tool_calls", "duration_ms", "INTEGER");
+    ensureColumn(db, "tool_calls", "error", "TEXT");
+    db.exec("CREATE INDEX IF NOT EXISTS idx_tool_calls_tool_status ON tool_calls(tool, status)");
+  });
+
+  migrate(db, 3, "package-snapshots", () => {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS package_snapshots (
+        id TEXT PRIMARY KEY,
+        correlation_id TEXT NOT NULL,
+        manager TEXT NOT NULL,
+        action TEXT NOT NULL,
+        package_name TEXT NOT NULL,
+        cwd TEXT NOT NULL,
+        snapshot TEXT NOT NULL,
+        status TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        restored_at TEXT
+      );
+      CREATE INDEX IF NOT EXISTS idx_package_snapshots_correlation ON package_snapshots(correlation_id, created_at);
+    `);
+  });
+
+  migrate(db, 4, "normalize-task-states", () => {
+    db.prepare("UPDATE tasks SET status = 'planning' WHERE status = 'planned'").run();
+    db.prepare("UPDATE tasks SET status = 'waiting_approval' WHERE status = 'paused'").run();
+  });
 
   initializedDatabases.add(databasePath);
   return db;
+}
+
+export async function backupAgentDatabase(destination?: string): Promise<string> {
+  const source = getAgentDatabasePath();
+  const target = path.resolve(destination ?? path.join(path.dirname(source), "backups", `${path.basename(source)}.${new Date().toISOString().replace(/[:.]/g, "-")}.bak`));
+  if (target === source) throw new Error("Database backup destination must differ from source");
+  fs.mkdirSync(path.dirname(target), { recursive: true });
+  const db = openAgentDatabase();
+  try {
+    await db.backup(target);
+    return target;
+  } finally {
+    db.close();
+  }
+}
+
+export function cleanupAgentData(retentionDays = 90): Record<string, number> {
+  if (!Number.isInteger(retentionDays) || retentionDays < 1) throw new Error("Retention must be a positive number of days");
+  const cutoff = new Date(Date.now() - retentionDays * 86_400_000).toISOString();
+  return withAgentDatabase((db) => db.transaction(() => ({
+    toolCalls: db.prepare("DELETE FROM tool_calls WHERE created_at < ?").run(cutoff).changes,
+    checkpoints: db.prepare("DELETE FROM agent_checkpoints WHERE created_at < ? AND task_id IN (SELECT id FROM tasks WHERE status IN ('completed','failed','cancelled'))").run(cutoff).changes,
+    recoveryEvents: db.prepare("DELETE FROM recovery_events WHERE started_at < ? AND status != 'started'").run(cutoff).changes,
+    approvals: db.prepare("DELETE FROM approval_requests WHERE created_at < ? AND status = 'consumed'").run(cutoff).changes,
+    restoredBackups: db.prepare("DELETE FROM file_backups WHERE created_at < ? AND restored_at IS NOT NULL").run(cutoff).changes
+  }))());
 }
 
 export function withAgentDatabase<T>(operation: (db: Database.Database) => T): T {

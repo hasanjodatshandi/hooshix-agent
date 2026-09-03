@@ -1,4 +1,5 @@
 import type { TaskPlan, TaskStep, TaskStepStatus } from "../planner/task-planner.js";
+import type { TaskState } from "../state/task-state-machine.js";
 import { withAgentDatabase } from "./database.js";
 
 interface TaskRow {
@@ -6,6 +7,7 @@ interface TaskRow {
   title: string | null;
   description: string;
   correlation_id: string | null;
+  status: TaskState;
 }
 
 interface StepRow {
@@ -24,7 +26,8 @@ function parseJson(value: string | null, fallback: unknown): unknown {
   try { return JSON.parse(value) as unknown; } catch { return fallback; }
 }
 
-export function saveTaskPlan(plan: TaskPlan, status = "planned", correlationId = plan.correlationId): void {
+export function saveTaskPlan(plan: TaskPlan, status: TaskState = plan.state ?? "planning", correlationId = plan.correlationId): void {
+  plan.state = status;
   withAgentDatabase((db) => {
     const now = new Date().toISOString();
     const transaction = db.transaction(() => {
@@ -63,7 +66,7 @@ export function saveTaskStep(taskId: string, step: TaskStep, order: number): voi
 
 export function getTaskPlan(taskId: string): TaskPlan | null {
   return withAgentDatabase((db) => {
-    const task = db.prepare("SELECT id, title, description, correlation_id FROM tasks WHERE id=?").get(taskId) as TaskRow | undefined;
+    const task = db.prepare("SELECT id, title, description, status, correlation_id FROM tasks WHERE id=?").get(taskId) as TaskRow | undefined;
     if (!task) return null;
     const rows = db.prepare("SELECT * FROM task_steps WHERE task_id=? ORDER BY step_order").all(taskId) as StepRow[];
     return {
@@ -71,6 +74,7 @@ export function getTaskPlan(taskId: string): TaskPlan | null {
       task: task.title ?? task.description,
       description: task.description,
       correlationId: task.correlation_id ?? undefined,
+      state: task.status,
       steps: rows.map((row) => {
         const step: TaskStep = {
           id: row.step_id,

@@ -1,6 +1,6 @@
 import { execa } from "execa";
 import { validateCommand } from "../../security/command-validator.js";
-import { assertCommandPermission } from "../../security/permissions/command-permission.js";
+import { policyDecisionPoint } from "../../core/governance/policy-decision-point.js";
 import { logCommandAction } from "../../memory/command-audit.js";
 import { validateWorkspace } from "../../security/workspace-guard.js";
 import { resolveCorrelationId } from "../../core/runtime/correlation-id.js";
@@ -19,8 +19,8 @@ export async function executeShellCommand(
 
   try {
     safeCwd = validateWorkspace(cwd);
+    policyDecisionPoint.assertAllowed({ tool: "execute_command", arguments: { command, args, cwd, timeout }, correlationId: traceId });
     validateCommand(command, args);
-    assertCommandPermission(command, args);
     if (["node", "python", "py"].includes(command) && args[0] && !args[0].startsWith("-")) validateWorkspace(path.resolve(safeCwd, args[0]));
     if (command === "powershell") validateWorkspace(path.resolve(safeCwd, args[1]));
 

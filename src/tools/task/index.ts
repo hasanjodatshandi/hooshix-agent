@@ -1,15 +1,17 @@
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { TaskRuntimeService } from "../../core/runtime/task-runtime-service.js";
+import { createTaskRuntimeService } from "../../core/runtime/composition-root.js";
 import { auditToolCall } from "../../core/memory/tool-audit.js";
 import { resolveCorrelationId } from "../../core/runtime/correlation-id.js";
 import { assertToolPermission } from "../../security/permission.js";
 import { listMemoryItems, listProjects, saveMemoryItem, saveProject } from "../../core/memory/task-repository.js";
 import { validateWorkspace } from "../../security/workspace-guard.js";
+import { TOOL_NAMES } from "../../core/orchestrator/tool-orchestrator.js";
+import { ReplayExecutor } from "../../core/trace/replay-executor.js";
 
-const runtime = new TaskRuntimeService();
+const runtime = createTaskRuntimeService();
 const traceSchema = { correlationId: z.string().min(1).optional() };
-const toolName = z.enum(["get_system_info", "list_directory", "read_file", "write_file", "create_file", "modify_file", "delete_file", "restore_file", "search_files", "execute_command", "git_status", "git_diff", "git_clone", "git_commit", "git_branch", "git_checkout", "install_package", "remove_package", "update_package"]);
+const toolName = z.enum(TOOL_NAMES);
 const stepSchema = z.object({
   id: z.number().int().positive().optional(),
   action: z.string().min(1).max(500),
@@ -62,6 +64,14 @@ export function registerTaskTools(server: McpServer) {
   server.registerTool("task_report", { title: "Task Report", description: "Return plan state and unified execution/recovery timeline", annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true }, inputSchema: z.object({ taskId: z.string().uuid(), ...traceSchema }) }, async ({ taskId, correlationId }) => {
     assertToolPermission("task_report"); const traceId = resolveCorrelationId(correlationId);
     return auditToolCall("task_report", traceId, taskId, () => response(runtime.report(taskId), traceId));
+  });
+  server.registerTool("task_replay", { title: "Replay Task", description: "Recreate a task context, execute its steps, and compare step states", annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true }, inputSchema: z.object({ taskId: z.string().uuid(), allowMutations: z.boolean().default(false), ...traceSchema }) }, async ({ taskId, allowMutations, correlationId }) => {
+    assertToolPermission("task_replay"); const traceId = resolveCorrelationId(correlationId);
+    return auditToolCall("task_replay", traceId, taskId, async () => response(await new ReplayExecutor(runtime).replay(taskId, allowMutations), traceId));
+  });
+  server.registerTool("task_cancel", { title: "Cancel Task", description: "Cancel a task that is not currently executing a tool call", annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true }, inputSchema: z.object({ taskId: z.string().uuid(), ...traceSchema }) }, async ({ taskId, correlationId }) => {
+    assertToolPermission("task_cancel"); const traceId = resolveCorrelationId(correlationId);
+    return auditToolCall("task_cancel", traceId, taskId, () => response({ taskId, cancelled: runtime.cancel(taskId) }, traceId));
   });
   server.registerTool("project_save", { title: "Save Project", description: "Create or update local project context", annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true }, inputSchema: z.object({ id: z.string().uuid().optional(), name: z.string().min(1).max(200), path: z.string(), description: z.string().max(4000).optional(), lastAction: z.string().max(1000).optional(), nextAction: z.string().max(1000).optional(), ...traceSchema }) }, async ({ correlationId, ...input }) => {
     assertToolPermission("project_save"); const traceId = resolveCorrelationId(correlationId); input.path = validateWorkspace(input.path);

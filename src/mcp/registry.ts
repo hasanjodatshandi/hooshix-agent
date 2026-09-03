@@ -14,9 +14,11 @@ import { registerExecuteCommandTool } from "../tools/shell/execute-command.js";
 import { registerGitTools } from "../tools/git/index.js";
 import { registerPackageTools } from "../tools/package/index.js";
 import { registerTaskTools } from "../tools/task/index.js";
+import { registerAgentMetricsTool } from "../tools/system/agent-metrics.js";
 
 export function registerTools(server: McpServer){
   registerSystemInfoTool(server);
+  registerAgentMetricsTool(server);
 
   registerReadFileTool(server);
   registerWriteFileTool(server);
