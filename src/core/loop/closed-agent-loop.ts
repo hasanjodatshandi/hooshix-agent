@@ -14,7 +14,7 @@ import { saveTaskPlan, saveTaskStep } from "../memory/task-repository.js";
 import { transitionTask, type TaskState } from "../state/task-state-machine.js";
 import { runWithPolicyApproval } from "../governance/policy-decision-point.js";
 import { selectTool } from "../orchestrator/tool-orchestrator.js";
-import { buildStepContext, resolveTemplates, hasTemplates } from "../runtime/template-resolver.js";
+import { buildStepContext, resolveTemplates, hasTemplates, validateTemplates, MissingVariableError } from "../runtime/template-resolver.js";
 
 const MAX_PERSISTED_RESULT_BYTES = 128 * 1024;
 const MAX_RESULT_PREVIEW_CHARACTERS = 32 * 1024;
@@ -32,7 +32,7 @@ function boundedResult(value: unknown): unknown {
 }
 
 export interface ClosedLoopResult {
-  status: "completed" | "failed" | "pending_approval";
+  status: "completed" | "failed" | "pending_approval" | "blocked";
   plan: TaskPlan;
   completedSteps: TaskStep[];
   correlationId: string;
@@ -108,6 +108,8 @@ export async function runClosedAgentLoop(
       // Resolve template references in step arguments using completed step outputs
       const stepContext = buildStepContext(completedSteps);
       if (step.arguments && hasTemplates(step.arguments)) {
+        // Validate all variables exist before resolving
+        validateTemplates(step.arguments, stepContext);
         step.arguments = resolveTemplates(step.arguments, stepContext);
       }
       const execute = () => executeToolStep(step, executor);
@@ -123,11 +125,40 @@ export async function runClosedAgentLoop(
       saveExecutionWithContext({ taskId: plan.id, stepId: step.id, action: step.action, result, status: "completed", context: runtimeContext });
       index++;
     } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      const isMissingVariable = error instanceof MissingVariableError;
+      const isSecurityBlock = message.includes("Access denied") || message.includes("Approval required");
+      
+      // Classify error type
+      if (isMissingVariable) {
+        step.status = "failed";
+        step.error = message;
+        step.errorType = "MISSING_CONTEXT_VARIABLE";
+        persistStep();
+        checkpointStep({ taskId: plan.id, stepId: step.id, stepIndex: index, status: "failed", context: runtimeContext });
+        saveExecutionWithContext({ taskId: plan.id, stepId: step.id, action: step.action, result: { error: message, errorType: "MISSING_CONTEXT_VARIABLE", variable: (error as MissingVariableError).variable }, status: "failed", context: runtimeContext });
+        // Missing variables are not recoverable
+        move(plan, "failed");
+        return { status: "failed", plan, completedSteps, correlationId: runtimeContext.correlationId };
+      }
+      
+      if (isSecurityBlock) {
+        step.status = "blocked";
+        step.error = message;
+        step.errorType = "SECURITY_POLICY";
+        persistStep();
+        checkpointStep({ taskId: plan.id, stepId: step.id, stepIndex: index, status: "blocked", context: runtimeContext });
+        saveExecutionWithContext({ taskId: plan.id, stepId: step.id, action: step.action, result: { error: message, errorType: "SECURITY_POLICY", recoverable: false }, status: "blocked", context: runtimeContext });
+        // Security blocks are not recoverable
+        move(plan, "failed");
+        return { status: "failed", plan, completedSteps, correlationId: runtimeContext.correlationId };
+      }
+      
+      // Regular execution error
       step.status = "failed";
-      step.error = error instanceof Error ? error.message : String(error);
+      step.error = message;
       persistStep();
       checkpointStep({ taskId: plan.id, stepId: step.id, stepIndex: index, status: "failed", context: runtimeContext });
-      const message = error instanceof Error ? error.message : String(error);
       saveExecutionWithContext({ taskId: plan.id, stepId: step.id, action: step.action, result: { error: message }, status: "failed", context: runtimeContext });
 
       if (recoveries >= maxRecovery) {

@@ -148,3 +148,40 @@ export function hasTemplates(value: unknown): boolean {
   }
   return false;
 }
+
+export class MissingVariableError extends Error {
+  constructor(
+    public readonly variable: string,
+    public readonly stepId?: number,
+  ) {
+    super(`Missing context variable: ${variable}`);
+    this.name = "MissingVariableError";
+  }
+}
+
+/**
+ * Validate that all template references in a value can be resolved.
+ * Throws MissingVariableError if any variable is missing.
+ */
+export function validateTemplates(value: unknown, stepContext: Map<string, StepContext>): void {
+  if (typeof value === "string") {
+    const matches = value.matchAll(/\{\{(step\d+\.\w[^}]*)\}\}/g);
+    for (const match of matches) {
+      const refPath = match[1];
+      const resolved = resolveReference(refPath, stepContext);
+      if (resolved === undefined) {
+        throw new MissingVariableError(match[0]);
+      }
+    }
+    return;
+  }
+  if (Array.isArray(value)) {
+    for (const item of value) validateTemplates(item, stepContext);
+    return;
+  }
+  if (value !== null && typeof value === "object") {
+    for (const val of Object.values(value as Record<string, unknown>)) {
+      validateTemplates(val, stepContext);
+    }
+  }
+}

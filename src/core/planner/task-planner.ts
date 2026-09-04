@@ -12,6 +12,7 @@ export interface TaskStep {
   dependsOn?: number[];
   output?: unknown;
   error?: string;
+  errorType?: string;
 }
 
 export interface TaskPlan {

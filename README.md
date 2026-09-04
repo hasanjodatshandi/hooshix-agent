@@ -115,6 +115,105 @@ After setting a workspace, you can use absolute paths directly:
 
 **Note:** `delete_file` requires approval through a task step for security. Use `task_create` + `task_run` for delete operations.
 
+## Dynamic Context Injection (Template Variables)
+
+HooshiX supports passing output from one step to another using template variables.
+
+### Syntax
+
+```
+{{stepN.output.field}}     — Access a field from step N's output
+{{stepN.output}}           — Access the entire output
+{{stepN.status}}           — Access step N's status
+{{stepN.error}}            — Access step N's error message
+```
+
+### Examples
+
+**Example 1: Pass file path between steps**
+```json
+{
+  "title": "Create and read file",
+  "steps": [
+    { "action": "Create file", "tool": "create_file", "arguments": { "path": "test.txt", "content": "hello" } },
+    { "action": "Read file", "tool": "read_file", "arguments": { "path": "{{step1.output.path}}" } }
+  ]
+}
+```
+
+**Example 2: Delete and restore with backupId**
+```json
+{
+  "title": "Delete and restore file",
+  "steps": [
+    { "action": "Delete file", "tool": "delete_file", "arguments": { "path": "test.txt" } },
+    { "action": "Restore file", "tool": "restore_file", "arguments": { "backupId": "{{step1.output.backupId}}" } }
+  ]
+}
+```
+
+**Example 3: Nested field access**
+```json
+{
+  "path": "{{step1.output.result.items[0].id}}"
+}
+```
+
+### Type Preservation
+
+Template variables preserve their original type:
+- String: `{{step1.output.name}}` → `"hello"`
+- Number: `{{step1.output.count}}` → `42`
+- Boolean: `{{step1.output.success}}` → `true`
+- Object: `{{step1.output.data}}` → `{ "key": "value" }`
+- Array: `{{step1.output.items}}` → `[1, 2, 3]`
+
+### Missing Variable Handling
+
+If a template variable references a step that hasn't executed yet:
+```json
+{
+  "status": "failed",
+  "errorType": "MISSING_CONTEXT_VARIABLE",
+  "variable": "{{step3.output.backupId}}"
+}
+```
+
+## Error Classification
+
+HooshiX classifies errors into categories for better recovery:
+
+| Error Type | Status | Recoverable | Example |
+|------------|--------|-------------|----------|
+| `MISSING_CONTEXT_VARIABLE` | `failed` | No | Template references non-existent step |
+| `SECURITY_POLICY` | `blocked` | No | Path outside workspace |
+| Regular execution error | `failed` | Yes | File not found, timeout |
+
+### Security Blocks
+
+When a security policy blocks an operation:
+```json
+{
+  "status": "blocked",
+  "error": "Access denied: path outside workspace",
+  "errorType": "SECURITY_POLICY",
+  "recoverable": false
+}
+```
+
+## Recovery System
+
+HooshiX automatically recovers from failures when possible:
+
+| Error Pattern | Recovery Action |
+|---------------|------------------|
+| `timeout` / `network` | `retry` |
+| `approval` / `permission` | `ask_approval` |
+| `build` / `test` / `verification` | `replan` |
+| `missing context variable` | `stop` (not recoverable) |
+| `access denied` / `security` | `stop` (not recoverable) |
+| `enoent` / `file not found` | `stop` (file doesn't exist) |
+
 ## امنیت و قابلیت بازیابی
 
 - تمام pathها به workspace محدودند و symlink/junction escape نیز با realpath رد می‌شود.

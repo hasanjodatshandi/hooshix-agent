@@ -12,7 +12,7 @@ export function saveTaskMemory(input: { id:string; description:string; status:st
   });
 }
 
-export function saveExecutionMemory(input: { taskId?:string; stepId:number; action:string; result:unknown; status?:"completed"|"failed"; correlationId?:string }) {
+export function saveExecutionMemory(input: { taskId?:string; stepId:number; action:string; result:unknown; status?:"completed"|"failed"|"blocked"; correlationId?:string }) {
   withAgentDatabase((db) => {
     db.prepare(`INSERT INTO executions(task_id, step_id, action, result, status, correlation_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`) 
       .run(input.taskId ?? null, input.stepId, input.action, JSON.stringify(input.result), input.status ?? "completed", input.correlationId ?? null, new Date().toISOString());

@@ -4,6 +4,22 @@ import type { RecoveryAction } from "../recovery/recovery-engine.js";
 export function createRecoveryDecision(finding: DebugFinding): RecoveryAction {
   const reason = finding.reason.toLowerCase();
 
+  // Missing context variables are not recoverable
+  if (reason.includes("missing context variable") || reason.includes("missing_context_variable")) {
+    return {
+      type: "stop",
+      reason: "Missing context variable; previous step output may not have been captured correctly"
+    };
+  }
+
+  // Security blocks are not recoverable
+  if (reason.includes("access denied") || reason.includes("security policy")) {
+    return {
+      type: "stop",
+      reason: "Security policy violation; this operation is not allowed"
+    };
+  }
+
   if (reason.includes("timeout") || reason.includes("network")) {
     return {
       type: "retry",
@@ -16,6 +32,9 @@ export function createRecoveryDecision(finding: DebugFinding): RecoveryAction {
   }
   if (reason.includes("unknown tool") || reason.includes("unsupported task tool")) {
     return { type: "change_tool", reason: "selected tool is unavailable; ChatGPT must select a valid tool" };
+  }
+  if (reason.includes("enoent") || reason.includes("no such file") || reason.includes("file not found")) {
+    return { type: "stop", reason: "Required file does not exist; check path or create file first" };
   }
   if (reason.includes("invalid") || reason.includes("schema") || reason.includes("argument")) {
     return { type: "modify_input", reason: "tool input must be corrected before retry" };

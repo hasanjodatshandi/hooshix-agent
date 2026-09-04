@@ -5,7 +5,7 @@ export function saveTaskWithContext(input: { id:string; description:string; stat
   saveTaskMemory({ id: input.id, description: input.description, status: input.status, correlationId: input.context?.correlationId });
 }
 
-export function saveExecutionWithContext(input: { taskId?:string; stepId:number; action:string; result:unknown; status?:"completed"|"failed"; context?:ExecutionContext }) {
+export function saveExecutionWithContext(input: { taskId?:string; stepId:number; action:string; result:unknown; status?:"completed"|"failed"|"blocked"; context?:ExecutionContext }) {
   saveExecutionMemory({ taskId: input.taskId ?? input.context?.taskId, stepId: input.stepId, action: input.action, result: input.result, status: input.status, correlationId: input.context?.correlationId });
 }
 
