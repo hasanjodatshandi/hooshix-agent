@@ -7,7 +7,7 @@ async function main() {
   console.error("Starting HooshiX Agent V1 (HTTP mode)");
 
   initializeDatabase();
-  restoreInterruptedTasks(createRuntimeDependencies().recoveryProvider);
+  const deps = createRuntimeDependencies(); restoreInterruptedTasks(deps.recoveryProvider, deps.recoveryRepository);
 
   await startHttpServer();
 }

@@ -10,7 +10,7 @@ export function registerSystemInfoTool(server: McpServer){
     "get_system_info",
     {
       title: "Get System Information",
-      description: "Get local computer information",
+      description: "Get local computer information. Returns platform, CPU model, and total memory.\n\nExample: { \"tool\": \"get_system_info\", \"arguments\": {} }\n\nNo parameters required — correlationId and taskId are optional for tracing.",
       annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true },
       inputSchema: z.object({
         correlationId: z.string().min(1).optional(),

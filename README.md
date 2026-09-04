@@ -22,12 +22,12 @@ pnpm run dev
 
 ## ابزارهای MCP
 
-- System: `get_system_info`
+- System: `get_system_info`, `agent_metrics`, `set_workspace`, `get_workspace`
 - Files: `list_directory`, `read_file`, `search_files`, `create_file`, `write_file`, `modify_file`, `delete_file`, `restore_file`
 - Shell: `execute_command`
 - Git: `git_clone`, `git_status`, `git_diff`, `git_commit`, `git_branch`, `git_checkout`
 - Packages: `install_package`, `remove_package`, `update_package`
-- Tasks: `task_create`, `task_get`, `task_list`, `task_run`, `task_approve`, `task_resume`, `task_report`
+- Tasks: `task_create`, `task_get`, `task_list`, `task_run`, `task_approve`, `task_resume`, `task_report`, `task_replay`, `task_cancel`
 - Context: `project_save`, `project_list`, `memory_add`, `memory_list`
 
 `task_create` باید plan صریح ChatGPT را بگیرد؛ هر step شامل `action`, `tool`, `arguments` و در صورت نیاز `dependsOn` است. نمونهٔ ورودی:
@@ -63,11 +63,57 @@ pnpm run dev
 
 ## پیکربندی
 
-- `HOOSHIX_WORKSPACE`: مرز filesystem و working directory؛ پیش‌فرض current directory.
+- `HOOSHIX_WORKSPACE`: مرز filesystem و working directory؛ پیش‌فرض current directory. می‌توانید چند مسیر جدا شده با کاما بدهید.
 - `HOOSHIX_DB_PATH`: فایل SQLite؛ پیش‌فرض `data/agent-memory.db`.
 - `HOOSHIX_LOG_DIR`: محل JSONL audit logها؛ پیش‌فرض `logs`.
 - `HOOSHIX_PERMISSION_LEVEL`: یکی از `READ_ONLY`, `PROJECT_ACCESS`, `DEVELOPER_MODE`, `ADMIN_MODE`؛ پیش‌فرض `DEVELOPER_MODE`.
 - `HOOSHIX_MEMORY_FILE`: مسیر compatibility برای memory قدیمی؛ پیش‌فرض `data/agent-memory.json`.
+
+## Workspace Configuration
+
+HooshiX supports working with projects in any directory on your system.
+
+### Option 1: Set workspace on startup
+
+```bash
+# Single workspace
+HOOSHIX_WORKSPACE=D:/Projects/my-app node dist/index-http.js
+
+# Multiple workspaces
+HOOSHIX_WORKSPACE=D:/Projects/my-app,D:/Projects/other,E:/Work node dist/index-http.js
+```
+
+### Option 2: Set workspace via ChatGPT
+
+Just tell ChatGPT:
+> "Set workspace to D:\Projects\my-api"
+
+ChatGPT will call `set_workspace` and all file operations will work in that directory.
+
+### Option 3: Use absolute paths
+
+After setting a workspace, you can use absolute paths directly:
+```json
+{ "tool": "read_file", "arguments": { "path": "D:/Projects/my-api/src/index.ts" } }
+```
+
+### Supported path formats
+
+| Format | Example |
+|--------|----------|
+| Relative | `src/index.ts` |
+| Parent | `../other-project/file.ts` |
+| Windows absolute | `D:/Projects/my-app/src/index.ts` |
+| Linux/Mac absolute | `/home/user/projects/my-app/src/index.ts` |
+
+### Workspace tools
+
+| Tool | Description |
+|------|-------------|
+| `set_workspace` | Change the active workspace directory |
+| `get_workspace` | View current workspace and all configured roots |
+
+**Note:** `delete_file` requires approval through a task step for security. Use `task_create` + `task_run` for delete operations.
 
 ## امنیت و قابلیت بازیابی
 

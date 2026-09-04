@@ -7,7 +7,7 @@ import { auditToolCall } from "../../core/memory/tool-audit.js";
 export function registerWriteFileTool(server: McpServer) {
   server.registerTool("write_file", {
     title: "Write File",
-    description: "Write a file inside the HooshiX workspace",
+    description: "Write content to a file. Overwrites if exists. Returns a backup ID for undo.\n\nPaths:\n  - Relative: { \"path\": \"src/index.ts\", \"content\": \"...\" }\n  - Absolute: { \"path\": \"D:/Projects/my-api/src/index.ts\", \"content\": \"...\" }\n\nMax content size: 1MB. Use set_workspace to change the working directory.",
     annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
     inputSchema: z.object({
       path: z.string(),

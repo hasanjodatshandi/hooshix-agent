@@ -7,7 +7,7 @@ import { auditToolCall } from "../../core/memory/tool-audit.js";
 export function registerListDirectoryTool(server: McpServer) {
   server.registerTool("list_directory", {
     title: "List Directory",
-    description: "List files and directories inside the HooshiX workspace",
+    description: "List files and directories. Returns one entry per line with [DIR] or [FILE] prefix.\n\nExamples:\n  { \"tool\": \"list_directory\", \"arguments\": { \"path\": \".\" } }               — list workspace root\n  { \"tool\": \"list_directory\", \"arguments\": { \"path\": \"src\" } }            — list src folder\n  { \"tool\": \"list_directory\", \"arguments\": { \"path\": \"D:/Projects\" } }  — list absolute path\n\nUse set_workspace to change the working directory.",
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true },
     inputSchema: z.object({
       path: z.string().default("."),

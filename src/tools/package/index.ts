@@ -14,9 +14,11 @@ const schema = z.object({
 });
 
 function register(server: McpServer, tool: "install_package" | "remove_package" | "update_package", action: PackageAction) {
+  const title = action[0].toUpperCase() + action.slice(1) + " Package";
+  const desc = action + " a package with npm, pnpm, pip, winget, or Chocolatey.\n\nManagers (\"manager\" field):\n  \"npm\"    — Node.js packages. Example: { \"manager\": \"npm\", \"name\": \"lodash\" }\n  \"pnpm\"   — PNPM packages. Example: { \"manager\": \"pnpm\", \"name\": \"express\" }\n  \"pip\"    — Python packages. Example: { \"manager\": \"pip\", \"name\": \"requests\" }\n  \"winget\" — Windows packages. Example: { \"manager\": \"winget\", \"name\": \"Git.Git\" }\n  \"choco\"  — Chocolatey packages. Example: { \"manager\": \"choco\", \"name\": \"nodejs\" }\n\nOptional: cwd (default \".\"), timeout (default 300000ms, max 600000ms).";
   server.registerTool(tool, {
-    title: `${action[0].toUpperCase()}${action.slice(1)} Package`,
-    description: `${action} a package with npm, pnpm, pip, winget, or Chocolatey`,
+    title,
+    description: desc,
     annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true },
     inputSchema: schema
   }, async ({ manager, name, cwd, timeout, correlationId, taskId }) => {

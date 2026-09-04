@@ -15,6 +15,7 @@ export interface TaskRuntimeDependencies {
   createExecutor(correlationId: string, taskId: string): ReturnType<typeof createLocalToolExecutor>;
   recoveryProvider: RecoveryProvider;
   timeline: UnifiedTimelineService;
+  recoveryRepository: import("../trace/recovery-repository.js").PersistentRecoveryRepository;
 }
 
 const runningTasks = new Set<string>();

@@ -7,7 +7,7 @@ import { auditToolCall } from "../../core/memory/tool-audit.js";
 export function registerModifyFileTool(server: McpServer) {
   server.registerTool("modify_file", {
     title: "Modify File",
-    description: "Replace text inside a workspace file",
+    description: "Replace text inside a file. Finds the exact search string and replaces it. Returns backup ID for undo.\n\nExample: { \"tool\": \"modify_file\", \"arguments\": { \"path\": \"src/index.ts\", \"search\": \"old name\", \"replacement\": \"new name\" } }\n\nThe search string must match exactly (including whitespace). Use read_file first to get the exact content. Supports absolute paths.",
     annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false },
     inputSchema: z.object({
       path: z.string(),

@@ -14,6 +14,7 @@ import { saveTaskPlan, saveTaskStep } from "../memory/task-repository.js";
 import { transitionTask, type TaskState } from "../state/task-state-machine.js";
 import { runWithPolicyApproval } from "../governance/policy-decision-point.js";
 import { selectTool } from "../orchestrator/tool-orchestrator.js";
+import { buildStepContext, resolveTemplates, hasTemplates } from "../runtime/template-resolver.js";
 
 const MAX_PERSISTED_RESULT_BYTES = 128 * 1024;
 const MAX_RESULT_PREVIEW_CHARACTERS = 32 * 1024;
@@ -104,6 +105,11 @@ export async function runClosedAgentLoop(
     step.status = "running";
     persistStep();
     try {
+      // Resolve template references in step arguments using completed step outputs
+      const stepContext = buildStepContext(completedSteps);
+      if (step.arguments && hasTemplates(step.arguments)) {
+        step.arguments = resolveTemplates(step.arguments, stepContext);
+      }
       const execute = () => executeToolStep(step, executor);
       const result = boundedResult(await (governance.decision === "approval_required"
         ? runWithPolicyApproval(selectTool(step), execute)

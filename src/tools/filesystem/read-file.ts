@@ -7,7 +7,7 @@ import { auditToolCall } from "../../core/memory/tool-audit.js";
 export function registerReadFileTool(server: McpServer) {
   server.registerTool("read_file", {
     title: "Read File",
-    description: "Read a file inside the HooshiX workspace",
+    description: "Read a file and return its content as text.\n\nPaths:\n  - Relative: { \"path\": \"src/index.ts\" } (relative to workspace)\n  - Absolute: { \"path\": \"D:/Projects/my-api/src/index.ts\" }\n  - Parent: { \"path\": \"../other-project/file.ts\" }\n\nUse set_workspace first to change the working directory. Absolute paths work if within configured workspace roots.",
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true },
     inputSchema: z.object({
       path: z.string(),

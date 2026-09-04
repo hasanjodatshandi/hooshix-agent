@@ -16,7 +16,8 @@ export function createRuntimeDependencies(): TaskRuntimeDependencies {
       new ExecutionTraceService(traceRepository),
       new PersistentRecoveryObservability(recoveryRepository)
     ),
-    timeline: new UnifiedTimelineService(traceRepository, recoveryRepository)
+    timeline: new UnifiedTimelineService(traceRepository, recoveryRepository),
+    recoveryRepository
   };
 }
 

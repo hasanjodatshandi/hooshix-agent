@@ -1,0 +1,18 @@
+[Unit]
+Description=OpenSSH Tunnel Server for HooshiX MCP (port 2222)
+Documentation=man:sshd(8)
+After=network.target audit.service
+Before=shutdown.target
+ConditionPathExists=!/etc/ssh/sshd_not_to_be_run
+
+[Service]
+Type=simple
+ExecStart=/usr/sbin/sshd -D -f /etc/ssh/sshd_config_hooshix_tunnel
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=always
+RestartSec=5
+StartLimitIntervalSec=60
+StartLimitBurst=10
+
+[Install]
+WantedBy=multi-user.target

@@ -4,7 +4,8 @@ export const TOOL_NAMES = [
   "get_system_info", "agent_metrics", "list_directory", "read_file", "write_file", "create_file",
   "modify_file", "delete_file", "restore_file", "search_files", "execute_command",
   "git_status", "git_diff", "git_clone", "git_commit", "git_branch", "git_checkout",
-  "install_package", "remove_package", "update_package"
+  "install_package", "remove_package", "update_package",
+  "set_workspace", "get_workspace"
 ] as const;
 
 export type ToolName = typeof TOOL_NAMES[number];
@@ -36,7 +37,9 @@ export const TOOL_CAPABILITIES: Record<ToolName, ToolCapability> = {
   git_checkout: { risk: "high", capabilities: ["git", "checkout", "switch"], requiredArguments: ["name"] },
   install_package: { risk: "critical", capabilities: ["package", "install", "dependency"], requiredArguments: ["manager", "name"] },
   remove_package: { risk: "critical", capabilities: ["package", "remove", "uninstall", "dependency"], requiredArguments: ["manager", "name"] },
-  update_package: { risk: "critical", capabilities: ["package", "update", "upgrade", "dependency"], requiredArguments: ["manager", "name"] }
+  update_package: { risk: "critical", capabilities: ["package", "update", "upgrade", "dependency"], requiredArguments: ["manager", "name"] },
+  set_workspace: { risk: "medium", capabilities: ["workspace", "directory", "path", "config"], requiredArguments: ["path"] },
+  get_workspace: { risk: "low", capabilities: ["workspace", "directory", "path", "info"], requiredArguments: [] }
 };
 
 const TOOL_SET = new Set<string>(TOOL_NAMES);

@@ -7,7 +7,7 @@ async function main(){
   console.error("Starting HooshiX Agent V1");
 
   initializeDatabase();
-  restoreInterruptedTasks(createRuntimeDependencies().recoveryProvider);
+  const deps = createRuntimeDependencies(); restoreInterruptedTasks(deps.recoveryProvider, deps.recoveryRepository);
 
   await startMcpServer();
 
