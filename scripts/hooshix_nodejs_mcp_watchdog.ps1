@@ -117,6 +117,11 @@ function Start-NodeMcpServer {
     $psi.RedirectStandardError = $true
     $psi.EnvironmentVariables["MCP_PORT"] = "$McpPort"
     $psi.EnvironmentVariables["MCP_ACCESS_TOKEN"] = $McpAccessToken
+    # OAuth discovery/issuer base URL — REQUIRED so discovery documents
+    # advertise the public tunnel host (agent.hooshix.com), not localhost.
+    # Without it, ChatGPT rejects the connector with "doesn't support
+    # RFC 7591 Dynamic Client Registration" (issuer/endpoint mismatch).
+    $psi.EnvironmentVariables["MCP_PUBLIC_BASE_URL"] = "https://agent.hooshix.com"
     $psi.EnvironmentVariables["NODE_ENV"] = "production"
 
     $proc = [System.Diagnostics.Process]::new()
