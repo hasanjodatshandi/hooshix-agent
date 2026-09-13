@@ -151,13 +151,15 @@ describe("in-process MCP tool coverage", () => {
     expect(result.exitCode).toBe(0);
   });
 
-  it("workspace tools: set_workspace keeps restriction and supports explicit unrestricted", async () => {
+  it("workspace tools: set_workspace keeps restriction and rejects unapproved unrestricted", async () => {
     const set = json(await client.callTool({ name: "set_workspace", arguments: { path: root } }));
     expect(set.unrestricted).toBe(false);
-    const setUnrestricted = json(await client.callTool({ name: "set_workspace", arguments: { path: root, unrestricted: true } }));
-    expect(setUnrestricted.unrestricted).toBe(true);
-    // restore restricted state for other tests
-    json(await client.callTool({ name: "set_workspace", arguments: { path: process.cwd(), unrestricted: false } }));
+    // Elevation is approval-gated: a direct call without approval context
+    // must return an error result and leave the mode OFF.
+    const denied = await client.callTool({ name: "set_workspace", arguments: { path: root, unrestricted: true } });
+    expect(denied).toMatchObject({ isError: true });
+    const after = json(await client.callTool({ name: "get_workspace", arguments: {} }));
+    expect(after.unrestricted).toBe(false);
   });
 
   it("workspace tools: remove_workspace_root and replace_workspace_roots", async () => {

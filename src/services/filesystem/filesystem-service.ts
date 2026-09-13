@@ -47,6 +47,16 @@ function assertNotSensitive(filePath: string): void {
   }
 }
 
+/**
+ * True when a file must be excluded from search results. Unlike the read/write
+ * denylist this is non-throwing: a sensitive file inside the workspace is
+ * silently skipped instead of aborting the whole search. Matches either the
+ * basename denylist, a sensitive extension, or a sensitive directory segment.
+ */
+export function isSensitiveSearchHit(filePath: string): boolean {
+  return isSensitivePath(filePath);
+}
+
 export interface FileMutationResult {
   backupId?: string;
   /** Backup of the content that was displaced by a restore (undo of the undo) */
@@ -388,6 +398,9 @@ export async function searchWorkspaceFiles(targetPath: string, query: string, co
           continue;
         }
         if (!entry.isFile()) continue;
+        // Sensitive files are silently skipped, never returned as search hits —
+        // their content must not leak through search lines (audit HIGH-02).
+        if (isSensitiveSearchHit(fullPath)) continue;
         if (++scannedFiles > MAX_SEARCH_FILES) throw new Error(`Search exceeds ${MAX_SEARCH_FILES} file limit`);
         const stat = await fs.stat(fullPath);
         if (stat.size > MAX_FILE_BYTES) continue;

@@ -33,7 +33,9 @@ describe("missing cwd produces accurate errors", () => {
 
   it("git_status under unrestricted mode fails with an explicit missing-directory error", async () => {
     const was = isUnrestrictedMode();
-    setUnrestrictedMode(true);
+    runWithPolicyApproval("set_workspace", async () => {
+      setUnrestrictedMode(true);
+    });
     try {
       await expect(gitStatus(missing)).rejects.toThrow(/Git working directory does not exist/);
       await expect(gitStatus(missing)).rejects.toThrow(/hooshix-missing-cwd-does-not-exist/);

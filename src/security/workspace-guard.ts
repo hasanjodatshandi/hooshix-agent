@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { policyDecisionPoint } from "../core/governance/policy-decision-point.js";
 
 // Supported workspace roots (comma-separated in env var)
 let workspaceRoots: string[] = [];
@@ -86,8 +87,21 @@ export function replaceWorkspaceRoots(rootPath: string): string[] {
 
 let unrestrictedMode = false;
 
+/**
+ * Guard for enabling unrestricted mode: file tools immediately gain access to
+ * ANY path on the system, so this is a policy-governed elevation, not a plain
+ * setting. Approved task steps pass (they run inside runWithPolicyApproval);
+ * direct MCP calls require HOOSHIX_DIRECT_AUTO_APPROVE=1. Disabling is free.
+ * Throws instead of returning a decision so every caller (MCP tool + executor
+ * handler) is covered by the same gate (audit HIGH-01 / R2.05).
+ */
+export function assertUnrestrictedElevationAllowed(): void {
+  policyDecisionPoint.assertAllowed({ tool: "set_workspace", arguments: { unrestricted: true } });
+}
+
 /** Enable/disable unrestricted mode (absolute paths work anywhere) */
 export function setUnrestrictedMode(enabled: boolean): void {
+  if (enabled) assertUnrestrictedElevationAllowed();
   unrestrictedMode = enabled;
 }
 

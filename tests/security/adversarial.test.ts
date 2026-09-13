@@ -78,10 +78,19 @@ describe("adversarial: unrestricted mode escalation", () => {
   });
 
   it("unrestricted mode is a separate explicit decision", () => {
-    setUnrestrictedMode(true);
-    expect(isUnrestrictedMode()).toBe(true);
-    setUnrestrictedMode(false);
-    expect(isUnrestrictedMode()).toBe(false);
+    // Test-env equivalent of an approved task step (the elevation is a governed
+    // operation now — see tests/security/audit-high-fixes.test.ts).
+    const bypass = process.env.HOOSHIX_DIRECT_AUTO_APPROVE;
+    process.env.HOOSHIX_DIRECT_AUTO_APPROVE = "1";
+    try {
+      setUnrestrictedMode(true);
+      expect(isUnrestrictedMode()).toBe(true);
+      setUnrestrictedMode(false);
+      expect(isUnrestrictedMode()).toBe(false);
+    } finally {
+      if (bypass === undefined) delete process.env.HOOSHIX_DIRECT_AUTO_APPROVE;
+      else process.env.HOOSHIX_DIRECT_AUTO_APPROVE = bypass;
+    }
   });
 });
 

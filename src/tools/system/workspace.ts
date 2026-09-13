@@ -9,7 +9,7 @@ export function registerWorkspaceTools(server: McpServer): void {
     "set_workspace",
     {
       title: "Set Workspace",
-      description: "📂 WORKSPACE — Set the active workspace directory for all file tools.\n\nFile tools are restricted to workspace roots (HOOSHIX_WORKSPACE env or this tool). Paths outside roots are rejected.\n\nExamples: { \"path\": \"D:/Projects/my-app\" } · { \"path\": \"D:/Projects/my-app\", \"unrestricted\": true } — unrestricted is an elevated trust decision: allows file tools to access ANY path on the system. Only for trusted local use.",
+      description: "📂 WORKSPACE — Set the active workspace directory for all file tools.\n\nFile tools are restricted to workspace roots (HOOSHIX_WORKSPACE env or this tool). Paths outside roots are rejected.\n\nExamples: { \"path\": \"D:/Projects/my-app\" } · { \"path\": \"D:/Projects/my-app\", \"unrestricted\": true } — unrestricted grants file tools access to ANY system path and REQUIRES APPROVAL through an approved task step. Only for trusted local use.",
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
       inputSchema: z.object({
         path: z.string().min(1),
