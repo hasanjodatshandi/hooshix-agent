@@ -593,7 +593,7 @@ function getToolDescription(tool: ToolName): string {
     git_branch: "Create a new git branch.",
     git_checkout: "Switch to an existing branch or create a new one.",
     git_add: "Stage files for the next commit.",
-    git_init: "Initialize a new git repository.",
+    git_init: "Initialize a new git repository (mutation — requires approval through an approved task step).",
     git_log: "Show recent commit history.",
     install_package: "Install a package via npm, pnpm, pip, winget, or choco.",
     remove_package: "Remove a package via npm, pnpm, pip, winget, or choco.",

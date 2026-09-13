@@ -73,9 +73,26 @@ describe("in-process MCP tool coverage", () => {
     process.env.GIT_AUTHOR_EMAIL ??= "test@example.com";
     process.env.GIT_COMMITTER_NAME ??= "Test User";
     process.env.GIT_COMMITTER_EMAIL ??= "test@example.com";
-    // git_init is not approval-gated (it only creates a repo)
-    json(await client.callTool({ name: "git_init", arguments: { path: cwd, initialBranch: "main" } }));
+    // git_init is approval-gated like other git mutations — run through a task.
+    // The init task pauses for approval (git_init ∈ APPROVAL_TOOLS), so drive
+    // the full task_create → task_run → task_approve → task_resume cycle.
+    const initTask = json(await client.callTool({ name: "task_create", arguments: {
+      title: "init repo",
+      steps: [{ action: "init", tool: "git_init", arguments: { path: cwd, initialBranch: "main" } }]
+    } }));
+    let initRun = json(await client.callTool({ name: "task_run", arguments: { taskId: initTask.id, maxRecovery: 0 } }));
+    for (let i = 0; i < 4 && initRun.status === "pending_approval"; i++) {
+      json(await client.callTool({ name: "task_approve", arguments: { approvalId: initRun.approvalId } }));
+      initRun = json(await client.callTool({ name: "task_resume", arguments: { approvalId: initRun.approvalId } }));
+    }
+    expect(initRun.status).toBe("completed");
     await fs.writeFile(path.join(root, "f.txt"), "content", "utf8");
+
+    // Direct git_init calls are refused (approval-gated, no approval context):
+    // the contract previously allowed this mutation silently — regression pin.
+    const directInit = await client.callTool({ name: "git_init", arguments: { path: "tests/tool-coverage-init-direct", initialBranch: "main" } });
+    expect(directInit).toMatchObject({ isError: true });
+    expect(JSON.stringify(directInit)).toMatch(/Approval required/i);
 
     // git_add, git_commit, git_branch, git_checkout are approval-gated — run through a task
     const task = json(await client.callTool({ name: "task_create", arguments: {
@@ -214,7 +231,17 @@ describe("in-process MCP tool coverage", () => {
     process.env.GIT_AUTHOR_EMAIL ??= "test@example.com";
     process.env.GIT_COMMITTER_NAME ??= "Test User";
     process.env.GIT_COMMITTER_EMAIL ??= "test@example.com";
-    json(await client.callTool({ name: "git_init", arguments: { path: cwd, initialBranch: "main" } }));
+    // git_init is approval-gated — run the init through the approval cycle.
+    const initTask = json(await client.callTool({ name: "task_create", arguments: {
+      title: "init repo",
+      steps: [{ action: "init", tool: "git_init", arguments: { path: cwd, initialBranch: "main" } }]
+    } }));
+    let initRun = json(await client.callTool({ name: "task_run", arguments: { taskId: initTask.id, maxRecovery: 0 } }));
+    for (let i = 0; i < 4 && initRun.status === "pending_approval"; i++) {
+      json(await client.callTool({ name: "task_approve", arguments: { approvalId: initRun.approvalId } }));
+      initRun = json(await client.callTool({ name: "task_resume", arguments: { approvalId: initRun.approvalId } }));
+    }
+    expect(initRun.status).toBe("completed");
     await fs.writeFile(path.join(root, "s.txt"), "v1", "utf8");
 
     const task = json(await client.callTool({ name: "task_create", arguments: {
@@ -244,7 +271,17 @@ describe("in-process MCP tool coverage", () => {
 
   it("task_rollback rejects a tampered snapshot (non-snapshot backup id)", async () => {
     const cwd = "tests/tool-coverage";
-    json(await client.callTool({ name: "git_init", arguments: { path: cwd, initialBranch: "main" } }));
+    // git_init is approval-gated — run the init through the approval cycle.
+    const tamperInit = json(await client.callTool({ name: "task_create", arguments: {
+      title: "init repo",
+      steps: [{ action: "init", tool: "git_init", arguments: { path: cwd, initialBranch: "main" } }]
+    } }));
+    let tamperInitRun = json(await client.callTool({ name: "task_run", arguments: { taskId: tamperInit.id, maxRecovery: 0 } }));
+    for (let i = 0; i < 4 && tamperInitRun.status === "pending_approval"; i++) {
+      json(await client.callTool({ name: "task_approve", arguments: { approvalId: tamperInitRun.approvalId } }));
+      tamperInitRun = json(await client.callTool({ name: "task_resume", arguments: { approvalId: tamperInitRun.approvalId } }));
+    }
+    expect(tamperInitRun.status).toBe("completed");
     await fs.writeFile(path.join(root, "t.txt"), "{\"head\":\"main & calc.exe & rem\"}", "utf8");
     // Create a task that backs this file up (delete), then try to use that backup id as a snapshot id
     const task = json(await client.callTool({ name: "task_create", arguments: {
