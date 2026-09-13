@@ -1,20 +1,39 @@
 import type { RecoveryEvent } from "./recovery-observability.js";
 import { withAgentDatabase } from "../memory/database.js";
 
+let recoveryTaskIdEnsured = false;
+function ensureRecoveryTaskIdColumn(): void {
+  if (recoveryTaskIdEnsured) return;
+  try {
+    withAgentDatabase((db) => {
+      const cols = new Set(
+        (db.prepare("PRAGMA table_info(recovery_events)").all() as Array<{ name: string }>).map((c) => c.name)
+      );
+      if (!cols.has("task_id")) {
+        try { db.prepare("ALTER TABLE recovery_events ADD COLUMN task_id TEXT").run(); } catch { /* ignore */ }
+      }
+    });
+  } catch { /* ignore */ }
+  recoveryTaskIdEnsured = true;
+}
+
+export function resetRecoveryTaskIdFlag(): void { recoveryTaskIdEnsured = false; }
+
 export class PersistentRecoveryRepository {
   save(event: RecoveryEvent): void {
+    ensureRecoveryTaskIdColumn();
     withAgentDatabase((db) => db.prepare(`
         INSERT INTO recovery_events
-        (recovery_id, correlation_id, action, reason, retry_count, started_at, completed_at, status)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-      `).run(event.recoveryId, event.correlationId, event.action, event.reason, event.retryCount, event.startedAt, event.completedAt ?? null, event.status));
-  }
-
-  findByCorrelationId(correlationId: string): RecoveryEvent[] {
+        (recovery_id, correlation_id, task_id, action, reason, retry_count, started_at, completed_at, status)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(event.recoveryId, event.correlationId, event.taskId ?? null, event.action, event.reason, event.retryCount, event.startedAt, event.completedAt ?? null, event.status));
+  }  findByCorrelationId(correlationId: string): RecoveryEvent[] {
+    ensureRecoveryTaskIdColumn();
     const rows = withAgentDatabase((db) => db.prepare(`SELECT * FROM recovery_events WHERE correlation_id = ? ORDER BY id`).all(correlationId)) as Array<Record<string, unknown>>;
     return rows.map((row) => ({
       recoveryId: String(row.recovery_id),
       correlationId: String(row.correlation_id),
+      taskId: row.task_id ? String(row.task_id) : undefined,
       action: String(row.action),
       reason: String(row.reason),
       retryCount: Number(row.retry_count),
@@ -25,6 +44,7 @@ export class PersistentRecoveryRepository {
   }
 
   findIncomplete(): RecoveryEvent[] {
+    ensureRecoveryTaskIdColumn();
     const rows = withAgentDatabase((db) => db.prepare(`
       SELECT started.* FROM recovery_events started
       WHERE started.status = 'started'
@@ -35,9 +55,7 @@ export class PersistentRecoveryRepository {
       ORDER BY started.id
     `).all()) as Array<Record<string, unknown>>;
     return rows.map((row) => ({
-      recoveryId: String(row.recovery_id), correlationId: String(row.correlation_id),
-      action: String(row.action), reason: String(row.reason), retryCount: Number(row.retry_count),
-      startedAt: String(row.started_at), status: "started"
+      recoveryId: String(row.recovery_id), correlationId: String(row.correlation_id), taskId: row.task_id ? String(row.task_id) : undefined, action: String(row.action), reason: String(row.reason), retryCount: Number(row.retry_count), startedAt: String(row.started_at), status: "started"
     }));
   }
 }

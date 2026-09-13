@@ -20,8 +20,10 @@
 
 import type { TaskStep } from "../planner/task-planner.js";
 
-// Template pattern: {{stepN.output.field}} or {{stepN.status}} or {{stepN.error}}
-const TEMPLATE_PATTERN = /\{\{(step(\d+)\.(output|status|error)(?:\.([a-zA-Z0-9_]+(?:\[\d+\])*(?:\.[a-zA-Z0-9_]+(?:\[\d+\])*)*)?)?)\}\}/g;
+// Template pattern: {{stepN.output.field}}, {{stepN.status}}, {{stepN.error}}, {{helper(stepN.output.field)}}
+// We use two separate regexes to avoid complex nesting issues.
+const HELPER_TEMPLATE_PATTERN = /\{\{(string|number|boolean|json)\((step\d+(?:\.[a-zA-Z0-9_[\]]+)*)\)\}\}/g;
+const DIRECT_TEMPLATE_PATTERN = /\{\{(step\d+(?:\.(?:output|status|error)(?:\.[a-zA-Z0-9_[\]]+)*)?)\}\}/g;
 
 /**
  * Build a context map from completed steps.
@@ -81,11 +83,19 @@ function resolveString(input: string, stepContext: Map<string, StepContext>): un
   }
 
   // Interpolate multiple templates into the string
+  // First pass: resolve helper templates
   let hasTemplate = false;
-  const result = input.replace(TEMPLATE_PATTERN, (match, refPath) => {
+  let result = input.replace(HELPER_TEMPLATE_PATTERN, (match, _helper, refPath) => {
     hasTemplate = true;
     const resolved = resolveReference(refPath, stepContext);
-    if (resolved === undefined) return match; // Keep original if not found
+    if (resolved === undefined) return match;
+    return typeof resolved === "string" ? resolved : JSON.stringify(resolved);
+  });
+  // Second pass: resolve direct templates
+  result = result.replace(DIRECT_TEMPLATE_PATTERN, (match, refPath) => {
+    hasTemplate = true;
+    const resolved = resolveReference(refPath, stepContext);
+    if (resolved === undefined) return match;
     return typeof resolved === "string" ? resolved : JSON.stringify(resolved);
   });
 
@@ -96,6 +106,14 @@ function resolveString(input: string, stepContext: Map<string, StepContext>): un
  * Resolve a reference path like "step1.output.path" against the step context.
  */
 function resolveReference(refPath: string, stepContext: Map<string, StepContext>): unknown {
+  // Check for conversion helpers: string(...), number(...), boolean(...), json(...)
+  const helperMatch = refPath.match(/^(string|number|boolean|json)\((.+)\)$/);
+  if (helperMatch) {
+    const [, helper, innerRef] = helperMatch;
+    const raw = resolveReference(innerRef, stepContext);
+    return applyConversionHelper(helper, raw);
+  }
+
   const parts = refPath.split(".");
   const stepKey = parts[0]; // e.g., "step1"
 
@@ -114,6 +132,35 @@ function resolveReference(refPath: string, stepContext: Map<string, StepContext>
   }
 
   return current;
+}
+
+/**
+ * Apply a type conversion helper to a resolved value.
+ * Used by {{string(step1.output.x)}}, {{number(...)}}, {{boolean(...)}}, {{json(...)}}.
+ */
+function applyConversionHelper(helper: string, value: unknown): unknown {
+  switch (helper) {
+    case "string":
+      if (value === undefined || value === null) return String(value);
+      return typeof value === "string" ? value : JSON.stringify(value);
+    case "number": {
+      if (value === undefined || value === null) return value;
+      const n = Number(value);
+      return Number.isNaN(n) ? value : n;
+    }
+    case "boolean": {
+      if (value === undefined || value === null) return value;
+      if (typeof value === "boolean") return value;
+      if (value === "true" || value === "1") return true;
+      if (value === "false" || value === "0") return false;
+      return Boolean(value);
+    }
+    case "json":
+      if (value === undefined || value === null) return value;
+      return typeof value === "string" ? value : JSON.stringify(value, null, 2);
+    default:
+      return value;
+  }
 }
 
 /**
@@ -141,7 +188,7 @@ function navigatePath(obj: unknown, segment: string): unknown {
  * Check if a value contains any template references.
  */
 export function hasTemplates(value: unknown): boolean {
-  if (typeof value === "string") return /\{\{step\d+\.\w/.test(value);
+  if (typeof value === "string") return /\{\{(?:(?:string|number|boolean|json)\()?(?:step\d+\.[\w\[\]])/.test(value);
   if (Array.isArray(value)) return value.some(hasTemplates);
   if (value !== null && typeof value === "object") {
     return Object.values(value as Record<string, unknown>).some(hasTemplates);
@@ -165,8 +212,16 @@ export class MissingVariableError extends Error {
  */
 export function validateTemplates(value: unknown, stepContext: Map<string, StepContext>): void {
   if (typeof value === "string") {
-    const matches = value.matchAll(/\{\{(step\d+\.\w[^}]*)\}\}/g);
-    for (const match of matches) {
+    const helperMatches = value.matchAll(HELPER_TEMPLATE_PATTERN);
+    for (const match of helperMatches) {
+      const refPath = match[2];
+      const resolved = resolveReference(refPath, stepContext);
+      if (resolved === undefined) {
+        throw new MissingVariableError(match[0]);
+      }
+    }
+    const directMatches = value.matchAll(DIRECT_TEMPLATE_PATTERN);
+    for (const match of directMatches) {
       const refPath = match[1];
       const resolved = resolveReference(refPath, stepContext);
       if (resolved === undefined) {

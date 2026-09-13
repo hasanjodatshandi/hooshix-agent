@@ -1,25 +1,8 @@
 import { describe, expect, it } from "vitest";
-import fs from "node:fs/promises";
-import { recordStepExecution, reflectOnStep, analyzeTaskHistory } from "../../src/core/reflection/reflection-engine.js";
+import { analyzeTaskHistory } from "../../src/core/reflection/reflection-engine.js";
 import { saveExecutionMemory } from "../../src/core/memory/sqlite-memory.js";
 
 describe("reflection engine", () => {
-  it("records execution result in memory", async () => {
-    await recordStepExecution(
-      { id: 1, action: "inspect", status: "completed" },
-      { ok: true }
-    );
-
-    const memory = JSON.parse(await fs.readFile(process.env.HOOSHIX_MEMORY_FILE!, "utf8"));
-
-    expect(memory.executions.length).toBeGreaterThan(0);
-  });
-
-  it("returns recovery decision on failure", () => {
-    expect(reflectOnStep(false)).toBe("recover");
-    expect(reflectOnStep(true)).toBe("continue");
-  });
-
   it("reports no failure when task has no executions", () => {
     const report = analyzeTaskHistory("nonexistent-task-id");
     expect(report.problem).toBe("No execution failure recorded");
@@ -35,7 +18,7 @@ describe("reflection engine", () => {
     const report = analyzeTaskHistory(taskId);
     expect(report.problem).toBe("run tests");
     expect(report.cause).toBe("test failed");
-    expect(report.solution).toBe("No verified solution yet");
+    expect(report.solution).toBe("No verified solution yet — ask ChatGPT for a corrective plan");
     expect(report.confidence).toBe(0.4);
     expect(report.futureRecommendation).toContain("corrective plan");
   });

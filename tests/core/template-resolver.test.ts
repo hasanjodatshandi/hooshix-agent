@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { buildStepContext, resolveTemplates, hasTemplates } from "../../src/core/runtime/template-resolver.js";
-import type { TaskStep } from "../../src/core/planner/task-planner.js";
+import type { TaskStep, TaskStepStatus } from "../../src/core/planner/task-planner.js";
 
-function makeStep(id: number, output: unknown, status = "completed" as const): TaskStep {
+function makeStep(id: number, output: unknown, status: TaskStepStatus = "completed"): TaskStep {
   return { id, action: `step ${id}`, status, output };
 }
 

@@ -39,7 +39,7 @@ $task = New-ScheduledTask `
     -Trigger $trigger `
     -Principal $principal `
     -Settings $settings `
-    -Description "Maintains HooshiX MCP servers: Node.js (port 3001) + SSH tunnels (VPS:18898->3001, VPS:18899->8899) with auto-reconnect and health monitoring."
+    -Description "Maintains the HooshiX Node.js MCP server (port 3001) with health monitoring and automatic restart."
 
 Register-ScheduledTask -TaskName $TaskName -InputObject $task -Force | Out-Null
 
@@ -50,6 +50,6 @@ Write-Host ""
 Write-Host "Task '$TaskName' installed successfully."
 Write-Host "  - Starts on login"
 Write-Host "  - Auto-restarts on failure"
-Write-Host "  - Runs both SSH tunnels + Node.js MCP server"
+Write-Host "  - Runs and monitors the Node.js MCP server"
 Write-Host ""
 Write-Host "To start now: Start-ScheduledTask -TaskName '$TaskName'"

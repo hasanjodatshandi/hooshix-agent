@@ -30,7 +30,7 @@ function Show-Token {
         Write-Host ""
         Write-Host "  Use in ChatGPT:" -ForegroundColor Yellow
         Write-Host "  1. Go to Settings > Connectors" -ForegroundColor White
-        Write-Host "  2. Create connector with URL: https://agent.hooshix.com/mcp" -ForegroundColor White
+        Write-Host "  2. Create connector with URL: http://localhost:3001/mcp" -ForegroundColor White
         Write-Host "  3. When prompted, enter this token as PIN" -ForegroundColor White
         Write-Host ""
     } else {

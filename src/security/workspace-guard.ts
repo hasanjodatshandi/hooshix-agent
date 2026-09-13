@@ -19,6 +19,10 @@ function initWorkspaceRoots(): string[] {
         return path.resolve(p);
       }
     });
+  // Auto-enable unrestricted mode from env
+  if (process.env.HOOSHIX_UNRESTRICTED === "1" || process.env.HOOSHIX_UNRESTRICTED === "true") {
+    unrestrictedMode = true;
+  }
   return workspaceRoots;
 }
 
@@ -28,26 +32,68 @@ export function getWorkspaceRoot(): string {
   return activeWorkspace ?? workspaceRoots[0];
 }
 
-/** Set the active workspace root */
-export function setActiveWorkspace(rootPath: string): string {
+/** Set the active workspace root. Returns { resolved, previous } */
+export function setActiveWorkspace(rootPath: string): { resolved: string; previous: string | null } {
   const resolved = path.resolve(rootPath);
   if (!fs.existsSync(resolved)) {
     throw new Error(`Workspace path does not exist: ${resolved}`);
   }
   const real = fs.realpathSync(resolved);
+  const previous = activeWorkspace;
   activeWorkspace = real;
   // Ensure it's in the allowed list
   initWorkspaceRoots();
   if (!workspaceRoots.includes(real)) {
     workspaceRoots.push(real);
   }
-  return real;
+  // NOTE: unrestricted mode is NOT enabled implicitly — enabling it is a
+  // separate, explicit decision (setUnrestrictedMode(true) / HOOSHIX_UNRESTRICTED).
+  return { resolved: real, previous };
 }
 
-/** List all configured workspace roots */
-export function listWorkspaceRoots(): string[] {
+/** List all configured workspace roots with existence metadata */
+export function listWorkspaceRoots(): Array<{ path: string; exists: boolean; active: boolean }> {
   initWorkspaceRoots();
+  const active = getWorkspaceRoot();
+  return workspaceRoots.map((root) => ({
+    path: root,
+    exists: fs.existsSync(root),
+    active: root === active,
+  }));
+}
+
+/** Remove a workspace root by path */
+export function removeWorkspaceRoot(rootPath: string): boolean {
+  initWorkspaceRoots();
+  const resolved = path.resolve(rootPath);
+  const index = workspaceRoots.findIndex((r) => r === resolved || r === path.normalize(resolved));
+  if (index === -1) return false;
+  workspaceRoots.splice(index, 1);
+  return true;
+}
+
+/** Replace all workspace roots with a single new root */
+export function replaceWorkspaceRoots(rootPath: string): string[] {
+  const resolved = path.resolve(rootPath);
+  if (!fs.existsSync(resolved)) {
+    throw new Error(`Workspace path does not exist: ${resolved}`);
+  }
+  const real = fs.realpathSync(resolved);
+  workspaceRoots = [real];
+  activeWorkspace = real;
   return [...workspaceRoots];
+}
+
+let unrestrictedMode = false;
+
+/** Enable/disable unrestricted mode (absolute paths work anywhere) */
+export function setUnrestrictedMode(enabled: boolean): void {
+  unrestrictedMode = enabled;
+}
+
+/** Check if unrestricted mode is active */
+export function isUnrestrictedMode(): boolean {
+  return unrestrictedMode;
 }
 
 function assertInside(allowedRoots: string[], target: string): void {
@@ -57,15 +103,29 @@ function assertInside(allowedRoots: string[], target: string): void {
       return; // Found a matching root
     }
   }
-  throw new Error(`Access denied: path outside workspace. Allowed: ${allowedRoots.join(", ")}`);
+  throw new Error(`Access denied: path outside workspace. Allowed: ${allowedRoots.join(", ")}. Use set_workspace to add this directory.`);
 }
 
 export function validateWorkspace(targetPath: string): string {
   const roots = initWorkspaceRoots();
   
-  // If absolute path and exists, check if it's inside any allowed root
+  // Absolute path: in unrestricted mode, allow any path on the system
   if (path.isAbsolute(targetPath)) {
     const resolved = path.resolve(targetPath);
+    
+    if (unrestrictedMode) {
+      // Unrestricted: allow any absolute path, just resolve symlinks for existing files
+      try {
+        if (fs.existsSync(resolved)) {
+          return fs.realpathSync(resolved);
+        }
+      } catch {
+        // Symlink resolution failed, use resolved path
+      }
+      return resolved;
+    }
+    
+    // Restricted: check if inside any allowed root
     assertInside(roots, resolved);
     let existing = resolved;
     while (!fs.existsSync(existing)) {

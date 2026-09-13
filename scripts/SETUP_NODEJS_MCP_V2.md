@@ -1,102 +1,97 @@
-# HooshiX Node.js MCP v2 - ChatGPT Connection Guide
+# HooshiX Node.js MCP - Local HTTP Setup Guide
 
 ## Architecture
 
 ```
-ChatGPT → agent.hooshix.com (Caddy on VPS) → VPS:18898 → SSH tunnel → Windows localhost:3001 (Node.js MCP)
+MCP client (e.g. ChatGPT) → OAuth authorization → http://localhost:3001/mcp (Node.js MCP HTTP server)
 ```
 
-## Step 1: Start Node.js MCP Server (Windows)
+The server runs locally on Windows. Public exposure (reverse proxy, tunneling, TLS)
+is handled by a separate deployment project — this server only needs to be
+reachable from the machine it runs on (or your private network).
+
+## Step 1: Build and Start the Server
 
 ```bash
 cd D:\workspace\hooshix-agent
+pnpm install
+pnpm run build
+```
+
+Start the server:
+
+```bash
 set MCP_PORT=3001
-set MCP_API_KEY=hooshix-v2-secret
-npm run dev:http
+node dist\index-http.js
 ```
 
 Or use the batch script:
-```bash
-D:\MCP\start_nodejs_mcp.bat
-```
-
-## Step 2: Start SSH Tunnel (Windows)
 
 ```bash
-powershell.exe -ExecutionPolicy Bypass -File D:\MCP\hooshix_nodejs_mcp_tunnel.ps1
+scripts\start_nodejs_mcp.bat
 ```
 
-This creates: VPS:18898 → localhost:3001
+For unattended operation, install the watchdog scheduled task:
 
-## Step 3: Configure Caddy on VPS
-
-SSH into your VPS and add this to the Caddyfile:
-
-```caddy
-agent.hooshix.com {
-    tls {
-        on_demand
-    }
-
-    reverse_proxy 127.0.0.1:18898 {
-        health_uri /health
-        health_interval 10s
-        health_timeout 3s
-        transport http {
-            response_header_timeout 60s
-        }
-    }
-
-    log {
-        output stdout
-        format json
-    }
-}
-```
-
-Then reload Caddy:
 ```bash
-sudo systemctl reload caddy
+scripts\install_nodejs_mcp_task.bat   (run as Administrator)
 ```
 
-## Step 4: Add DNS Record
+The watchdog starts the server at login, health-checks it every 10 seconds
+(with the bearer token), and force-restarts it after 3 consecutive failed
+health checks — this covers both crashes and frozen event loops.
 
-Add a DNS A record for `agent.hooshix.com` pointing to your VPS IP (188.240.196.151).
+## Step 2: Token
 
-## Step 5: Add Connector in ChatGPT
+The server loads its access token from (in priority order):
 
-1. Go to ChatGPT → Settings → Connectors → Developer Mode
-2. Click "Create"
-3. Enter:
-   - **URL**: `https://agent.hooshix.com/mcp`
-   - **Name**: `HooshiX Agent v2`
-4. Save
+1. `MCP_ACCESS_TOKEN` environment variable
+2. `.token` file in the project root
 
-## Step 6: Test
+If neither exists, a random token is generated and saved to `.token` automatically.
 
-Start a new chat in ChatGPT → Click "+" → Select "HooshiX Agent v2"
+Manage the token with:
 
-## Files Created
+```bash
+scripts\mcp-token.ps1 show    # display the current token
+scripts\mcp-token.ps1 reset   # generate a new random token
+scripts\mcp-token.ps1 copy    # copy to clipboard
+```
 
-| File | Purpose |
-|------|---------|
-| `D:\MCP\hooshix_nodejs_mcp_tunnel.ps1` | SSH tunnel script for Node.js MCP |
-| `D:\MCP\start_nodejs_mcp.bat` | Batch script to start both server + tunnel |
-| `D:\MCP\caddy_mcp2_config.txt` | Caddy config snippet for VPS |
+## Step 3: Connect an MCP Client
+
+Point your MCP client at:
+
+- **URL**: `http://localhost:3001/mcp`
+- **Auth**: OAuth (PKCE S256) — the client discovers the endpoints via
+  `/.well-known/oauth-authorization-server`, or use the raw bearer token
+  (`Authorization: Bearer <token>`).
+
+Monitoring endpoints (browser-friendly):
+
+- `http://localhost:3001/health` — liveness
+- `http://localhost:3001/dashboard` — metrics dashboard
+- `http://localhost:3001/tools` — tool catalog
+
+All accept the token via `Authorization: Bearer <token>` header or `?token=<token>`.
+
+## Step 4: Test
+
+```bash
+token=$(cat .token)
+curl -H "Authorization: Bearer $token" http://localhost:3001/health
+```
+
+Expected: `{"status":"ok","bridge":"running",...}`
 
 ## Troubleshooting
 
-### Tunnel not connecting
-- Check SSH key exists: `C:\Users\Coder\.ssh\hooshix_tunnel_windows_ed25519`
-- Check VPS SSH port: 2222
-- Check VPS firewall allows port 18898
-
-### ChatGPT can't connect
-- Verify DNS: `nslookup agent.hooshix.com`
-- Verify Caddy: `curl https://agent.hooshix.com/health`
-- Check Caddy logs: `sudo journalctl -u caddy -f`
+### Server not starting
+- Check the port is free: `netstat -ano | findstr :3001`
+- Check the build exists: `dist\index-http.js`
+- Watchdog log: `D:\MCP\HooshiXBrainMCP\.brain\logs\nodejs_mcp.jsonl`
 
 ### Auth issues
-- The Node.js MCP server uses `MCP_API_KEY=hooshix-v2-secret`
-- ChatGPT will use OAuth to authenticate
-- Make sure the OAuth endpoints are accessible
+- Verify the token: `scripts\mcp-token.ps1 show`
+- Unauthenticated `/health` returns 401 — that is correct behavior.
+- OAuth authorization page is at `http://localhost:3001/oauth/authorize`.

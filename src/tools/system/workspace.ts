@@ -2,32 +2,39 @@ import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { resolveCorrelationId } from "../../core/runtime/correlation-id.js";
 import { auditToolCall } from "../../core/memory/tool-audit.js";
-import { setActiveWorkspace, listWorkspaceRoots, getWorkspaceRoot } from "../../security/workspace-guard.js";
+import { setActiveWorkspace, listWorkspaceRoots, getWorkspaceRoot, setUnrestrictedMode, isUnrestrictedMode, removeWorkspaceRoot, replaceWorkspaceRoots } from "../../security/workspace-guard.js";
 
 export function registerWorkspaceTools(server: McpServer): void {
   server.registerTool(
     "set_workspace",
     {
       title: "Set Workspace",
-      description: "Set the active workspace directory. This changes where all file operations work.\n\nIMPORTANT: Use this tool at the start of a conversation to point to your project directory.\n\nExamples:\n  { \"tool\": \"set_workspace\", \"arguments\": { \"path\": \"D:/Projects/my-app\" } }\n  { \"tool\": \"set_workspace\", \"arguments\": { \"path\": \"C:/Users/me/code\" } }\n  { \"tool\": \"set_workspace\", \"arguments\": { \"path\": \"/home/user/projects\" } }\n\nSupports:\n  - Windows paths: D:/Projects/my-app\n  - Linux/Mac paths: /home/user/projects\n  - Relative paths: ../my-app\n  - Absolute paths for file tools (after setting workspace)\n\nReturns the resolved path and all configured workspace roots.",
+      description: "📂 WORKSPACE — Set the active workspace directory for all file tools.\n\nFile tools are restricted to workspace roots (HOOSHIX_WORKSPACE env or this tool). Paths outside roots are rejected.\n\nExamples: { \"path\": \"D:/Projects/my-app\" } · { \"path\": \"D:/Projects/my-app\", \"unrestricted\": true } — unrestricted is an elevated trust decision: allows file tools to access ANY path on the system. Only for trusted local use.",
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
       inputSchema: z.object({
         path: z.string().min(1),
+        unrestricted: z.boolean().optional().describe("Explicitly enable unrestricted mode (any absolute path on the system). Default: false — file tools stay restricted to workspace roots."),
         correlationId: z.string().min(1).optional(),
       }),
     },
-    async ({ path: targetPath, correlationId }) => {
+    async ({ path: targetPath, unrestricted, correlationId }) => {
       const traceId = resolveCorrelationId(correlationId);
       return auditToolCall("set_workspace", traceId, undefined, () => {
-        const resolved = setActiveWorkspace(targetPath);
+        const { resolved, previous } = setActiveWorkspace(targetPath);
+        if (unrestricted !== undefined) {
+          setUnrestrictedMode(unrestricted);
+        }
         return {
           content: [{
             type: "text",
             text: JSON.stringify({
               workspace: resolved,
-              previous: getWorkspaceRoot(),
+              previous: previous ?? null,
               allRoots: listWorkspaceRoots(),
-              message: `Workspace set to ${resolved}. All file operations will now work in this directory.`,
+              unrestricted: isUnrestrictedMode(),
+              message: isUnrestrictedMode()
+                ? `Workspace set to ${resolved}. Unrestricted mode ON — all file tools can access any path on the system.`
+                : `Workspace set to ${resolved}. File tools are restricted to workspace roots.`,
             }, null, 2),
           }],
           _meta: { correlationId: traceId },
@@ -40,7 +47,7 @@ export function registerWorkspaceTools(server: McpServer): void {
     "get_workspace",
     {
       title: "Get Workspace",
-      description: "Get the current active workspace directory and all configured workspace roots.\n\nUse this to check which directory file operations will work in.\n\nExample: { \"tool\": \"get_workspace\", \"arguments\": {} }\n\nReturns:\n  - active: The current workspace directory\n  - roots: All allowed workspace directories",
+      description: "📂 WORKSPACE — Show active workspace directory + all configured roots + unrestricted mode status.\n\nExample: {}",
       annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true },
       inputSchema: z.object({
         correlationId: z.string().min(1).optional(),
@@ -54,11 +61,73 @@ export function registerWorkspaceTools(server: McpServer): void {
           text: JSON.stringify({
             active: getWorkspaceRoot(),
             roots: listWorkspaceRoots(),
-            hint: "Use set_workspace to change the active directory. Absolute paths within any root are also allowed.",
+            unrestricted: isUnrestrictedMode(),
+            security: {
+              fileToolsRestricted: !isUnrestrictedMode(),
+              subprocessSandboxed: false,
+              effectiveDescription: isUnrestrictedMode()
+                ? "File tools: unrestricted (any path). Subprocesses: unsandboxed."
+                : "File tools: restricted to workspace roots. Subprocesses: unsandboxed (execute_command has no sandbox).",
+            },
+            hint: isUnrestrictedMode()
+              ? "Unrestricted mode is ON. All file tools can access any absolute path on the system."
+              : "Use set_workspace to change the active directory and enable unrestricted mode.",
           }, null, 2),
         }],
         _meta: { correlationId: traceId },
       }));
+    },
+  );
+
+  server.registerTool(
+    "remove_workspace_root",
+    {
+      title: "Remove Workspace Root",
+      description: "📂 WORKSPACE — Remove one directory from the allowed workspace roots list.\n\nExample: { \"path\": \"D:/Projects/old-project\" }",
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
+      inputSchema: z.object({
+        path: z.string().min(1),
+        correlationId: z.string().min(1).optional(),
+      }),
+    },
+    async ({ path: targetPath, correlationId }) => {
+      const traceId = resolveCorrelationId(correlationId);
+      return auditToolCall("remove_workspace_root", traceId, undefined, () => {
+        const removed = removeWorkspaceRoot(targetPath);
+        return {
+          content: [{
+            type: "text",
+            text: JSON.stringify({ removed, path: targetPath, roots: listWorkspaceRoots() }, null, 2),
+          }],
+          _meta: { correlationId: traceId },
+        };
+      });
+    },
+  );
+
+  server.registerTool(
+    "replace_workspace_roots",
+    {
+      title: "Replace Workspace Roots",
+      description: "📂 WORKSPACE — Replace ALL workspace roots with a single new root (switch projects).\n\nExample: { \"path\": \"D:/Projects/new-project\" }",
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
+      inputSchema: z.object({
+        path: z.string().min(1),
+        correlationId: z.string().min(1).optional(),
+      }),
+    },
+    async ({ path: targetPath, correlationId }) => {
+      const traceId = resolveCorrelationId(correlationId);
+      return auditToolCall("replace_workspace_roots", traceId, undefined, () => {
+        const roots = replaceWorkspaceRoots(targetPath);
+        return {
+          content: [{
+            type: "text",
+            text: JSON.stringify({ workspace: getWorkspaceRoot(), roots, unrestricted: isUnrestrictedMode() }, null, 2),
+          }],
+          _meta: { correlationId: traceId },
+        };
+      });
     },
   );
 }

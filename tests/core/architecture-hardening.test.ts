@@ -69,6 +69,9 @@ describe("architecture hardening", () => {
     expect(canTransition("resuming", "failed")).toBe(true);
     expect(canTransition("resuming", "cancelled")).toBe(true);
     expect(canTransition("verifying", "completed")).toBe(true);
+    // verifying → executing is the crash-recovery escape hatch: a process
+    // that died between move(verifying) and the final save must be resumable.
+    expect(canTransition("verifying", "executing")).toBe(true);
     expect(canTransition("verifying", "recovering")).toBe(true);
     expect(canTransition("verifying", "failed")).toBe(true);
     expect(canTransition("verifying", "cancelled")).toBe(true);
@@ -90,7 +93,6 @@ describe("architecture hardening", () => {
     expect(canTransition("executing", "completed")).toBe(false);
     expect(canTransition("recovering", "completed")).toBe(false);
     expect(canTransition("resuming", "completed")).toBe(false);
-    expect(canTransition("verifying", "executing")).toBe(false);
     expect(canTransition("verifying", "planning")).toBe(false);
   });
 

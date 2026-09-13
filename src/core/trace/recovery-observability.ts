@@ -1,6 +1,7 @@
 export interface RecoveryEvent {
   recoveryId: string;
   correlationId: string;
+  taskId?: string;
   action: string;
   reason: string;
   retryCount: number;

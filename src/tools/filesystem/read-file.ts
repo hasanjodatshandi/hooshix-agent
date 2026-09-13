@@ -7,7 +7,7 @@ import { auditToolCall } from "../../core/memory/tool-audit.js";
 export function registerReadFileTool(server: McpServer) {
   server.registerTool("read_file", {
     title: "Read File",
-    description: "Read a file and return its content as text.\n\nPaths:\n  - Relative: { \"path\": \"src/index.ts\" } (relative to workspace)\n  - Absolute: { \"path\": \"D:/Projects/my-api/src/index.ts\" }\n  - Parent: { \"path\": \"../other-project/file.ts\" }\n\nUse set_workspace first to change the working directory. Absolute paths work if within configured workspace roots.",
+    description: "📖 READ — Read a file's text content. Sensitive files (.env, .token, keys) always rejected; files >1MB rejected.\n\nExamples: { \"path\": \"src/index.ts\" } · { \"path\": \"D:/Projects/my-api/src/index.ts\" } — relative paths resolve against the active workspace.",
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true },
     inputSchema: z.object({
       path: z.string(),
@@ -16,9 +16,14 @@ export function registerReadFileTool(server: McpServer) {
     })
   }, async ({ path, correlationId, taskId }) => {
     const traceId = resolveCorrelationId(correlationId);
-    return auditToolCall("read_file", traceId, taskId, async () => ({
-      content: [{ type: "text", text: await readWorkspaceFile(path, traceId) }],
-      _meta: { correlationId: traceId }
-    }));
+    return auditToolCall("read_file", traceId, taskId, async () => {
+      const result = await readWorkspaceFile(path, traceId);
+      const fileContent = typeof result === "string" ? result : result.content;
+      return {
+        path, text: fileContent, length: fileContent.length,
+        content: [{ type: "text" as const, text: fileContent }],
+        _meta: { correlationId: traceId }
+      };
+    });
   });
 }

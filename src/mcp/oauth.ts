@@ -98,6 +98,8 @@ export class OAuthProvider {
   ): Record<string, unknown> | null {
     if (!resource || !refreshToken) return null;
     const expected = this.refreshTokenValue(resource);
+    // timingSafeEqual throws on length mismatch — compare lengths first
+    if (refreshToken.length !== expected.length) return null;
     if (!crypto.timingSafeEqual(Buffer.from(refreshToken), Buffer.from(expected))) {
       return null;
     }

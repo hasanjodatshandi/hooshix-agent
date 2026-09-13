@@ -38,6 +38,7 @@ export class UnifiedRecoveryService implements RecoveryProvider {
     const base = {
       recoveryId: randomUUID(),
       correlationId: context.correlationId,
+      taskId: context.taskId,
       action: action.type,
       reason: action.reason,
       retryCount: context.retryCount ?? 1,
@@ -48,8 +49,11 @@ export class UnifiedRecoveryService implements RecoveryProvider {
       applySelfHealing(plan, action, context.stepIndex);
       this.recordLifecycle({ ...base, completedAt: new Date().toISOString(), status: "completed" });
       return true;
-    } catch {
-      this.recordLifecycle({ ...base, completedAt: new Date().toISOString(), status: "failed" });
+    } catch (error) {
+      // Surface the failure cause — swallowing it hid why recovery failed.
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(`recovery execution failed (action=${action.type}): ${message}`);
+      this.recordLifecycle({ ...base, completedAt: new Date().toISOString(), status: "failed", reason: `${base.reason}; ${message}` });
       return false;
     }
   }

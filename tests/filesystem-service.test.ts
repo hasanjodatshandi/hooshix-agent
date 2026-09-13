@@ -51,7 +51,7 @@ describe("filesystem service", () => {
     await expect(readWorkspaceFile(file)).rejects.toThrow();
     expect(deleted.backupId).toBeTypeOf("string");
 
-    await restoreWorkspaceFile(deleted.backupId!, "file-backup-test");
+    await runWithPolicyApproval("restore_file", () => restoreWorkspaceFile(deleted.backupId!, "file-backup-test"));
     expect(await readWorkspaceFile(file)).toBe("original");
   });
 
@@ -59,11 +59,27 @@ describe("filesystem service", () => {
     await writeWorkspaceFile(file, "before");
     const result = await writeWorkspaceFile(file, "after", "overwrite-test");
     expect(result.backupId).toBeTypeOf("string");
-    const restored = await restoreWorkspaceFile(result.backupId!, "overwrite-test");
+    const restored = await runWithPolicyApproval("restore_file", () => restoreWorkspaceFile(result.backupId!, "overwrite-test"));
     expect(await readWorkspaceFile(file)).toBe("before");
-    expect(restored.backupId).toBeTypeOf("string");
-    await restoreWorkspaceFile(restored.backupId!, "overwrite-test");
+    expect(restored.displacedBackupId).toBeTypeOf("string");
+    await runWithPolicyApproval("restore_file", () => restoreWorkspaceFile(restored.displacedBackupId!, "overwrite-test"));
     expect(await readWorkspaceFile(file)).toBe("after");
+  });
+
+  it("replaces ALL occurrences literally (no $-pattern substitution)", async () => {
+    await writeWorkspaceFile(file, "a $& b $& c", "modify-test");
+    const result = await modifyWorkspaceFile(file, "$&", "X", "modify-test");
+    expect(result.replacedOccurrences).toBe(2);
+    expect(await readWorkspaceFile(file)).toBe("a X b X c");
+  });
+
+  it("rejects sensitive files on read, write, and delete", async () => {
+    await expect(readWorkspaceFile(".token", "sensitive-test")).rejects.toThrow(/sensitive-file denylist/i);
+    await expect(readWorkspaceFile("config/.env", "sensitive-test")).rejects.toThrow(/sensitive-file denylist/i);
+    await expect(readWorkspaceFile("home/.ssh/id_rsa", "sensitive-test")).rejects.toThrow(/sensitive-file denylist/i);
+    await expect(readWorkspaceFile("cert.pem", "sensitive-test")).rejects.toThrow(/sensitive-file denylist/i);
+    await expect(writeWorkspaceFile(".env", "LEAKED=1", "sensitive-test")).rejects.toThrow(/sensitive-file denylist/i);
+    await expect(runWithPolicyApproval("delete_file", () => deleteWorkspaceFile(".env", "sensitive-test"))).rejects.toThrow(/sensitive-file denylist/i);
   });
 
 });

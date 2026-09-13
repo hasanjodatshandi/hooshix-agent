@@ -6,11 +6,13 @@ import { getAgentMetrics } from "../../src/core/trace/metrics-service.js";
 describe("observability metrics", () => {
   it("reports zero metrics for empty database", () => {
     const metrics = getAgentMetrics();
-    expect(metrics.recoverySuccessRate).toBe(0);
+    expect(metrics.recoverySuccessRate).toBeNull();
     expect(metrics.toolFailureRate).toBe(0);
-    expect(metrics.averageRecoveryTimeMs).toBe(0);
+    expect(metrics.averageRecoveryTimeMs).toBeNull();
     expect(metrics.failedActions).toBe(0);
     expect(metrics.mostFailedTools).toEqual([]);
+    expect(metrics.recoveryAttempts).toBe(0);
+    expect(metrics.workflowActionFailureRate).toBe(0);
   });
 
   it("tracks tool failure rate correctly", async () => {

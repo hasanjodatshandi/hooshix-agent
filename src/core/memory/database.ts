@@ -4,6 +4,7 @@ export {
   openAgentDatabase,
   closeAgentDatabase,
   resetAgentDatabase,
+  resetMigrationsFlag,
   backupAgentDatabase,
   cleanupAgentData,
   withAgentDatabase,

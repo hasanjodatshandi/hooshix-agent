@@ -16,9 +16,11 @@ export default defineConfig({
       provider: "v8",
       reporter: ["text", "json-summary"],
       include: ["src/**/*.ts"],
-      // Stdio entry points and MCP adapters are exercised in spawned-process E2E tests;
-      // V8 coverage from child processes is not merged into the parent report.
-      exclude: ["src/index.ts", "src/mcp/**", "src/tools/**", "src/memory/database.ts"],
+      // Stdio/HTTP entry points spawn child processes in E2E; V8 coverage from
+      // children is not merged into the parent report. The transport adapters
+      // (mcp/server.ts, http-server.ts) stay excluded for that reason only —
+      // tool implementations (src/tools/**) ARE covered.
+      exclude: ["src/index.ts", "src/index-http.ts", "src/mcp/server.ts", "src/mcp/http-server.ts", "src/mcp/metrics-server.ts", "src/mcp/registry.ts", "src/mcp/oauth.ts", "src/mcp/metrics.ts", "src/memory/database.ts"],
       thresholds: {
         statements: 80,
         branches: 75,

@@ -7,7 +7,7 @@ import { auditToolCall } from "../../core/memory/tool-audit.js";
 export function registerWriteFileTool(server: McpServer) {
   server.registerTool("write_file", {
     title: "Write File",
-    description: "Write content to a file. Overwrites if exists. Returns a backup ID for undo.\n\nPaths:\n  - Relative: { \"path\": \"src/index.ts\", \"content\": \"...\" }\n  - Absolute: { \"path\": \"D:/Projects/my-api/src/index.ts\", \"content\": \"...\" }\n\nMax content size: 1MB. Use set_workspace to change the working directory.",
+    description: "✏️ WRITE — Overwrite a file with new content (creates or replaces). Atomic; returns backupId for undo. Sensitive files rejected; content ≤1MB.\n\nExample: { \"path\": \"src/index.ts\", \"content\": \"import ...\" }",
     annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
     inputSchema: z.object({
       path: z.string(),
@@ -19,7 +19,8 @@ export function registerWriteFileTool(server: McpServer) {
     const traceId = resolveCorrelationId(correlationId);
     return auditToolCall("write_file", traceId, taskId, async () => {
       const result = await writeWorkspaceFile(path, content, traceId);
-      return { content: [{ type: "text" as const, text: JSON.stringify({ path, ...result }) }], _meta: { correlationId: traceId } };
+      const flat = { path, ...result };
+      return { ...flat, content: [{ type: "text" as const, text: JSON.stringify(flat) }], _meta: { correlationId: traceId } };
     });
   });
 }
