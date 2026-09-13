@@ -97,6 +97,32 @@ describe("workspace pool: set_workspace selects only", () => {
     expect(removeWorkspaceRoot(wsB)).toBe(true);
     expect(listWorkspaceRoots()).toHaveLength(1);
   });
+
+  it("WM-01: root identity is case-insensitive on Windows — no duplicate logical roots", () => {
+    if (process.platform !== "win32") {
+      // On POSIX, differing case IS a different directory — pool membership
+      // stays exact-case. This test only pins the Windows canonicalization.
+      return;
+    }
+    // wsA is already the active root; add case/separator variants of it.
+    const variants = [
+      wsA.toUpperCase(),
+      wsA.toLowerCase(),
+      wsA.replace(/\\/g, "/") + "/",
+      wsA.replace(/\\/g, "/").toUpperCase() + "/",
+    ];
+    const results = addWorkspaceRoots(variants);
+    expect(results.every((r) => r.added === false)).toBe(true);
+    // The pool must still contain exactly ONE entry for this logical root.
+    expect(listWorkspaceRoots()).toHaveLength(1);
+    // set_workspace with a case variant still resolves to the same root.
+    setActiveWorkspace(variants[2]!);
+    expect(getWorkspaceRoot()).toBe(fs.realpathSync(wsA));
+    // Removal via a case variant also resolves to the same root identity:
+    // the active-workspace guard fires for the case-variant too.
+    expect(() => removeWorkspaceRoot(wsA.toUpperCase())).toThrow(/Cannot remove the active workspace/);
+    expect(() => removeWorkspaceRoot(wsA)).toThrow(/Cannot remove the active workspace/);
+  });
 });
 
 describe("workspace isolation: execute_command cwd gate", () => {

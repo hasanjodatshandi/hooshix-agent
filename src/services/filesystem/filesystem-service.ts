@@ -120,23 +120,28 @@ async function atomicWrite(filePath: string, content: string | Buffer, options?:
   }
 }
 
-async function backupFile(filePath: string, targetPath: string, correlationId: string): Promise<string> {
+async function backupFile(filePath: string, _targetPath: string, correlationId: string): Promise<string> {
   await assertReadableSize(filePath);
   const id = randomUUID();
   const content = await fs.readFile(filePath);
   const contentStr = content.toString("utf8");
   const sha256 = sha256hex(contentStr);
+  // Store the CANONICAL absolute path, never the raw caller string. A raw
+  // relative path would be re-resolved against whatever workspace is active
+  // at restore time — materializing the file in the WRONG workspace
+  // (defect FS-01, a workspace-isolation break).
+  const canonical = validateWorkspace(filePath);
   withAgentDatabase((db) => {
     try {
       db.prepare(`
         INSERT INTO file_backups(id, correlation_id, path, content, created_at, file_revision)
         VALUES (?, ?, ?, ?, ?, ?)
-      `).run(id, correlationId, targetPath, content, new Date().toISOString(), sha256);
+      `).run(id, correlationId, canonical, content, new Date().toISOString(), sha256);
     } catch {
       // Fallback if file_revision column doesn't exist yet
       db.prepare(`
         INSERT INTO file_backups(id, correlation_id, path, content, created_at) VALUES (?, ?, ?, ?, ?)
-      `).run(id, correlationId, targetPath, content, new Date().toISOString());
+      `).run(id, correlationId, canonical, content, new Date().toISOString());
     }
   });
   return id;
@@ -206,9 +211,13 @@ export async function createWorkspaceFile(targetPath: string, content: string, c
 
 async function saveAbsentSnapshot(targetPath: string, correlationId: string): Promise<string> {
   const id = randomUUID();
+  // Canonical absolute path only — same isolation rule as backupFile (FS-01):
+  // a relative snapshot path would re-resolve against the active workspace at
+  // restore time and materialize in the wrong workspace.
+  const canonical = validateWorkspace(targetPath);
   withAgentDatabase((db) => db.prepare(`
     INSERT INTO file_backups(id, correlation_id, path, content, created_at) VALUES (?, ?, ?, ?, ?)
-  `).run(id, correlationId, targetPath, Buffer.alloc(0), new Date().toISOString()));
+  `).run(id, correlationId, canonical, Buffer.alloc(0), new Date().toISOString()));
   // Mark this backup as an absent-state snapshot
   withAgentDatabase((db) => db.prepare(
     "UPDATE file_backups SET restored_at = 'absent' WHERE id = ?"
@@ -329,7 +338,30 @@ export async function restoreWorkspaceFile(backupId: string, correlationId?: str
       SELECT id, path, content, restored_at FROM file_backups WHERE id = ?
     `).get(backupId) as { id: string; path: string; content: Buffer; restored_at: string | null } | undefined);
     if (!backup) throw new Error("Backup not found");
-    const filePath = validateWorkspace(backup.path);
+    // Workspace isolation (defect FS-01): the stored path is canonical and
+    // absolute, but it was captured in a DIFFERENT active workspace. Re-validating
+    // is not enough — a relative legacy row would silently re-resolve into the
+    // current workspace, and an absolute row from another root would be written
+    // outside the active scope. Fail closed: the backup's path must resolve
+    // inside the CURRENT active workspace, otherwise the restore is refused.
+    let filePath: string;
+    try {
+      filePath = validateWorkspace(backup.path);
+    } catch {
+      throw new Error(
+        `Access denied: backup ${backupId} targets '${backup.path}' which is outside the active workspace. ` +
+        `Backups can only be restored in the workspace they were taken in — set_workspace back to the original workspace first.`
+      );
+    }
+    // Defense-in-depth: a legacy row with a RELATIVE path must never be
+    // re-anchored into the current workspace. Canonical storage is absolute;
+    // if the stored path still isn't absolute, the row predates the fix and
+    // cannot be proven to belong to this workspace — reject rather than guess.
+    if (!path.isAbsolute(backup.path)) {
+      throw new Error(
+        `Access denied: backup ${backupId} has a non-canonical (relative) path and cannot be proven to belong to the active workspace. Restore refused.`
+      );
+    }
     await fs.mkdir(path.dirname(filePath), { recursive: true });
 
     // Check if this is an absent-state snapshot (restored_at = 'absent')

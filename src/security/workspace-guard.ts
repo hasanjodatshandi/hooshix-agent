@@ -6,6 +6,30 @@ import { policyDecisionPoint } from "../core/governance/policy-decision-point.js
 let workspaceRoots: string[] = [];
 let activeWorkspace: string | null = null;
 
+/**
+ * Canonical identity for a workspace-root/path comparison. On Windows (and
+ * any case-insensitive filesystem), `D:\test` and `d:\TEST` are the SAME
+ * directory — comparing raw strings would let the same logical root register
+ * twice (defect WM-01) and drift the allowed pool. Case-folding is only
+ * applied on win32; POSIX filesystems are case-sensitive and keep exact
+ * casing, where differing case means two genuinely different directories.
+ */
+function canonicalRootIdentity(p: string): string {
+  const real = (() => {
+    try {
+      return fs.realpathSync(path.resolve(p));
+    } catch {
+      return path.resolve(p);
+    }
+  })();
+  return process.platform === "win32" ? real.toLowerCase() : real;
+}
+
+/** Equality of two paths as workspace identities (case-insensitive on win32). */
+function sameRootIdentity(a: string, b: string): boolean {
+  return canonicalRootIdentity(a) === canonicalRootIdentity(b);
+}
+
 function initWorkspaceRoots(): string[] {
   if (workspaceRoots.length > 0) return workspaceRoots;
   const envValue = process.env.HOOSHIX_WORKSPACE ?? process.cwd();
@@ -47,7 +71,7 @@ export function setActiveWorkspace(rootPath: string): { resolved: string; previo
     throw new Error(`Workspace path does not exist: ${resolved}`);
   }
   const real = fs.realpathSync(resolved);
-  if (!workspaceRoots.includes(real)) {
+  if (!workspaceRoots.some((r) => sameRootIdentity(r, real))) {
     throw new Error(
       `Access denied: ${real} is not an allowed workspace root. ` +
       `Add it first with add_workspace_roots. Allowed: ${workspaceRoots.join(", ")}`
@@ -56,7 +80,8 @@ export function setActiveWorkspace(rootPath: string): { resolved: string; previo
   const previous = activeWorkspace;
   activeWorkspace = real;
   // NOTE: unrestricted mode is NOT enabled implicitly — enabling it is a
-  // separate, explicit decision (setUnrestrictedMode(true) / HOOSHIX_UNRESTRICTED).
+  // separate, explicit decision (HOOSHIX_UNRESTRICTED at boot; no runtime
+  // elevation path exists anymore).
   return { resolved: real, previous };
 }
 
@@ -78,11 +103,10 @@ export function listWorkspaceRoots(): Array<{ path: string; exists: boolean; act
  */
 export function removeWorkspaceRoot(rootPath: string): boolean {
   initWorkspaceRoots();
-  const resolved = path.resolve(rootPath);
-  if (resolved === getWorkspaceRoot()) {
+  if (sameRootIdentity(rootPath, getWorkspaceRoot())) {
     throw new Error("Cannot remove the active workspace — use set_workspace to select another allowed root first.");
   }
-  const index = workspaceRoots.findIndex((r) => r === resolved || r === path.normalize(resolved));
+  const index = workspaceRoots.findIndex((r) => sameRootIdentity(r, rootPath));
   if (index === -1) return false;
   workspaceRoots.splice(index, 1);
   return true;
@@ -103,7 +127,7 @@ export function addWorkspaceRoots(paths: string[]): Array<{ path: string; added:
       throw new Error(`Workspace path does not exist: ${resolved}`);
     }
     const real = fs.realpathSync(resolved);
-    if (workspaceRoots.includes(real)) {
+    if (workspaceRoots.some((r) => sameRootIdentity(r, real))) {
       results.push({ path: real, added: false });
       continue;
     }
