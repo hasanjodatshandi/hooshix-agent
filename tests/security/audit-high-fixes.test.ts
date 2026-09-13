@@ -9,13 +9,11 @@ import {
 import {
   isUnrestrictedMode,
   setUnrestrictedMode,
+  assertUnrestrictedElevationAllowed,
 } from "../../src/security/workspace-guard.js";
 import {
   OAuthProvider,
 } from "../../src/mcp/oauth.js";
-import {
-  runWithPolicyApproval,
-} from "../../src/core/governance/policy-decision-point.js";
 
 /**
  * Regression tests for the three open audit HIGH findings:
@@ -59,8 +57,10 @@ describe("HIGH-02: search_files sensitive-file denylist", () => {
 });
 
 describe("HIGH-01: unrestricted-mode elevation gate", () => {
-  it("blocks enabling unrestricted mode on direct calls (no approval context)", () => {
+  it("no tool can enable unrestricted mode at runtime — capability removed", () => {
     expect(isUnrestrictedMode()).toBe(false);
+    // The unrestricted capability was removed from set_workspace entirely:
+    // even an approved task-step context cannot elevate (fail-closed).
     expect(() => setUnrestrictedMode(true)).toThrow(/Approval required/i);
     // state must be unchanged after the rejected elevation
     expect(isUnrestrictedMode()).toBe(false);
@@ -71,13 +71,11 @@ describe("HIGH-01: unrestricted-mode elevation gate", () => {
     expect(isUnrestrictedMode()).toBe(false);
   });
 
-  it("allows enabling through an approved task-step context", async () => {
-    const result = await runWithPolicyApproval("set_workspace", async () => {
-      setUnrestrictedMode(true);
-      return isUnrestrictedMode();
-    });
-    expect(result).toBe(true);
-    setUnrestrictedMode(false);
+  it("env opt-in is the only remaining elevation path", () => {
+    // The runtime gate is now absolute: no tool and no approval context can
+    // enable unrestricted mode. The operator-level HOOSHIX_UNRESTRICTED env
+    // var (parsed at module init in workspace-guard) is the only way in.
+    expect(() => assertUnrestrictedElevationAllowed()).toThrow(/cannot be enabled at runtime/i);
   });
 });
 

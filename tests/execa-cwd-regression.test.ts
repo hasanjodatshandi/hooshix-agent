@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { gitStatus } from "../src/services/git/git-service.js";
 import { executeShellCommand } from "../src/services/shell/shell-service.js";
 import { runWithPolicyApproval } from "../src/core/governance/policy-decision-point.js";
-import { setUnrestrictedMode, isUnrestrictedMode } from "../src/security/workspace-guard.js";
+import { setUnrestrictedMode, seedUnrestrictedMode, isUnrestrictedMode } from "../src/security/workspace-guard.js";
 
 /**
  * Regression tests for the "git exited with code undefined" failure class.
@@ -34,7 +34,7 @@ describe("missing cwd produces accurate errors", () => {
   it("git_status under unrestricted mode fails with an explicit missing-directory error", async () => {
     const was = isUnrestrictedMode();
     runWithPolicyApproval("set_workspace", async () => {
-      setUnrestrictedMode(true);
+      seedUnrestrictedMode(true);
     });
     try {
       await expect(gitStatus(missing)).rejects.toThrow(/Git working directory does not exist/);

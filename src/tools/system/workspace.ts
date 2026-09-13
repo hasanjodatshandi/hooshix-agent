@@ -2,28 +2,24 @@ import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { resolveCorrelationId } from "../../core/runtime/correlation-id.js";
 import { auditToolCall } from "../../core/memory/tool-audit.js";
-import { setActiveWorkspace, listWorkspaceRoots, getWorkspaceRoot, setUnrestrictedMode, isUnrestrictedMode, removeWorkspaceRoot, addWorkspaceRoots } from "../../security/workspace-guard.js";
+import { setActiveWorkspace, listWorkspaceRoots, getWorkspaceRoot, removeWorkspaceRoot, addWorkspaceRoots } from "../../security/workspace-guard.js";
 
 export function registerWorkspaceTools(server: McpServer): void {
   server.registerTool(
     "set_workspace",
     {
       title: "Set Workspace",
-      description: "📂 WORKSPACE — Select the ACTIVE workspace from the allowed roots pool. Does NOT add or remove roots — the path must already be allowed (add it with add_workspace_roots first). File tools operate in the active workspace only.\n\nExamples: { \"path\": \"D:/Projects/my-app\" } · { \"path\": \"D:/Projects/my-app\", \"unrestricted\": true } — unrestricted grants file tools access to ANY system path and REQUIRES APPROVAL through an approved task step. Only for trusted local use.",
+      description: "📂 WORKSPACE — Select the ACTIVE workspace from the allowed roots pool. Does NOT add or remove roots — the path must already be allowed (add it with add_workspace_roots first). File tools operate in the active workspace only — this tool cannot and will never expand that scope.\n\nExample: { \"path\": \"D:/Projects/my-app\" }",
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
-      inputSchema: z.object({
+      inputSchema: z.strictObject({
         path: z.string().min(1),
-        unrestricted: z.boolean().optional().describe("Explicitly enable unrestricted mode (any absolute path on the system). Default: false — file tools stay restricted to workspace roots."),
         correlationId: z.string().min(1).optional(),
       }),
     },
-    async ({ path: targetPath, unrestricted, correlationId }) => {
+    async ({ path: targetPath, correlationId }) => {
       const traceId = resolveCorrelationId(correlationId);
       return auditToolCall("set_workspace", traceId, undefined, () => {
         const { resolved, previous } = setActiveWorkspace(targetPath);
-        if (unrestricted !== undefined) {
-          setUnrestrictedMode(unrestricted);
-        }
         return {
           content: [{
             type: "text",
@@ -31,10 +27,8 @@ export function registerWorkspaceTools(server: McpServer): void {
               workspace: resolved,
               previous: previous ?? null,
               allRoots: listWorkspaceRoots(),
-              unrestricted: isUnrestrictedMode(),
-              message: isUnrestrictedMode()
-                ? `Active workspace: ${resolved}. Unrestricted mode ON — all file tools can access any path on the system.`
-                : `Active workspace: ${resolved}. File tools are restricted to the active workspace. Other allowed roots are listed but not implicitly accessible.`,
+              fileToolsScope: "active workspace only",
+              message: `Active workspace: ${resolved}. File tools are restricted to the active workspace. Other allowed roots are listed but not implicitly accessible.`,
             }, null, 2),
           }],
           _meta: { correlationId: traceId },
@@ -47,7 +41,7 @@ export function registerWorkspaceTools(server: McpServer): void {
     "get_workspace",
     {
       title: "Get Workspace",
-      description: "📂 WORKSPACE — Show the active workspace, all allowed roots, and unrestricted-mode status.\n\nExample: {}",
+      description: "📂 WORKSPACE — Show the active workspace and all allowed roots.\n\nExample: {}",
       annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true },
       inputSchema: z.object({
         correlationId: z.string().min(1).optional(),
@@ -61,18 +55,12 @@ export function registerWorkspaceTools(server: McpServer): void {
           text: JSON.stringify({
             active: getWorkspaceRoot(),
             roots: listWorkspaceRoots(),
-            unrestricted: isUnrestrictedMode(),
             security: {
-              fileToolsRestricted: !isUnrestrictedMode(),
-              fileToolsScope: isUnrestrictedMode() ? "any path on the system" : "active workspace only",
+              fileToolsScope: "active workspace only",
               subprocessScope: "active workspace; cwd outside requires approval",
-              effectiveDescription: isUnrestrictedMode()
-                ? "File tools: unrestricted (any path). Subprocesses: active workspace; cwd outside requires approval."
-                : "File tools: active workspace only. Subprocesses: active workspace; cwd outside requires approval.",
+              effectiveDescription: "File tools: active workspace only. Subprocesses: active workspace; cwd outside requires approval.",
             },
-            hint: isUnrestrictedMode()
-              ? "Unrestricted mode is ON. All file tools can access any absolute path on the system."
-              : "File tools touch the ACTIVE workspace only. Use add_workspace_roots to extend the allowed pool, set_workspace to select the active root, remove_workspace_root to drop one.",
+            hint: "File tools touch the ACTIVE workspace only. Use add_workspace_roots to extend the allowed pool, set_workspace to select the active root, remove_workspace_root to drop one.",
           }, null, 2),
         }],
         _meta: { correlationId: traceId },

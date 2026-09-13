@@ -6,7 +6,7 @@ import { withAgentDatabase } from "../../src/core/memory/database.js";
 import { isDirectApprovalBypassEnabled, runWithPolicyApproval } from "../../src/core/governance/policy-decision-point.js";
 import { executeShellCommand } from "../../src/services/shell/shell-service.js";
 import { readWorkspaceFile } from "../../src/services/filesystem/filesystem-service.js";
-import { setActiveWorkspace, addWorkspaceRoots, setUnrestrictedMode, isUnrestrictedMode, validateWorkspace } from "../../src/security/workspace-guard.js";
+import { setActiveWorkspace, addWorkspaceRoots, setUnrestrictedMode, seedUnrestrictedMode, isUnrestrictedMode, validateWorkspace } from "../../src/security/workspace-guard.js";
 import { evaluateCommandPermission } from "../../src/security/permissions/command-permission.js";
 import { execa } from "execa";
 
@@ -70,7 +70,7 @@ describe("adversarial: unrestricted mode escalation", () => {
   it("set_workspace no longer silently enables unrestricted mode", () => {
     expect(isUnrestrictedMode()).toBe(false);
     // Elevation is governed — enable it inside an approved-step context.
-    runWithPolicyApproval("set_workspace", () => setUnrestrictedMode(true));
+    runWithPolicyApproval("set_workspace", () => seedUnrestrictedMode(true));
     // Multi-root pool model: set_workspace only selects among allowed roots.
     addWorkspaceRoots([root]);
     setActiveWorkspace(root);
@@ -90,7 +90,7 @@ describe("adversarial: unrestricted mode escalation", () => {
     const bypass = process.env.HOOSHIX_DIRECT_AUTO_APPROVE;
     process.env.HOOSHIX_DIRECT_AUTO_APPROVE = "1";
     try {
-      setUnrestrictedMode(true);
+      seedUnrestrictedMode(true);
       expect(isUnrestrictedMode()).toBe(true);
       setUnrestrictedMode(false);
       expect(isUnrestrictedMode()).toBe(false);

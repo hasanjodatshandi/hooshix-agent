@@ -27,7 +27,7 @@ describe("in-process MCP tool coverage", () => {
     expect(info.platform).toBeTypeOf("string");
     const workspace = json(await client.callTool({ name: "get_workspace", arguments: {} }));
     expect(workspace.active).toBeTypeOf("string");
-    expect(workspace.unrestricted).toBe(false);
+    expect(workspace.security.fileToolsScope).toBe("active workspace only");
   });
 
   it("file tools: create, read, write, modify, list, search, delete via task approval", async () => {
@@ -151,18 +151,22 @@ describe("in-process MCP tool coverage", () => {
     expect(result.exitCode).toBe(0);
   });
 
-  it("workspace tools: set_workspace keeps restriction and rejects unapproved unrestricted", async () => {
+  it("workspace tools: set_workspace is a pure selector — no unrestricted capability exists", async () => {
     // Multi-root pool model: the path must be an allowed root before set_workspace can select it.
     const added = json(await client.callTool({ name: "add_workspace_roots", arguments: { paths: [root] } }));
     expect(added.results).toEqual([{ path: root, added: true }]);
     const set = json(await client.callTool({ name: "set_workspace", arguments: { path: root } }));
-    expect(set.unrestricted).toBe(false);
-    // Elevation is approval-gated: a direct call without approval context
-    // must return an error result and leave the mode OFF.
-    const denied = await client.callTool({ name: "set_workspace", arguments: { path: root, unrestricted: true } });
-    expect(denied).toMatchObject({ isError: true });
+    // Selecting a workspace can never change file-tool scope.
+    expect(set.fileToolsScope).toBe("active workspace only");
+    expect(JSON.stringify(set)).not.toContain("unrestricted");
+    // The unrestricted parameter no longer exists in the schema — the strict
+    // validator rejects it outright instead of honoring or ignoring it.
+    const rejected = await client.callTool({ name: "set_workspace", arguments: { path: root, unrestricted: true } });
+    expect(rejected).toMatchObject({ isError: true });
+    expect(JSON.stringify(rejected)).toMatch(/unrestricted|Unrecognized key/i);
     const after = json(await client.callTool({ name: "get_workspace", arguments: {} }));
-    expect(after.unrestricted).toBe(false);
+    expect(after.security.fileToolsScope).toBe("active workspace only");
+    expect(JSON.stringify(after)).not.toContain("unrestricted");
   });
 
   it("workspace tools: set_workspace only selects from the allowed pool; active root cannot be removed", async () => {

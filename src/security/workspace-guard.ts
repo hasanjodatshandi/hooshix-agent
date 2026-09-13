@@ -137,18 +137,28 @@ let unrestrictedMode = false;
 /**
  * Guard for enabling unrestricted mode: file tools immediately gain access to
  * ANY path on the system, so this is a policy-governed elevation, not a plain
- * setting. Approved task steps pass (they run inside runWithPolicyApproval);
- * direct MCP calls require HOOSHIX_DIRECT_AUTO_APPROVE=1. Disabling is free.
- * Throws instead of returning a decision so every caller (MCP tool + executor
- * handler) is covered by the same gate (audit HIGH-01 / R2.05).
+ * setting. Only an operator env opt-in (HOOSHIX_UNRESTRICTED) seeds it at boot;
+ * no tool can elevate at runtime — the unrestricted capability was removed from
+ * set_workspace entirely (security-design regression: a pure selector must not
+ * carry privilege expansion). Disabling is always free.
  */
 export function assertUnrestrictedElevationAllowed(): void {
-  policyDecisionPoint.assertAllowed({ tool: "set_workspace", arguments: { unrestricted: true } });
+  throw new Error("Approval required: unrestricted mode cannot be enabled at runtime — no tool carries that capability. Use HOOSHIX_UNRESTRICTED=1 at server boot instead.");
+}
+
+/**
+ * Bootstrap/test-only seeding for unrestricted mode (mirrors the
+ * HOOSHIX_UNRESTRICTED=1 boot path). NEVER exposed as an MCP tool or reachable
+ * from any tool/executor/governance path — the runtime elevation gate above
+ * stays hard for everything else.
+ */
+export function seedUnrestrictedMode(enabled: boolean): void {
+  unrestrictedMode = enabled;
 }
 
 /** Enable/disable unrestricted mode (absolute paths work anywhere) */
 export function setUnrestrictedMode(enabled: boolean): void {
-  if (enabled) assertUnrestrictedElevationAllowed();
+  if (enabled && !unrestrictedMode) assertUnrestrictedElevationAllowed();
   unrestrictedMode = enabled;
 }
 

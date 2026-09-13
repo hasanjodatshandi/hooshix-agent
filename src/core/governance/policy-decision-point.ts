@@ -85,13 +85,6 @@ export class PolicyDecisionPoint {
       if (commandDecision.decision === "approval_required") return { allowed: true, requiresApproval: true, risk, reason: `Command requires approval: ${command}` };
     }
 
-    // Elevating to unrestricted mode grants file tools access to ANY system
-    // path — that is a governed escalation regardless of the base tool risk
-    // (audit HIGH-01 / R2.05). Disabling it stays approval-free.
-    if (tool === "set_workspace" && request.arguments?.unrestricted === true) {
-      return { allowed: true, requiresApproval: true, risk, reason: "Enabling unrestricted mode grants file tools access to any system path and requires approval" };
-    }
-
     if (APPROVAL_TOOLS.has(tool)) {
       return { allowed: true, requiresApproval: true, risk, reason: `${tool} is a governed ${risk}-risk operation` };
     }
