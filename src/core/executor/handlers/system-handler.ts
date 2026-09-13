@@ -25,6 +25,7 @@ export class SystemToolHandler implements ToolHandler {
           active: getWorkspaceRoot(),
           roots: listWorkspaceRoots(),
           fileToolsScope: "active workspace only",
+          workspaceConfigured: getWorkspaceRoot() !== null,
         };
       }
       case "set_workspace": {

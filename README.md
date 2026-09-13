@@ -83,9 +83,15 @@ HOOSHIX_WORKSPACE=D:/Projects/my-app node dist/index-http.js
 
 # Multiple workspaces
 HOOSHIX_WORKSPACE=D:/Projects/my-app,D:/Projects/other,E:/Work node dist/index-http.js
+
+# Omitting HOOSHIX_WORKSPACE starts with an EMPTY pool — no file access
+# until a workspace is configured (via add_workspace_roots in a client).
+node dist/index-http.js
 ```
 
 All file operations are restricted to the configured roots. File tools always operate in the **active workspace only** — use `add_workspace_roots` at runtime to extend the allowed pool and `set_workspace` to select the active root. There is deliberately **no unrestricted mode on `set_workspace`**: file tools can never be widened to arbitrary system paths through that tool (the operator-level `HOOSHIX_UNRESTRICTED=1` env var remains the only machine-wide opt-in at boot).
+
+**Empty by default:** the allowed-roots pool starts **empty** and no workspace is active until you configure one — via `HOOSHIX_WORKSPACE` at boot or `add_workspace_roots` + `set_workspace` at runtime. There is no implicit fallback to the server's working directory: until a workspace is configured, every file tool and command execution is denied (fail-closed).
 
 ### Option 2: Set workspace via ChatGPT
 

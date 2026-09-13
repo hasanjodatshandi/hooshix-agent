@@ -21,7 +21,10 @@ export class ShellToolHandler implements ToolHandler {
       cwd: z.string().optional(),
       timeout: z.number().int().min(100).max(120000).default(30000)
     }).parse(data);
-    // Default cwd to task's persisted workspace if not explicitly provided
+    // Default cwd to the task's persisted workspace if not explicitly provided.
+    // With the empty-by-default pool, executionContext?.workspace can be null —
+    // then executeShellCommand's validation denies every cwd (no active
+    // workspace), which is the fail-closed contract.
     const cwd = value.cwd ?? executionContext?.workspace ?? ".";
     const result = await executeShellCommand(value.command, value.args, cwd, value.timeout, correlationId, signal);
     if (result.exitCode !== 0) throw new Error(result.stderr || describeExecaFailure(value.command, result));

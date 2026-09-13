@@ -2,9 +2,14 @@ import fs from "node:fs";
 import path from "node:path";
 import { policyDecisionPoint } from "../core/governance/policy-decision-point.js";
 
-// Supported workspace roots (comma-separated in env var)
+// Supported workspace roots (comma-separated in env var).
+// EMPTY BY DEFAULT: no implicit root, no implicit active workspace — access
+// exists only after explicit configuration (HOOSHIX_WORKSPACE or
+// add_workspace_roots). `initialized` pins the lazy env parse so test resets
+// via replaceWorkspaceRoots aren't re-seeded from the environment.
 let workspaceRoots: string[] = [];
 let activeWorkspace: string | null = null;
+let initialized = false;
 
 /**
  * Canonical identity for a workspace-root/path comparison. On Windows (and
@@ -31,9 +36,15 @@ function sameRootIdentity(a: string, b: string): boolean {
 }
 
 function initWorkspaceRoots(): string[] {
-  if (workspaceRoots.length > 0) return workspaceRoots;
-  const envValue = process.env.HOOSHIX_WORKSPACE ?? process.cwd();
-  workspaceRoots = envValue
+  if (initialized) return workspaceRoots;
+  initialized = true;
+  // Empty by default: the allowed pool starts EMPTY and no workspace is
+  // active until roots are explicitly configured. HOOSHIX_WORKSPACE is the
+  // operator seeding path (comma-separated); process.cwd() is deliberately
+  // NOT a fallback — an MCP server must never start with implicit filesystem
+  // access to wherever it happened to be launched from.
+  const envValue = process.env.HOOSHIX_WORKSPACE?.trim();
+  workspaceRoots = (envValue ?? "")
     .split(",")
     .map((p) => p.trim())
     .filter(Boolean)
@@ -44,6 +55,7 @@ function initWorkspaceRoots(): string[] {
         return path.resolve(p);
       }
     });
+  if (workspaceRoots.length > 0) activeWorkspace = workspaceRoots[0];
   // Auto-enable unrestricted mode from env
   if (process.env.HOOSHIX_UNRESTRICTED === "1" || process.env.HOOSHIX_UNRESTRICTED === "true") {
     unrestrictedMode = true;
@@ -51,10 +63,20 @@ function initWorkspaceRoots(): string[] {
   return workspaceRoots;
 }
 
-/** Get the active workspace root (first configured by default) */
-export function getWorkspaceRoot(): string {
+/**
+ * Get the active workspace root. With the empty-by-default pool model, there
+ * is NO implicit default — until the operator seeds HOOSHIX_WORKSPACE or a
+ * root is added via add_workspace_roots, no workspace is active and file
+ * tools have nothing to operate on (fail-closed: callers must handle null).
+ */
+export function getWorkspaceRoot(): string | null {
   initWorkspaceRoots();
-  return activeWorkspace ?? workspaceRoots[0];
+  return activeWorkspace;
+}
+
+/** Alias with a self-documenting name for scope checks (null = no active workspace). */
+export function getActiveWorkspace(): string | null {
+  return getWorkspaceRoot();
 }
 
 /**
@@ -74,7 +96,7 @@ export function setActiveWorkspace(rootPath: string): { resolved: string; previo
   if (!workspaceRoots.some((r) => sameRootIdentity(r, real))) {
     throw new Error(
       `Access denied: ${real} is not an allowed workspace root. ` +
-      `Add it first with add_workspace_roots. Allowed: ${workspaceRoots.join(", ")}`
+      `Add it first with add_workspace_roots. Allowed: ${workspaceRoots.length > 0 ? workspaceRoots.join(", ") : "(none — the pool is empty)"}`
     );
   }
   const previous = activeWorkspace;
@@ -103,7 +125,7 @@ export function listWorkspaceRoots(): Array<{ path: string; exists: boolean; act
  */
 export function removeWorkspaceRoot(rootPath: string): boolean {
   initWorkspaceRoots();
-  if (sameRootIdentity(rootPath, getWorkspaceRoot())) {
+  if (activeWorkspace !== null && sameRootIdentity(rootPath, activeWorkspace)) {
     throw new Error("Cannot remove the active workspace — use set_workspace to select another allowed root first.");
   }
   const index = workspaceRoots.findIndex((r) => sameRootIdentity(r, rootPath));
@@ -139,7 +161,6 @@ export function addWorkspaceRoots(paths: string[]): Array<{ path: string; added:
   }
   return results;
 }
-
 /**
  * Test/bootstrap helper: reset the root pool to a single root and make it
  * active. NOT registered as an MCP tool — the pool is only mutated through
@@ -153,10 +174,25 @@ export function replaceWorkspaceRoots(rootPath: string): string[] {
   const real = fs.realpathSync(resolved);
   workspaceRoots = [real];
   activeWorkspace = real;
+  // The reset OWNS the pool from here: mark the module initialized so a
+  // later lazy initWorkspaceRoots() cannot re-seed from HOOSHIX_WORKSPACE
+  // and clobber this setup (test isolation depends on it).
+  initialized = true;
   return [...workspaceRoots];
 }
 
 let unrestrictedMode = false;
+
+/**
+ * Test-only: reset the pool to the EMPTY unconfigured state (no roots, no
+ * active workspace, env parse already consumed). Pinning the empty-by-default
+ * contract in tests; NEVER exposed through any tool or runtime path.
+ */
+export function __clearWorkspaceStateForTests(): void {
+  workspaceRoots = [];
+  activeWorkspace = null;
+  initialized = true;
+}
 
 /**
  * Guard for enabling unrestricted mode: file tools immediately gain access to
@@ -202,6 +238,9 @@ export function isUnrestrictedMode(): boolean {
  */
 export function classifyCommandCwd(cwd: string): { cwd: string; inside: boolean } {
   const resolved = path.resolve(cwd);
+  // No active workspace configured — nothing can be inside it (fail-closed).
+  const activeRoot = activeWorkspace;
+  if (activeRoot === null) return { cwd: resolved, inside: false };
   if (!fs.existsSync(resolved)) return { cwd: resolved, inside: false };
   let existing = resolved;
   while (!fs.existsSync(existing)) {
@@ -210,7 +249,7 @@ export function classifyCommandCwd(cwd: string): { cwd: string; inside: boolean 
     existing = parent;
   }
   const real = fs.realpathSync(existing);
-  const relative = path.relative(getWorkspaceRoot(), real);
+  const relative = path.relative(activeRoot, real);
   const inside = !relative.startsWith("..") && !path.isAbsolute(relative);
   return { cwd: real, inside };
 }
@@ -249,6 +288,14 @@ function assertInside(allowedRoots: string[], target: string): void {
 
 export function validateWorkspace(targetPath: string): string {
   initWorkspaceRoots();
+  // Empty-by-default pool: with no active workspace, file tools operate
+  // NOWHERE — every path is outside (fail-closed) until a workspace is set.
+  const root = activeWorkspace;
+  if (root === null) {
+    throw new Error(
+      "Access denied: no active workspace. Add a root with add_workspace_roots and select it with set_workspace first."
+    );
+  }
   
   // Absolute path: in unrestricted mode, allow any path on the system
   if (path.isAbsolute(targetPath)) {
@@ -268,20 +315,19 @@ export function validateWorkspace(targetPath: string): string {
     
     // Restricted: file tools are scoped to the ACTIVE workspace only — other
     // configured roots are NOT implicitly accessible (least privilege).
-    assertInside([getWorkspaceRoot()], resolved);
+    assertInside([root], resolved);
     let existing = resolved;
     while (!fs.existsSync(existing)) {
       const parent = path.dirname(existing);
       if (parent === existing) throw new Error("Access denied: invalid path");
       existing = parent;
     }
-    assertInside([getWorkspaceRoot()], fs.realpathSync(existing));
-    if (fs.existsSync(resolved)) assertInside([getWorkspaceRoot()], fs.realpathSync(resolved));
+    assertInside([root], fs.realpathSync(existing));
+    if (fs.existsSync(resolved)) assertInside([root], fs.realpathSync(resolved));
     return resolved;
   }
   
   // Relative path — resolve against active workspace
-  const root = getWorkspaceRoot();
   const resolved = path.resolve(root, targetPath);
   assertInside([root], resolved);
 

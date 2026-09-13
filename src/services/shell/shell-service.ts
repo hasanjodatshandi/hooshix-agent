@@ -4,7 +4,7 @@ import { policyDecisionPoint } from "../../core/governance/policy-decision-point
 import { logCommandAction } from "../../memory/command-audit.js";
 import { resolveCorrelationId } from "../../core/runtime/correlation-id.js";
 import { assertCwdExists } from "../execa-result.js";
-import { validateCommandCwd } from "../../security/workspace-guard.js";
+import { validateCommandCwd, getActiveWorkspace } from "../../security/workspace-guard.js";
 import path from "node:path";
 
 export async function executeShellCommand(
@@ -20,6 +20,13 @@ export async function executeShellCommand(
 
   try {
     const safeCwd = path.resolve(cwd);
+    // Empty-by-default pool: with no active workspace, there is no "inside"
+    // anywhere — every cwd is an unapprovable escalation. Fail closed here
+    // before touching the filesystem, with an actionable message.
+    const activeWorkspace = getActiveWorkspace();
+    if (activeWorkspace === null) {
+      throw new Error("Access denied: no active workspace — configure one with add_workspace_roots + set_workspace before running commands.");
+    }
     // Fail fast on a non-existent cwd instead of a confusing spawn failure.
     assertCwdExists(safeCwd, "Working directory");
     // Subprocess filesystem scope: the cwd must be inside the ACTIVE workspace,

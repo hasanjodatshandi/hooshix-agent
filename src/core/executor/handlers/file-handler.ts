@@ -25,12 +25,14 @@ const object = z.record(z.string(), z.unknown());
  * If the path is relative and executionContext is available,
  * resolve against the task's persisted workspace (not the global workspace).
  */
-function resolveTaskPath(filePath: string, executionContext?: { workspace: string }): string {
+function resolveTaskPath(filePath: string, executionContext?: { workspace: string | null }): string {
   if (path.isAbsolute(filePath)) return filePath;
   if (executionContext?.workspace) {
     return path.resolve(executionContext.workspace, filePath);
   }
-  return filePath; // fallback to default behavior
+  // No task workspace (empty-by-default pool) — leave relative; validateWorkspace
+  // will deny it because no active workspace exists to resolve against.
+  return filePath;
 }
 
 export class FileToolHandler implements ToolHandler {

@@ -22,8 +22,11 @@ export function registerExecuteCommandTool(server: McpServer) {
     const traceId = resolveCorrelationId(correlationId);
     return auditToolCall("execute_command", traceId, taskId, async () => {
       // "." (or unset) means "the active workspace", not the server's process
-      // cwd — so a workspace switch keeps direct calls scoped correctly.
-      const effectiveCwd = !cwd || cwd === "." ? getWorkspaceRoot() : cwd;
+      // cwd — so a workspace switch keeps direct calls scoped correctly. With
+      // the empty-by-default pool, null propagates: executeShellCommand fails
+      // closed with "no active workspace".
+      const active = getWorkspaceRoot();
+      const effectiveCwd = !cwd || cwd === "." ? (active ?? ".") : cwd;
       const result = await executeShellCommand(command, args, effectiveCwd, timeout, traceId);
       return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }], _meta: { correlationId: traceId } };
     });

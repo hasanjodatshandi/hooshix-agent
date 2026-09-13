@@ -21,7 +21,7 @@ const GIT_CWD_TOOLS = new Set<ToolName>([
  * governance sees the EFFECTIVE cwd the handler will use (executionContext.
  * workspace) — never the server process cwd.
  */
-export function checkStepGovernance(step: TaskStep | string, effectiveCwd?: string) {
+export function checkStepGovernance(step: TaskStep | string, effectiveCwd?: string | null) {
   if (typeof step === "string") return evaluateAction(step);
 
   const tool = selectTool(step);

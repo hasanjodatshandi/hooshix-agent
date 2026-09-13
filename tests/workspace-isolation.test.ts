@@ -11,6 +11,8 @@ import {
   getWorkspaceRoot,
   validateWorkspace,
   validateCommandCwd,
+  classifyCommandCwd,
+  __clearWorkspaceStateForTests,
 } from "../src/security/workspace-guard.js";
 
 // Contract tests for the multi-root workspace pool model:
@@ -144,5 +146,47 @@ describe("workspace isolation: execute_command cwd gate", () => {
 
   it("non-existent cwd fails fast", () => {
     expect(() => validateCommandCwd(path.join(wsA, "does-not-exist-xyz"))).toThrow(/does not exist/);
+  });
+});
+
+describe("workspace pool: empty by default (no implicit root)", () => {
+  it("file tools are denied entirely when no active workspace is configured", () => {
+    // Simulate the never-configured boot state: clear the pool AND the active
+    // selection without re-seeding from env (empty-by-default contract).
+    __clearWorkspaceStateForTests();
+    try {
+      expect(getWorkspaceRoot()).toBeNull();
+      expect(listWorkspaceRoots()).toEqual([]);
+      // Every path — absolute, relative, even inside the would-be env root —
+      // is outside, because there is nowhere to be inside.
+      expect(() => validateWorkspace("D:/anywhere/file.txt")).toThrow(/no active workspace/);
+      expect(() => validateWorkspace("relative/file.txt")).toThrow(/no active workspace/);
+      // cwd classification: nothing is inside a non-existent workspace.
+      expect(classifyCommandCwd(path.resolve(".")).inside).toBe(false);
+    } finally {
+      replaceWorkspaceRoots(path.resolve("."));
+    }
+  });
+
+  it("set_workspace refuses a path while the pool is empty, with an actionable error", () => {
+    __clearWorkspaceStateForTests();
+    try {
+      expect(() => setActiveWorkspace(path.resolve("."))).toThrow(/pool is empty|not an allowed workspace root/);
+    } finally {
+      replaceWorkspaceRoots(path.resolve("."));
+    }
+  });
+
+  it("first add_workspace_roots call both fills the pool and activates the root", () => {
+    __clearWorkspaceStateForTests();
+    try {
+      const results = addWorkspaceRoots([wsA]);
+      expect(results).toEqual([{ path: fs.realpathSync(wsA), added: true }]);
+      expect(getWorkspaceRoot()).toBe(fs.realpathSync(wsA));
+      // File tools now work inside it.
+      expect(validateWorkspace(path.join(wsA, "x.txt"))).toContain(fs.realpathSync(wsA));
+    } finally {
+      replaceWorkspaceRoots(path.resolve("."));
+    }
   });
 });
