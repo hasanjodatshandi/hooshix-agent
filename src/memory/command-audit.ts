@@ -6,6 +6,8 @@ function logPath(): string {
 }
 
 const SENSITIVE_PATTERN = /token|secret|password|api[-_]?key|credential|auth[-_]?key|access[-_]?key|private[-_]?key|sign[-_]?key/i;
+/** Bare secret values (no =) — high-entropy-looking tokens are redacted too. */
+const RAW_SECRET_PATTERN = /^(sk|ghp|gho|github_pat|xoxb|xoxp|AKIA)[-_][A-Za-z0-9_\-]{8,}$/;
 
 function redactArguments(args: string[] = []): string[] {
   let redactNext = false;
@@ -14,9 +16,15 @@ function redactArguments(args: string[] = []): string[] {
       redactNext = false;
       return "[REDACTED]";
     }
+    // Bare secret value that merely contains a keyword (old behavior logged it
+    // verbatim) or a recognizable raw token prefix — redact, don't log.
+    if (RAW_SECRET_PATTERN.test(argument)) return "[REDACTED]";
     if (SENSITIVE_PATTERN.test(argument)) {
-      redactNext = !argument.includes("=");
-      return argument.includes("=") ? `${argument.split("=", 1)[0]}=[REDACTED]` : argument;
+      if (argument.includes("=")) {
+        return `${argument.split("=", 1)[0]}=[REDACTED]`;
+      }
+      // Keyword present without "=" — treat the whole argument as a secret value
+      return "[REDACTED]";
     }
     return argument;
   });

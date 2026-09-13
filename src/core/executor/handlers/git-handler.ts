@@ -1,10 +1,11 @@
 import { z } from "zod";
 import type { ToolHandler, ToolHandlerContext } from "./tool-handler.js";
 import type { ToolName } from "../../orchestrator/tool-orchestrator.js";
-import { gitStatus, gitDiff, gitClone, gitCommit, gitBranch, gitCheckout } from "../../../services/git/git-service.js";
+import { gitStatus, gitDiff, gitClone, gitCommit, gitBranch, gitCheckout, gitAdd, gitInit, gitLog } from "../../../services/git/git-service.js";
 
 const GIT_TOOLS: ReadonlySet<ToolName> = new Set([
-  "git_status", "git_diff", "git_clone", "git_commit", "git_branch", "git_checkout"
+  "git_status", "git_diff", "git_clone", "git_commit", "git_branch", "git_checkout",
+  "git_add", "git_init", "git_log"
 ]);
 
 const object = z.record(z.string(), z.unknown());
@@ -40,6 +41,18 @@ export class GitToolHandler implements ToolHandler {
       case "git_checkout": {
         const value = z.object({ cwd: z.string().default("."), name: z.string(), create: z.boolean().default(false) }).parse(data);
         return gitCheckout(value.cwd, value.name, value.create, correlationId);
+      }
+      case "git_add": {
+        const value = z.object({ cwd: z.string().default("."), paths: z.array(z.string()).min(1).max(100) }).parse(data);
+        return gitAdd(value.cwd, value.paths, correlationId);
+      }
+      case "git_init": {
+        const value = z.object({ path: z.string(), initialBranch: z.string().default("main") }).parse(data);
+        return gitInit(value.path, value.initialBranch, correlationId);
+      }
+      case "git_log": {
+        const value = z.object({ cwd: z.string().default("."), limit: z.number().int().min(1).max(100).default(20) }).parse(data);
+        return gitLog(value.cwd, value.limit, correlationId);
       }
       default:
         throw new Error(`GitToolHandler: unsupported tool ${tool}`);

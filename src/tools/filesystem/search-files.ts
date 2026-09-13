@@ -7,7 +7,7 @@ import { auditToolCall } from "../../core/memory/tool-audit.js";
 export function registerSearchFilesTool(server: McpServer) {
   server.registerTool("search_files", {
     title: "Search Files",
-    description: "Search text inside workspace files",
+    description: "📖 READ — Search text inside workspace files. Returns matching lines with file paths. Case-sensitive; max 1000 results / 10000 files; lines truncated at 512 bytes.\n\nExamples: { \"query\": \"TODO\" } · { \"query\": \"function\", \"path\": \"src\" }",
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true },
     inputSchema: z.object({
       path: z.string().default("."),
@@ -18,8 +18,11 @@ export function registerSearchFilesTool(server: McpServer) {
   }, async ({ path, query, correlationId, taskId }) => {
     const traceId = resolveCorrelationId(correlationId);
     return auditToolCall("search_files", traceId, taskId, async () => {
-      const results = await searchWorkspaceFiles(path, query, traceId);
-      return { content: [{ type: "text" as const, text: results.join("\n") || "No matches found" }], _meta: { correlationId: traceId } };
+      const result = await searchWorkspaceFiles(path, query, traceId);
+      const text = result.matches.length === 0
+        ? "No matches found"
+        : JSON.stringify(result, null, 2);
+      return { content: [{ type: "text" as const, text }], _meta: { correlationId: traceId } };
     });
   });
 }

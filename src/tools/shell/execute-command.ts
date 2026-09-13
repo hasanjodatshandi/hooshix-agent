@@ -7,10 +7,10 @@ import { auditToolCall } from "../../core/memory/tool-audit.js";
 export function registerExecuteCommandTool(server: McpServer) {
   server.registerTool("execute_command", {
     title: "Execute Command",
-    description: "Execute an allowed development command without a system shell",
+    description: "⚙️ EXECUTE — Run a whitelisted command: node, npm, pnpm, git, python, py, gh. argv-separated (no shell). Subprocesses are NOT sandboxed to the workspace.\n\nAuto-allowed (read-only): git status/diff/log, gh pr list/view, node --version. Everything else (scripts, npm run, git/gh mutations) requires an approved task step.\n\nExamples: { \"command\": \"git\", \"args\": [\"status\"], \"cwd\": \"D:/Projects/my-repo\" } · { \"command\": \"gh\", \"args\": [\"pr\", \"list\"] }\n\ntimeout: ms, default 30000, max 120000.",
     annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true },
     inputSchema: z.object({
-      command: z.enum(["node", "npm", "pnpm", "git", "python", "py", "powershell"]),
+      command: z.enum(["node", "npm", "pnpm", "git", "python", "py", "gh"]),
       args: z.array(z.string()).max(100).default([]),
       cwd: z.string().default("."),
       timeout: z.number().int().min(100).max(120000).default(30000),

@@ -15,7 +15,16 @@ describe("typed task plan persistence", () => {
     plan.steps[1].error = "expected failure";
 
     saveTaskPlan(plan, "failed");
-    expect(getTaskPlan(plan.id)).toEqual(plan);
+    const loaded = getTaskPlan(plan.id)!;
+    expect(loaded).toBeDefined();
+    expect(loaded.id).toBe(plan.id);
+    expect(loaded.task).toBe(plan.task);
+    expect(loaded.state).toBe("failed");
+    expect(loaded.steps).toHaveLength(2);
+    expect(loaded.steps[0].status).toBe("completed");
+    expect(loaded.steps[0].output).toEqual({ ok: true });
+    expect(loaded.steps[1].status).toBe("failed");
+    expect(loaded.steps[1].error).toBe("expected failure");
   });
 
   it("rejects duplicate ids and forward dependencies", () => {

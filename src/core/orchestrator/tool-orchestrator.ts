@@ -4,11 +4,91 @@ export const TOOL_NAMES = [
   "get_system_info", "agent_metrics", "list_directory", "read_file", "write_file", "create_file",
   "modify_file", "delete_file", "restore_file", "search_files", "execute_command",
   "git_status", "git_diff", "git_clone", "git_commit", "git_branch", "git_checkout",
-  "install_package", "remove_package", "update_package"
+  "git_add", "git_init", "git_log",
+  "install_package", "remove_package", "update_package", "package_restore",
+  "task_snapshot", "task_rollback",
+  "set_workspace", "get_workspace"
 ] as const;
 
 export type ToolName = typeof TOOL_NAMES[number];
 export type ToolRisk = "low" | "medium" | "high" | "critical";
+
+/** Canonical tool categories for documentation/UI grouping (not an MCP wire field). */
+export const TOOL_CATEGORIES = [
+  "Read actions",
+  "Write actions",
+  "Execute & Git",
+  "Packages",
+  "Task Engine",
+  "Context & Memory",
+] as const;
+export type ToolCategory = (typeof TOOL_CATEGORIES)[number];
+
+/**
+ * Category assignment for every registered tool — the single source of truth
+ * for grouped docs/UI. Keyed by tool name (string, not ToolName): TOOL_NAMES
+ * only covers step-executable tools, while the registry also exposes task,
+ * project, memory, and workspace management tools.
+ */
+export const TOOL_CATEGORY_MAP: Record<string, ToolCategory> = {
+  get_system_info: "Read actions",
+  agent_metrics: "Read actions",
+  list_directory: "Read actions",
+  read_file: "Read actions",
+  search_files: "Read actions",
+  get_workspace: "Read actions",
+  git_status: "Read actions",
+  git_diff: "Read actions",
+  git_log: "Read actions",
+  task_get: "Read actions",
+  task_list: "Read actions",
+  task_report: "Read actions",
+  task_links: "Read actions",
+  task_step_risks: "Read actions",
+  project_list: "Read actions",
+  project_get: "Read actions",
+  memory_list: "Read actions",
+  memory_get: "Read actions",
+
+  write_file: "Write actions",
+  create_file: "Write actions",
+  modify_file: "Write actions",
+  delete_file: "Write actions",
+  restore_file: "Write actions",
+  set_workspace: "Write actions",
+  remove_workspace_root: "Write actions",
+  replace_workspace_roots: "Write actions",
+  task_append_steps: "Write actions",
+  task_link: "Write actions",
+  project_save: "Write actions",
+  project_delete: "Write actions",
+  project_archive: "Write actions",
+
+  execute_command: "Execute & Git",
+  git_clone: "Execute & Git",
+  git_commit: "Execute & Git",
+  git_branch: "Execute & Git",
+  git_checkout: "Execute & Git",
+  git_add: "Execute & Git",
+  git_init: "Execute & Git",
+  task_snapshot: "Execute & Git",
+  task_rollback: "Execute & Git",
+
+  install_package: "Packages",
+  remove_package: "Packages",
+  update_package: "Packages",
+  package_restore: "Packages",
+
+  task_create: "Task Engine",
+  task_run: "Task Engine",
+  task_approve: "Task Engine",
+  task_resume: "Task Engine",
+  task_replay: "Task Engine",
+  task_cancel: "Task Engine",
+
+  memory_add: "Context & Memory",
+  memory_delete: "Context & Memory",
+};
 
 export interface ToolCapability {
   risk: ToolRisk;
@@ -34,9 +114,17 @@ export const TOOL_CAPABILITIES: Record<ToolName, ToolCapability> = {
   git_commit: { risk: "high", capabilities: ["git", "commit"], requiredArguments: ["message"] },
   git_branch: { risk: "high", capabilities: ["git", "branch"], requiredArguments: ["name"] },
   git_checkout: { risk: "high", capabilities: ["git", "checkout", "switch"], requiredArguments: ["name"] },
+  git_add: { risk: "high", capabilities: ["git", "add", "stage"], requiredArguments: ["paths"] },
+  git_init: { risk: "medium", capabilities: ["git", "init"], requiredArguments: ["path"] },
+  git_log: { risk: "low", capabilities: ["git", "log", "history"], requiredArguments: [] },
   install_package: { risk: "critical", capabilities: ["package", "install", "dependency"], requiredArguments: ["manager", "name"] },
   remove_package: { risk: "critical", capabilities: ["package", "remove", "uninstall", "dependency"], requiredArguments: ["manager", "name"] },
-  update_package: { risk: "critical", capabilities: ["package", "update", "upgrade", "dependency"], requiredArguments: ["manager", "name"] }
+  update_package: { risk: "critical", capabilities: ["package", "update", "upgrade", "dependency"], requiredArguments: ["manager", "name"] },
+  package_restore: { risk: "high", capabilities: ["package", "restore", "rollback", "snapshot"], requiredArguments: ["snapshotId"] },
+  task_snapshot: { risk: "medium", capabilities: ["task", "snapshot", "git", "capture"], requiredArguments: ["cwd"] },
+  task_rollback: { risk: "critical", capabilities: ["task", "rollback", "restore", "git", "reset"], requiredArguments: ["snapshotId", "cwd"] },
+  set_workspace: { risk: "medium", capabilities: ["workspace", "directory", "path", "config"], requiredArguments: ["path"] },
+  get_workspace: { risk: "low", capabilities: ["workspace", "directory", "path", "info"], requiredArguments: [] }
 };
 
 const TOOL_SET = new Set<string>(TOOL_NAMES);
@@ -79,11 +167,12 @@ export function selectTool(step: TaskStep): ToolName {
 
 export async function executeToolStep(
   step: TaskStep,
-  executor: (tool: ToolName, step: TaskStep) => Promise<unknown>
+  executor: (tool: ToolName, step: TaskStep, signal?: AbortSignal) => Promise<unknown>,
+  signal?: AbortSignal
 ) {
   const tool = defaultSelector.select(step);
 
-  const result = await executor(tool, step);
+  const result = await executor(tool, step, signal);
 
   return {
     tool,

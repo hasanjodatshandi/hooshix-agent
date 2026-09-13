@@ -19,7 +19,9 @@ const transitions: Record<TaskState, TaskState[]> = {
   checkpointing: ["executing", "waiting_approval", "recovering", "verifying", "failed", "cancelled"],
   recovering: ["executing", "waiting_approval", "failed", "cancelled"],
   resuming: ["executing", "recovering", "failed", "cancelled"],
-  verifying: ["completed", "recovering", "failed", "cancelled"],
+  // "executing" is a valid exit: if the process died between move(verifying)
+  // and the final save, the task must be resumable instead of stuck forever.
+  verifying: ["executing", "completed", "recovering", "failed", "cancelled"],
   completed: [],
   failed: ["resuming", "cancelled"],
   cancelled: []

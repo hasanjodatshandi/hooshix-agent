@@ -1,7 +1,7 @@
 import { getResumableTasks, getResumePoint, getTaskExecutions } from "../memory/resume-memory.js";
 import type { RecoveryAction } from "./recovery-engine.js";
 import type { RecoveryProvider } from "../trace/unified-recovery-service.js";
-import { PersistentRecoveryRepository } from "../trace/recovery-repository.js";
+import type { PersistentRecoveryRepository } from "../trace/recovery-repository.js";
 
 export interface RecoverySession {
   task: unknown;
@@ -10,9 +10,9 @@ export interface RecoverySession {
   recovery?: RecoveryAction;
 }
 
-export function restoreInterruptedTasks(provider?: RecoveryProvider): RecoverySession[] {
-  if (provider) {
-    for (const event of new PersistentRecoveryRepository().findIncomplete()) {
+export function restoreInterruptedTasks(provider?: RecoveryProvider, recoveryRepository?: PersistentRecoveryRepository): RecoverySession[] {
+  if (provider && recoveryRepository) {
+    for (const event of recoveryRepository.findIncomplete()) {
       provider.recordLifecycle({ ...event, status: "failed", completedAt: new Date().toISOString(), reason: `${event.reason}; interrupted before completion` });
     }
   }

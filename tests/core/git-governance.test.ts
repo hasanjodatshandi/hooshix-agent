@@ -35,3 +35,25 @@ describe("git governance", () => {
     expect(status.decision).toBe("allow");
   });
 });
+
+describe("gh command governance", () => {
+  it("read-only gh subcommands are allowed without approval", () => {
+    const r1 = policyDecisionPoint.evaluate({ tool: "execute_command", arguments: { command: "gh", args: ["pr", "list"] } });
+    expect(r1.allowed).toBe(true); expect(r1.requiresApproval).toBe(false);
+    const r2 = policyDecisionPoint.evaluate({ tool: "execute_command", arguments: { command: "gh", args: ["pr", "view", "123"] } });
+    expect(r2.allowed).toBe(true); expect(r2.requiresApproval).toBe(false);
+    const r3 = policyDecisionPoint.evaluate({ tool: "execute_command", arguments: { command: "gh", args: ["repo", "view"] } });
+    expect(r3.allowed).toBe(true); expect(r3.requiresApproval).toBe(false);
+    const r4 = policyDecisionPoint.evaluate({ tool: "execute_command", arguments: { command: "gh", args: ["issue", "list"] } });
+    expect(r4.allowed).toBe(true); expect(r4.requiresApproval).toBe(false);
+  });
+
+  it("gh mutations require approval", () => {
+    const r1 = policyDecisionPoint.evaluate({ tool: "execute_command", arguments: { command: "gh", args: ["pr", "create", "--title", "test"] } });
+    expect(r1.allowed).toBe(true); expect(r1.requiresApproval).toBe(true);
+    const r2 = policyDecisionPoint.evaluate({ tool: "execute_command", arguments: { command: "gh", args: ["pr", "merge", "123"] } });
+    expect(r2.allowed).toBe(true); expect(r2.requiresApproval).toBe(true);
+    const r3 = policyDecisionPoint.evaluate({ tool: "execute_command", arguments: { command: "gh", args: ["issue", "create", "--title", "bug"] } });
+    expect(r3.allowed).toBe(true); expect(r3.requiresApproval).toBe(true);
+  });
+});

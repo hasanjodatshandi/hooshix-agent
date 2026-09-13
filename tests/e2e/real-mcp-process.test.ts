@@ -8,11 +8,13 @@ describe("real mcp process integration", () => {
     try {
       const tools = await client.listTools();
       expect(tools.tools.map((tool) => tool.name).sort()).toEqual([
-        "agent_metrics", "create_file", "delete_file", "execute_command", "get_system_info",
-        "git_branch", "git_checkout", "git_clone", "git_commit", "git_diff", "git_status",
-        "install_package", "list_directory", "memory_add", "memory_list", "modify_file",
-        "project_list", "project_save", "read_file", "remove_package", "restore_file", "search_files",
-        "task_approve", "task_cancel", "task_create", "task_get", "task_list", "task_replay", "task_report", "task_resume", "task_run",
+        "agent_metrics", "create_file", "delete_file", "execute_command", "get_system_info", "get_workspace",
+        "git_add", "git_branch", "git_checkout", "git_clone", "git_commit", "git_diff", "git_init", "git_log", "git_status",
+        "install_package", "list_directory", "memory_add", "memory_delete", "memory_get", "memory_list", "modify_file",
+        "package_restore",
+        "project_archive", "project_delete", "project_get", "project_list", "project_save",        "read_file", "remove_package", "remove_workspace_root", "replace_workspace_roots", "restore_file", "search_files",
+        "set_workspace",
+        "task_append_steps", "task_approve", "task_cancel", "task_create", "task_get", "task_link", "task_links", "task_list", "task_replay", "task_report", "task_resume", "task_rollback", "task_run", "task_snapshot", "task_step_risks",
         "update_package", "write_file"
       ]);
       const byName = new Map(tools.tools.map((tool) => [tool.name, tool]));

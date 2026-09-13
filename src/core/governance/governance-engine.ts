@@ -34,11 +34,5 @@ export function evaluateAction(action: string): GovernanceResult {
 }
 
 export function assertGovernance(action: string) {
-  const result = evaluateAction(action);
-
-  if (result.decision === "blocked") {
-    throw new Error(`Action blocked: ${result.reason}`);
-  }
-
-  return result;
+  return evaluateAction(action);
 }

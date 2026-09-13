@@ -21,12 +21,18 @@ export interface PolicyDecision {
 
 const APPROVAL_TOOLS = new Set<ToolName>([
   "delete_file", "git_clone", "git_commit", "git_branch", "git_checkout",
-  "install_package", "remove_package", "update_package"
+  "git_add", "install_package", "remove_package", "update_package",
+  "task_rollback"
 ]);
 const approvedTool = new AsyncLocalStorage<ToolName>();
 
 export function runWithPolicyApproval<T>(tool: string, operation: () => Promise<T>): Promise<T> {
   return approvedTool.run(validateToolName(tool), operation);
+}
+
+/** Whether approval gates are enforced for direct MCP calls. */
+export function isDirectApprovalBypassEnabled(): boolean {
+  return process.env.HOOSHIX_DIRECT_AUTO_APPROVE === "1";
 }
 
 export class PolicyDecisionPoint {
@@ -60,8 +66,17 @@ export class PolicyDecisionPoint {
   assertAllowed(request: PolicyRequest): PolicyDecision {
     const decision = this.evaluate(request);
     if (!decision.allowed) throw new Error(decision.reason);
-    if (decision.requiresApproval && approvedTool.getStore() !== validateToolName(request.tool)) {
-      throw new Error(`Approval required: ${request.tool} must run through an approved task step`);
+    if (decision.requiresApproval) {
+      const storeValue = approvedTool.getStore();
+      if (storeValue !== undefined && storeValue !== validateToolName(request.tool)) {
+        throw new Error(`Approval required: ${request.tool} must run through an approved task step`);
+      }
+      // Direct MCP call (no task context) — requires explicit opt-in via
+      // HOOSHIX_DIRECT_AUTO_APPROVE=1 because the caller and the approver
+      // are the same principal in that case.
+      if (storeValue === undefined && !isDirectApprovalBypassEnabled()) {
+        throw new Error(`Approval required: ${request.tool} must run through an approved task step (set HOOSHIX_DIRECT_AUTO_APPROVE=1 to allow direct calls)`);
+      }
     }
     return decision;
   }

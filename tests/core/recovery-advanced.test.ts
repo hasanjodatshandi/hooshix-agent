@@ -23,7 +23,7 @@ describe("advanced recovery", () => {
   it("closes a recovery lifecycle interrupted by a process crash", () => {
     const repository = new PersistentRecoveryRepository();
     repository.save({ recoveryId: "crashed-recovery", correlationId: "crashed-correlation", action: "retry", reason: "timeout", retryCount: 1, startedAt: new Date().toISOString(), status: "started" });
-    restoreInterruptedTasks(createRuntimeDependencies().recoveryProvider);
+    restoreInterruptedTasks(createRuntimeDependencies().recoveryProvider, repository);
     expect(repository.findByCorrelationId("crashed-correlation").at(-1)?.status).toBe("failed");
   });
 });

@@ -9,3 +9,7 @@ tests/runtime-files/
 tests/runtime-*/
 tests/runtime-workspace-link
 trace-test.txt
+.token
+.env
+.env.*
+*.local

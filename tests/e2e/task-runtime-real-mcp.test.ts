@@ -30,7 +30,16 @@ describe("real MCP persistent task runtime", () => {
 
       const runResult = await client.callTool({ name: "task_run", arguments: { taskId: created.id, maxRecovery: 0, correlationId } });
       expect(runResult.isError).not.toBe(true);
-      expect(json(runResult).status).toBe("completed");
+      // node <script> is approval-gated: the run pauses at step 2
+      const paused = json(runResult);
+      expect(paused.status).toBe("pending_approval");
+      expect(typeof paused.approvalId).toBe("number");
+
+      const approveResult = await client.callTool({ name: "task_approve", arguments: { approvalId: paused.approvalId, correlationId } });
+      expect(approveResult.isError).not.toBe(true);
+      const resumeResult = await client.callTool({ name: "task_resume", arguments: { approvalId: paused.approvalId, correlationId } });
+      expect(resumeResult.isError).not.toBe(true);
+      expect(json(resumeResult).status).toBe("completed");
 
       const loaded = json(await client.callTool({ name: "task_get", arguments: { taskId: created.id, correlationId } }));
       expect(loaded.steps.map((step: { status: string }) => step.status)).toEqual(["completed", "completed"]);

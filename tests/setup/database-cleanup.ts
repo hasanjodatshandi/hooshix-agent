@@ -1,7 +1,9 @@
 import { beforeEach } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
-import { resetAgentDatabase } from "../../src/core/memory/database.js";
+import { resetAgentDatabase, resetMigrationsFlag } from "../../src/core/memory/database.js";
+import { resetColumnsFlag } from "../../src/core/memory/task-repository.js";
+import { resetRecoveryTaskIdFlag } from "../../src/core/trace/recovery-repository.js";
 
 const databasePath = path.resolve(process.env.HOOSHIX_DB_PATH ?? "./data/test-agent-memory.db");
 const logDirectory = path.resolve(process.env.HOOSHIX_LOG_DIR ?? "./data/test-logs");
@@ -23,6 +25,9 @@ function rmSyncWithRetry(filePath: string, options?: fs.RmOptions): void {
 
 beforeEach(() => {
   resetAgentDatabase();
+  resetMigrationsFlag();
+  resetColumnsFlag();
+  resetRecoveryTaskIdFlag();
   for (const suffix of ["", "-wal", "-shm"]) rmSyncWithRetry(databasePath + suffix, { force: true });
   fs.rmSync(logDirectory, { recursive: true, force: true });
   fs.rmSync(memoryFile, { force: true });

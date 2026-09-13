@@ -8,6 +8,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { withAgentDatabase } from "../../core/memory/database.js";
+import { assertCwdExists, describeExecaFailure } from "../execa-result.js";
 
 export type PackageManager = "npm" | "pnpm" | "pip" | "winget" | "choco";
 export type PackageAction = "install" | "remove" | "update";
@@ -96,23 +97,30 @@ export function verificationCommandFor(manager: PackageManager, packageName: str
   return { command: "choco", args: ["list", "--local-only", "--exact", packageName] };
 }
 
-export async function managePackage(input: { manager: PackageManager; action: PackageAction; name: string; cwd?: string; timeout?: number; correlationId?: string }) {
+export async function managePackage(input: { manager: PackageManager; action: PackageAction; name: string; cwd?: string; timeout?: number; correlationId?: string; signal?: AbortSignal }) {
   const tool = `${input.action === "install" ? "install" : input.action === "remove" ? "remove" : "update"}_package`;
   policyDecisionPoint.assertAllowed({ tool, arguments: input as unknown as Record<string, unknown>, correlationId: input.correlationId });
   if (input.manager === "winget" || input.manager === "choco") assertAdminPermission();
   const name = validatePackageName(input.name);
   const cwd = validateWorkspace(input.cwd ?? ".");
+  // Fail fast on a non-existent cwd instead of a confusing spawn failure.
+  assertCwdExists(cwd, "Package working directory");
   const traceId = resolveCorrelationId(input.correlationId);
   const snapshot = await createPackageSnapshot(input.manager, input.action, name, cwd, traceId);
   const { command, args } = commandFor(input.manager, input.action, name);
   try {
-    const result = await execa(command, args, { cwd, shell: false, reject: false, timeout: input.timeout ?? 300000, maxBuffer: 2 * 1024 * 1024 });
+    const pkgExecaOpts: Record<string, unknown> = { cwd, shell: false, reject: false, timeout: input.timeout ?? 300000, maxBuffer: 2 * 1024 * 1024 };
+    if (input.signal) pkgExecaOpts.cancelSignal = input.signal;
+    const result = await execa(command, args, pkgExecaOpts);
     await logCommandAction({ command, args, cwd, exitCode: result.exitCode, status: result.timedOut ? "timeout" : result.exitCode === 0 ? "success" : "failed", correlationId: traceId });
     if (result.timedOut) throw new Error("Package operation timed out");
-    if (result.exitCode !== 0) throw new Error(result.stderr || `${command} exited with code ${result.exitCode}`);
+    if (result.exitCode !== 0) throw new Error(result.stderr || describeExecaFailure(command, result));
 
     const verification = verificationCommandFor(input.manager, name);
-    const checked = await execa(verification.command, verification.args, { cwd, shell: false, reject: false, timeout: Math.min(input.timeout ?? 300000, 120000), maxBuffer: 2 * 1024 * 1024 });
+    const verifyExecaOpts: Record<string, unknown> = { cwd, shell: false, reject: false, timeout: Math.min(input.timeout ?? 300000, 120000), maxBuffer: 2 * 1024 * 1024 };
+    if (input.signal) verifyExecaOpts.cancelSignal = input.signal;
+    const checked = await execa(verification.command, verification.args, verifyExecaOpts);
+    if (checked.isCanceled) throw new Error(`${verification.command} verification was cancelled`);
     if (checked.timedOut) {
       await logCommandAction({ command: verification.command, args: verification.args, cwd, exitCode: checked.exitCode, status: "timeout", correlationId: traceId });
       throw new Error("Package verification timed out");
@@ -138,4 +146,23 @@ export async function managePackage(input: { manager: PackageManager; action: Pa
     }
     throw error;
   }
+}
+
+/**
+ * Restore a package snapshot by its ID.
+ * Reverts package.json, lockfile, and any other tracked files to their pre-operation state.
+ */
+export async function restorePackage(snapshotId: string, correlationId?: string) {
+  const traceId = resolveCorrelationId(correlationId);
+  policyDecisionPoint.assertAllowed({ tool: "package_restore", arguments: { snapshotId }, correlationId: traceId });
+  const row = withAgentDatabase((db) => db.prepare(
+    "SELECT id, cwd, snapshot, status FROM package_snapshots WHERE id = ?"
+  ).get(snapshotId) as { id: string; cwd: string; snapshot: string; status: string } | undefined);
+  if (!row) throw new Error(`Package snapshot not found: ${snapshotId}`);
+  if (row.status === "rolled_back") throw new Error(`Package snapshot ${snapshotId} was already restored`);
+  const snapshot: PackageSnapshot = { id: row.id, ...JSON.parse(row.snapshot) };
+  const cwd = validateWorkspace(row.cwd);
+  await restorePackageSnapshot(snapshot, cwd);
+  updateSnapshot(snapshotId, "rolled_back");
+  return { snapshotId, restored: true, cwd, correlationId: traceId };
 }

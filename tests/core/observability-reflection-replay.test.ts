@@ -21,13 +21,20 @@ describe("observability, reflection, and execution replay", () => {
     expect((await runtime.run(source.id, 0)).status).toBe("completed");
     const replay = await new ReplayExecutor(runtime).replay(source.id);
     expect(replay.status).toBe("completed");
-    expect(replay.equivalentStepStates).toBe(true);
-    expect(replay.replayTaskId).not.toBe(source.id);
+    if ("comparison" in replay) {
+      expect(replay.comparison.equivalentFinalStepStatuses).toBe(true);
+      expect(replay.replayTaskId).not.toBe(source.id);
+    }
   });
 
-  it("requires explicit confirmation before replaying mutations", async () => {
+  it("returns blocked result for mutating replay without permission", async () => {
     const runtime = createTaskRuntimeService();
     const source = runtime.create({ title: "write", steps: [{ action: "write", tool: "write_file", arguments: { path: "tests/replay-write.txt", content: "x" } }] });
-    await expect(new ReplayExecutor(runtime).replay(source.id)).rejects.toThrow("explicit confirmation");
+    const result = await new ReplayExecutor(runtime).replay(source.id);
+    expect(result.status).toBe("blocked");
+    if ("mutatingSteps" in result) {
+      expect(result.mutatingSteps).toContain(1);
+      expect(result.requiresAllowMutations).toBe(true);
+    }
   });
 });

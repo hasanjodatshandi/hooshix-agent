@@ -1,4 +1,4 @@
-const allowedCommands = new Set(["node", "npm", "pnpm", "git", "python", "py", "powershell"]);
+const allowedCommands = new Set(["node", "npm", "pnpm", "git", "python", "py", "gh"]);
 
 export function validateCommand(command: string, args: string[] = []): true {
   if (!allowedCommands.has(command.toLowerCase()) || command.includes("/") || command.includes("\\")) {

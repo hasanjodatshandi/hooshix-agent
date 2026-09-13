@@ -10,7 +10,7 @@ export function registerSystemInfoTool(server: McpServer){
     "get_system_info",
     {
       title: "Get System Information",
-      description: "Get local computer information",
+      description: "🖥️ SYSTEM — Local machine info: platform, CPU model, total memory.\n\nExample: {}",
       annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true },
       inputSchema: z.object({
         correlationId: z.string().min(1).optional(),
@@ -25,7 +25,8 @@ export function registerSystemInfoTool(server: McpServer){
         text: JSON.stringify({
           platform: os.platform(),
           cpu: os.cpus()[0]?.model,
-          memory: os.totalmem()
+          memoryBytes: os.totalmem(),
+          memory: os.totalmem()  // kept for backward compat
         }, null, 2)
       }], _meta: { correlationId: traceId } }));
     }
