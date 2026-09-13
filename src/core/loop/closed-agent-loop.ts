@@ -170,6 +170,7 @@ export async function runClosedAgentLoop(
     if (governance.decision === "blocked") {
       step.status = "blocked";
       step.error = governance.reason;
+      step.errorType = classifyError(new Error(governance.reason));
       step.failedAttempts = (step.failedAttempts ?? 0) + 1;
       step.attemptHistory = [...(step.attemptHistory ?? []), { attempt: step.attempts ?? 0, status: "failed" as const, error: governance.reason, timestamp: new Date().toISOString() }];
       persistStep();
