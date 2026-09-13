@@ -35,7 +35,7 @@ const requiredLevel: Record<string, PermissionLevel> = {
   get_workspace: "READ_ONLY",
   set_workspace: "DEVELOPER_MODE",
   remove_workspace_root: "DEVELOPER_MODE",
-  replace_workspace_roots: "DEVELOPER_MODE",
+  add_workspace_roots: "DEVELOPER_MODE",
   write_file: "PROJECT_ACCESS",
   create_file: "PROJECT_ACCESS",
   modify_file: "PROJECT_ACCESS",

@@ -8,7 +8,7 @@ import { agentMetricsArguments } from "../../core/executor/handlers/metrics-argu
 export function registerAgentMetricsTool(server: McpServer): void {
   server.registerTool("agent_metrics", {
     title: "Agent Metrics",
-    description: "📊 OBSERVABILITY — Tool reliability dashboard: success rates, errors, recovery attempts, latency.\n\nFilters: taskId, tool, status (success|failed), from/to (ISO date), category. Paginate with limit (≤500) + offset.\n\nExamples: {} · { \"tool\": \"delete_file\", \"status\": \"failed\" } · { \"limit\": 20, \"offset\": 20 }",
+    description: "📊 OBSERVABILITY — Tool reliability dashboard: success rates, errors, recovery attempts, latency.\n\nFilters: taskId, tool, status (success|failed), from/to (ISO 8601 date or timestamp; invalid dates and from>to are rejected), category. Paginate with limit (≤500) + offset.\n\nAggregates honor all filters except failedActions — that counts failed task-step executions and only honors taskId + from/to (it is a step-record metric, not a tool-call metric).\n\nExamples: {} · { \"tool\": \"delete_file\", \"status\": \"failed\" } · { \"limit\": 20, \"offset\": 20 }",
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true },
     inputSchema: agentMetricsArguments,
   }, async ({ correlationId, taskId, tool: toolName, status, from, to, limit, offset, category }) => {

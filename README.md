@@ -83,9 +83,15 @@ HOOSHIX_WORKSPACE=D:/Projects/my-app node dist/index-http.js
 
 # Multiple workspaces
 HOOSHIX_WORKSPACE=D:/Projects/my-app,D:/Projects/other,E:/Work node dist/index-http.js
+
+# Omitting HOOSHIX_WORKSPACE starts with an EMPTY pool — no file access
+# until a workspace is configured (via add_workspace_roots in a client).
+node dist/index-http.js
 ```
 
-All file operations are restricted to the configured roots. To allow any absolute path on the system (trusted local operation only), set `HOOSHIX_UNRESTRICTED=1` or pass `{"unrestricted": true}` to `set_workspace` explicitly.
+All file operations are restricted to the configured roots. File tools always operate in the **active workspace only** — use `add_workspace_roots` at runtime to extend the allowed pool and `set_workspace` to select the active root. There is deliberately **no unrestricted mode on `set_workspace`**: file tools can never be widened to arbitrary system paths through that tool (the operator-level `HOOSHIX_UNRESTRICTED=1` env var remains the only machine-wide opt-in at boot).
+
+**Empty by default:** the allowed-roots pool starts **empty** and no workspace is active until you configure one — via `HOOSHIX_WORKSPACE` at boot or `add_workspace_roots` + `set_workspace` at runtime. There is no implicit fallback to the server's working directory: until a workspace is configured, every file tool and command execution is denied (fail-closed).
 
 ### Option 2: Set workspace via ChatGPT
 
@@ -101,7 +107,7 @@ After setting a workspace, absolute paths inside the configured roots work direc
 { "tool": "read_file", "arguments": { "path": "D:/Projects/my-api/src/index.ts" } }
 ```
 
-Paths outside the configured roots are rejected unless unrestricted mode was explicitly enabled (see Option 1).
+Paths outside the configured roots are rejected — no runtime toggle exists to widen file-tool scope.
 
 ### Supported path formats
 
@@ -116,8 +122,10 @@ Paths outside the configured roots are rejected unless unrestricted mode was exp
 
 | Tool | Description |
 |------|-------------|
-| `set_workspace` | Change the active workspace directory |
-| `get_workspace` | View current workspace and all configured roots |
+| `set_workspace` | Select the active workspace from the allowed roots pool (pure selector — cannot add/remove roots or expand scope) |
+| `add_workspace_roots` | Add one or more directories to the allowed roots pool |
+| `remove_workspace_root` | Remove a non-active directory from the allowed roots pool |
+| `get_workspace` | View the active workspace and the allowed roots pool |
 
 **Note:** `delete_file` requires approval through a task step for security. Use `task_create` + `task_run` for delete operations. The same applies to `git_commit`, `git_clone`, `git_branch`, `git_checkout`, `git_add`, package operations, and `task_rollback` — even on direct MCP calls (see `HOOSHIX_DIRECT_AUTO_APPROVE` above).
 
@@ -225,7 +233,7 @@ HooshiX automatically recovers from failures when possible:
 
 ## امنیت و قابلیت بازیابی
 
-- تمام pathها به workspace roots محدودند و symlink/junction escape نیز با realpath رد می‌شود. `set_workspace` دایرکتوری فعال را عوض می‌کند اما دیگر به‌صورت خاموش unrestricted mode را فعال نمی‌کند؛ برای دسترسی به path دلخواه باید `{"unrestricted": true}` صریح داده شود یا `HOOSHIX_UNRESTRICTED` ست شود.
+- تمام pathها به workspace roots محدودند و symlink/junction escape نیز با realpath رد می‌شود. مدل جدید workspace: pool چندریشه‌ای — `add_workspace_roots` root اضافه می‌کند، `remove_workspace_root` حذف می‌کند، و `set_workspace` فقط از بین rootهای مجاز یکی را Active انتخاب می‌کند (نه حذف، نه جایگزینی، و هیچ capabilityیی برای گسترش دسترسی ندارد — پارامتر `unrestricted` به‌طور کامل حذف شده است).
 - **denylist فایل‌های حساس:** `.env*`, `.token`, `.npmrc`, `.netrc`, `.htpasswd`, `credentials.json`, `secrets.*`, کلیدهای SSH (`.ssh`), `.gnupg`, `.aws`, `.azure`, و پسوندهای `.pem/.key/.pfx/.p12/.kdbx` همیشه در read/write/delete/modify رد می‌شوند.
 - فایل‌ها و جست‌وجوها محدودیت اندازه/تعداد دارند؛ writeها atomic و fsync هستند و `create_file` نیز exclusive-atomic است.
 - پیش از overwrite، modify یا delete یک backup در SQLite ذخیره می‌شود و با `restore_file` قابل بازگردانی است؛ restore خودش محتوای جاری جایگزین‌شده را backup می‌گیرد (`displacedBackupId`).

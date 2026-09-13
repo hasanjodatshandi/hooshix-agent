@@ -146,7 +146,7 @@ export async function runClosedAgentLoop(
     checkpointStep({ taskId: plan.id, stepId: step.id, stepIndex: index, status: "running", context: runtimeContext });
     move(plan, "executing");
 
-    const governance = checkStepGovernance(step);
+    const governance = checkStepGovernance(step, plan.executionContext?.workspace);
     if (governance.decision === "approval_required" && step.id !== approvedStepId) {
       step.status = "pending_approval";
       persistStep();
@@ -170,6 +170,7 @@ export async function runClosedAgentLoop(
     if (governance.decision === "blocked") {
       step.status = "blocked";
       step.error = governance.reason;
+      step.errorType = classifyError(new Error(governance.reason));
       step.failedAttempts = (step.failedAttempts ?? 0) + 1;
       step.attemptHistory = [...(step.attemptHistory ?? []), { attempt: step.attempts ?? 0, status: "failed" as const, error: governance.reason, timestamp: new Date().toISOString() }];
       persistStep();

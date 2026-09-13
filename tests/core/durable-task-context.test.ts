@@ -3,12 +3,12 @@ import fs from "node:fs";
 import fsAsync from "node:fs/promises";
 import path from "node:path";
 import { createTaskRuntimeService } from "../../src/core/runtime/composition-root.js";
-import { setActiveWorkspace, setUnrestrictedMode } from "../../src/security/workspace-guard.js";
+import { setActiveWorkspace, addWorkspaceRoots, setUnrestrictedMode, seedUnrestrictedMode } from "../../src/security/workspace-guard.js";
+import { runWithPolicyApproval } from "../../src/core/governance/policy-decision-point.js";
 import { saveProject, getProject, archiveProject, listProjects, saveMemoryItem, listMemoryItems } from "../../src/core/memory/task-repository.js";
 import { auditToolCall } from "../../src/core/memory/tool-audit.js";
 import { getAgentMetrics } from "../../src/core/trace/metrics-service.js";
 import { writeWorkspaceFile, restoreWorkspaceFile } from "../../src/services/filesystem/filesystem-service.js";
-import { runWithPolicyApproval } from "../../src/core/governance/policy-decision-point.js";
 
 const TEST_A = path.resolve("tests/durable-test-a");
 const TEST_B = path.resolve("tests/durable-test-b");
@@ -28,8 +28,15 @@ describe("durable task execution context", () => {
 
   beforeEach(() => {
     setupDirs();
+    // Multi-root pool model: both test workspaces must be allowed roots before
+    // set_workspace can select between them.
+    addWorkspaceRoots([TEST_A, TEST_B]);
     setActiveWorkspace(TEST_A);
-    setUnrestrictedMode(true);
+    // Unrestricted mode is approval-gated; these tests cover path mechanics,
+    // not the gate (see tests/security/audit-high-fixes.test.ts).
+    runWithPolicyApproval("set_workspace", async () => {
+      seedUnrestrictedMode(true);
+    });
     runtime = createTaskRuntimeService();
   });
 
@@ -59,7 +66,7 @@ describe("durable task execution context", () => {
     expect(fs.existsSync(path.join(TEST_A, "relative.txt"))).toBe(true);
     expect(fs.readFileSync(path.join(TEST_A, "relative.txt"), "utf8")).toBe("hello");
 
-    // Switch global workspace to B
+    // Switch global workspace to B (an allowed root — added in beforeEach)
     setActiveWorkspace(TEST_B);
 
     // Reload task from DB — executionContext should still point to A
@@ -405,8 +412,10 @@ describe("file mutation safety (Stage 12)", () => {
     await fsAsync.rm(root, { recursive: true, force: true });
     await fsAsync.mkdir(root, { recursive: true });
     // Set workspace to project root so relative paths resolve correctly
-    setActiveWorkspace(path.resolve("."));
-    setUnrestrictedMode(true);
+    addWorkspaceRoots([path.resolve(".")]); setActiveWorkspace(path.resolve("."));
+    runWithPolicyApproval("set_workspace", async () => {
+      seedUnrestrictedMode(true);
+    });
   });
   afterEach(async () => {
     await fsAsync.rm(root, { recursive: true, force: true });
@@ -548,8 +557,10 @@ describe("Stage 13 E2E enhancements", () => {
 describe("Stage 14 autonomous debugging features", () => {
   it("runWhen=failure allows diagnostic steps after dependency failure", async () => {
     const runtime = createTaskRuntimeService();
-    setActiveWorkspace(path.resolve("."));
-    setUnrestrictedMode(true);
+    addWorkspaceRoots([path.resolve(".")]); setActiveWorkspace(path.resolve("."));
+    runWithPolicyApproval("set_workspace", async () => {
+      seedUnrestrictedMode(true);
+    });
     const plan = runtime.create({
       title: "runWhen-test",
       steps: [
@@ -572,8 +583,10 @@ describe("Stage 14 autonomous debugging features", () => {
 
   it("historical failure summary in task report", async () => {
     const runtime = createTaskRuntimeService();
-    setActiveWorkspace(path.resolve("."));
-    setUnrestrictedMode(true);
+    addWorkspaceRoots([path.resolve(".")]); setActiveWorkspace(path.resolve("."));
+    runWithPolicyApproval("set_workspace", async () => {
+      seedUnrestrictedMode(true);
+    });
     const plan = runtime.create({
       title: "history-test",
       steps: [
@@ -614,8 +627,10 @@ describe("Stage 14 autonomous debugging features", () => {
 
 describe("Stage 15 validation loop features", () => {
   it("step attempt counters track retries across task_run calls", async () => {
-    setActiveWorkspace(path.resolve("."));
-    setUnrestrictedMode(true);
+    addWorkspaceRoots([path.resolve(".")]); setActiveWorkspace(path.resolve("."));
+    runWithPolicyApproval("set_workspace", async () => {
+      seedUnrestrictedMode(true);
+    });
     const runtime = createTaskRuntimeService();
     const plan = runtime.create({
       title: "attempt-tracking",
@@ -642,8 +657,10 @@ describe("Stage 15 validation loop features", () => {
   });
 
   it("retryPolicy limits cumulative task_run invocations", async () => {
-    setActiveWorkspace(path.resolve("."));
-    setUnrestrictedMode(true);
+    addWorkspaceRoots([path.resolve(".")]); setActiveWorkspace(path.resolve("."));
+    runWithPolicyApproval("set_workspace", async () => {
+      seedUnrestrictedMode(true);
+    });
     const runtime = createTaskRuntimeService();
     const plan = runtime.create({
       title: "retry-limit",
@@ -662,8 +679,10 @@ describe("Stage 15 validation loop features", () => {
   });
 
   it("completed task_run is idempotent", async () => {
-    setActiveWorkspace(path.resolve("."));
-    setUnrestrictedMode(true);
+    addWorkspaceRoots([path.resolve(".")]); setActiveWorkspace(path.resolve("."));
+    runWithPolicyApproval("set_workspace", async () => {
+      seedUnrestrictedMode(true);
+    });
     const runtime = createTaskRuntimeService();
     const plan = runtime.create({
       title: "idempotent",
@@ -678,8 +697,10 @@ describe("Stage 15 validation loop features", () => {
   });
 
   it("totalRunCount tracks invocations", async () => {
-    setActiveWorkspace(path.resolve("."));
-    setUnrestrictedMode(true);
+    addWorkspaceRoots([path.resolve(".")]); setActiveWorkspace(path.resolve("."));
+    runWithPolicyApproval("set_workspace", async () => {
+      seedUnrestrictedMode(true);
+    });
     const runtime = createTaskRuntimeService();
     const plan = runtime.create({
       title: "run-count",
@@ -703,13 +724,15 @@ describe("Stage 16 security fixes", () => {
     expect(() => assertToolPermission("get_workspace")).not.toThrow();
     expect(() => assertToolPermission("set_workspace")).not.toThrow();
     expect(() => assertToolPermission("remove_workspace_root")).not.toThrow();
-    expect(() => assertToolPermission("replace_workspace_roots")).not.toThrow();
+    expect(() => assertToolPermission("add_workspace_roots")).not.toThrow();
   });
 
   it("task report includes blockedSteps and pendingApprovalSteps", async () => {
     const runtime = createTaskRuntimeService();
-    setActiveWorkspace(path.resolve("."));
-    setUnrestrictedMode(true);
+    addWorkspaceRoots([path.resolve(".")]); setActiveWorkspace(path.resolve("."));
+    runWithPolicyApproval("set_workspace", async () => {
+      seedUnrestrictedMode(true);
+    });
     const plan = runtime.create({
       title: "blocked-steps-test",
       steps: [
@@ -727,8 +750,10 @@ describe("Stage 16 security fixes", () => {
 
   it("governance blocked steps are recorded in executions table for reflection", async () => {
     const runtime = createTaskRuntimeService();
-    setActiveWorkspace(path.resolve("."));
-    setUnrestrictedMode(true);
+    addWorkspaceRoots([path.resolve(".")]); setActiveWorkspace(path.resolve("."));
+    runWithPolicyApproval("set_workspace", async () => {
+      seedUnrestrictedMode(true);
+    });
     const plan = runtime.create({
       title: "blocked-reflection-test",
       steps: [
@@ -747,8 +772,10 @@ describe("Stage 16 security fixes", () => {
 
 describe("Stage 19 dynamic data flow", () => {
   it("templateArguments are preserved after template resolution", async () => {
-    setActiveWorkspace(path.resolve("."));
-    setUnrestrictedMode(true);
+    addWorkspaceRoots([path.resolve(".")]); setActiveWorkspace(path.resolve("."));
+    runWithPolicyApproval("set_workspace", async () => {
+      seedUnrestrictedMode(true);
+    });
     const runtime = createTaskRuntimeService();
     const plan = runtime.create({
       title: "template-preservation",
@@ -770,8 +797,10 @@ describe("Stage 19 dynamic data flow", () => {
   });
 
   it("replay uses original templates, not resolved values", async () => {
-    setActiveWorkspace(path.resolve("."));
-    setUnrestrictedMode(true);
+    addWorkspaceRoots([path.resolve(".")]); setActiveWorkspace(path.resolve("."));
+    runWithPolicyApproval("set_workspace", async () => {
+      seedUnrestrictedMode(true);
+    });
     const { ReplayExecutor } = await import("../../src/core/trace/replay-executor.js");
     const runtime = createTaskRuntimeService();
 
@@ -945,8 +974,10 @@ describe("Stage 23 concurrency safeguards", () => {
   });
 
   it("write_file with ifMatchSha256 rejects stale writes", async () => {
-    setActiveWorkspace(path.resolve("."));
-    setUnrestrictedMode(true);
+    addWorkspaceRoots([path.resolve(".")]); setActiveWorkspace(path.resolve("."));
+    runWithPolicyApproval("set_workspace", async () => {
+      seedUnrestrictedMode(true);
+    });
     const { writeWorkspaceFile, readWorkspaceFile } = await import(
       "../../src/services/filesystem/filesystem-service.js"
     );
@@ -986,8 +1017,10 @@ describe("Stage 23 concurrency safeguards", () => {
   });
 
   it("write_file with ifMatchSha256 on absent file fails", async () => {
-    setActiveWorkspace(path.resolve("."));
-    setUnrestrictedMode(true);
+    addWorkspaceRoots([path.resolve(".")]); setActiveWorkspace(path.resolve("."));
+    runWithPolicyApproval("set_workspace", async () => {
+      seedUnrestrictedMode(true);
+    });
     const { writeWorkspaceFile } = await import(
       "../../src/services/filesystem/filesystem-service.js"
     );
@@ -1002,8 +1035,10 @@ describe("Stage 23 concurrency safeguards", () => {
   });
 
   it("modify_file with ifMatchSha256 rejects stale modifications", async () => {
-    setActiveWorkspace(path.resolve("."));
-    setUnrestrictedMode(true);
+    addWorkspaceRoots([path.resolve(".")]); setActiveWorkspace(path.resolve("."));
+    runWithPolicyApproval("set_workspace", async () => {
+      seedUnrestrictedMode(true);
+    });
     const { writeWorkspaceFile, readWorkspaceFile, modifyWorkspaceFile } = await import(
       "../../src/services/filesystem/filesystem-service.js"
     );
@@ -1035,8 +1070,10 @@ describe("Stage 23 concurrency safeguards", () => {
 
 describe("Stage 24 idempotency and transaction semantics", () => {
   it("write_file with idempotencyKey deduplicates identical requests", async () => {
-    setActiveWorkspace(path.resolve("."));
-    setUnrestrictedMode(true);
+    addWorkspaceRoots([path.resolve(".")]); setActiveWorkspace(path.resolve("."));
+    runWithPolicyApproval("set_workspace", async () => {
+      seedUnrestrictedMode(true);
+    });
     const { writeWorkspaceFile, readWorkspaceFile } = await import(
       "../../src/services/filesystem/filesystem-service.js"
     );
@@ -1063,8 +1100,10 @@ describe("Stage 24 idempotency and transaction semantics", () => {
   });
 
   it("delete_file with idempotencyKey returns same result on retry", async () => {
-    setActiveWorkspace(path.resolve("."));
-    setUnrestrictedMode(true);
+    addWorkspaceRoots([path.resolve(".")]); setActiveWorkspace(path.resolve("."));
+    runWithPolicyApproval("set_workspace", async () => {
+      seedUnrestrictedMode(true);
+    });
     const { writeWorkspaceFile, deleteWorkspaceFile } = await import(
       "../../src/services/filesystem/filesystem-service.js"
     );
@@ -1085,8 +1124,10 @@ describe("Stage 24 idempotency and transaction semantics", () => {
   });
 
   it("backup stores sha256 as file_revision", async () => {
-    setActiveWorkspace(path.resolve("."));
-    setUnrestrictedMode(true);
+    addWorkspaceRoots([path.resolve(".")]); setActiveWorkspace(path.resolve("."));
+    runWithPolicyApproval("set_workspace", async () => {
+      seedUnrestrictedMode(true);
+    });
     const { writeWorkspaceFile } = await import(
       "../../src/services/filesystem/filesystem-service.js"
     );

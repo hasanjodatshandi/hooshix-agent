@@ -3,10 +3,10 @@ import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { withAgentDatabase } from "../../src/core/memory/database.js";
-import { isDirectApprovalBypassEnabled } from "../../src/core/governance/policy-decision-point.js";
+import { isDirectApprovalBypassEnabled, runWithPolicyApproval } from "../../src/core/governance/policy-decision-point.js";
 import { executeShellCommand } from "../../src/services/shell/shell-service.js";
 import { readWorkspaceFile } from "../../src/services/filesystem/filesystem-service.js";
-import { setActiveWorkspace, setUnrestrictedMode, isUnrestrictedMode, validateWorkspace } from "../../src/security/workspace-guard.js";
+import { setActiveWorkspace, addWorkspaceRoots, setUnrestrictedMode, seedUnrestrictedMode, isUnrestrictedMode, validateWorkspace } from "../../src/security/workspace-guard.js";
 import { evaluateCommandPermission } from "../../src/security/permissions/command-permission.js";
 import { execa } from "execa";
 
@@ -69,8 +69,15 @@ describe("adversarial: task_rollback shell injection", () => {
 describe("adversarial: unrestricted mode escalation", () => {
   it("set_workspace no longer silently enables unrestricted mode", () => {
     expect(isUnrestrictedMode()).toBe(false);
+    // Elevation is governed — enable it inside an approved-step context.
+    runWithPolicyApproval("set_workspace", () => seedUnrestrictedMode(true));
+    // Multi-root pool model: set_workspace only selects among allowed roots.
+    addWorkspaceRoots([root]);
     setActiveWorkspace(root);
-    // The old behavior flipped unrestricted ON here — verify it stays OFF
+    // set_workspace must NOT silently disable unrestricted mode, and the new
+    // workspace becomes the ONLY root (previous ones are dropped).
+    expect(isUnrestrictedMode()).toBe(true);
+    setUnrestrictedMode(false);
     expect(isUnrestrictedMode()).toBe(false);
     // And paths outside ALL roots are still denied — resolve from a nested
     // active workspace up beyond the repo root.
@@ -78,14 +85,28 @@ describe("adversarial: unrestricted mode escalation", () => {
   });
 
   it("unrestricted mode is a separate explicit decision", () => {
-    setUnrestrictedMode(true);
-    expect(isUnrestrictedMode()).toBe(true);
-    setUnrestrictedMode(false);
-    expect(isUnrestrictedMode()).toBe(false);
+    // Test-env equivalent of an approved task step (the elevation is a governed
+    // operation now — see tests/security/audit-high-fixes.test.ts).
+    const bypass = process.env.HOOSHIX_DIRECT_AUTO_APPROVE;
+    process.env.HOOSHIX_DIRECT_AUTO_APPROVE = "1";
+    try {
+      seedUnrestrictedMode(true);
+      expect(isUnrestrictedMode()).toBe(true);
+      setUnrestrictedMode(false);
+      expect(isUnrestrictedMode()).toBe(false);
+    } finally {
+      if (bypass === undefined) delete process.env.HOOSHIX_DIRECT_AUTO_APPROVE;
+      else process.env.HOOSHIX_DIRECT_AUTO_APPROVE = bypass;
+    }
   });
 });
 
 describe("adversarial: direct MCP approval bypass", () => {
+  // setActiveWorkspace REPLACES the root list — an earlier test in this file
+  // switched the active workspace; restore the repo root so the default "."
+  // cwd resolves inside it for these tests.
+  beforeEach(() => setActiveWorkspace(path.resolve(".")));
+
   it("requires approval for governed tools on direct calls", async () => {
     expect(isDirectApprovalBypassEnabled()).toBe(false);
     await fs.writeFile(path.join(root, "target.txt"), "data", "utf8");
@@ -94,6 +115,8 @@ describe("adversarial: direct MCP approval bypass", () => {
   });
 
   it("still auto-allows read-only commands on direct calls", async () => {
+    // The default "." cwd resolves to the active workspace, so read-only
+    // commands stay auto-allowed for direct calls.
     const result = await executeShellCommand("node", ["--version"]);
     expect(result.exitCode).toBe(0);
   });

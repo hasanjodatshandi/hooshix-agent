@@ -50,7 +50,7 @@ export function registerGitTools(server: McpServer) {
     const traceId = resolveCorrelationId(correlationId);
     return auditToolCall("git_add", traceId, taskId, async () => result(await gitAdd(cwd, paths, traceId), traceId));
   });
-  server.registerTool("git_init", { title: "Git Init", description: "🔀 GIT (mutation) — Initialize a new git repository. Default branch: main.\n\nExample: { \"path\": \"D:/Projects/my-new-project\" }", annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true }, inputSchema: z.object({ path: z.string(), initialBranch: z.string().default("main"), ...context }) }, async ({ path, initialBranch, correlationId, taskId }) => {
+  server.registerTool("git_init", { title: "Git Init", description: "🔀 GIT (mutation, needs approval) — Initialize a new git repository. Default branch: main. Requires approval through an approved task step, like other git mutations.\n\nExample: { \"path\": \"D:/Projects/my-new-project\" }", annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false }, inputSchema: z.object({ path: z.string(), initialBranch: z.string().default("main"), ...context }) }, async ({ path, initialBranch, correlationId, taskId }) => {
     const traceId = resolveCorrelationId(correlationId);
     return auditToolCall("git_init", traceId, taskId, async () => result(await gitInit(path, initialBranch, traceId), traceId));
   });

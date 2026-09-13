@@ -1,5 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import { randomUUID } from "node:crypto";
 import {
   createWorkspaceFile,
   deleteWorkspaceFile,
@@ -9,6 +12,7 @@ import {
   writeWorkspaceFile
 } from "../src/services/filesystem/filesystem-service.js";
 import { runWithPolicyApproval } from "../src/core/governance/policy-decision-point.js";
+import { withAgentDatabase } from "../src/core/memory/database.js";
 
 describe("filesystem service", () => {
   const file = "tests/runtime-files/test.txt";
@@ -80,6 +84,59 @@ describe("filesystem service", () => {
     await expect(readWorkspaceFile("cert.pem", "sensitive-test")).rejects.toThrow(/sensitive-file denylist/i);
     await expect(writeWorkspaceFile(".env", "LEAKED=1", "sensitive-test")).rejects.toThrow(/sensitive-file denylist/i);
     await expect(runWithPolicyApproval("delete_file", () => deleteWorkspaceFile(".env", "sensitive-test"))).rejects.toThrow(/sensitive-file denylist/i);
+  });
+
+  it("FS-01: backups store the canonical ABSOLUTE path, never the raw caller string", async () => {
+    // Write via a RELATIVE path (the FS-01 trigger): the backup row must still
+    // contain the canonical absolute path, so a restore can never re-anchor
+    // it into a different active workspace.
+    const result = await writeWorkspaceFile(file, "canonical-test");
+    expect(result.backupId).toBeTypeOf("string");
+    const row = withAgentDatabase(
+      (db) => db.prepare("SELECT path FROM file_backups WHERE id = ?").get(result.backupId!) as { path: string }
+    );
+    expect(path.isAbsolute(row.path)).toBe(true);
+    expect(path.resolve(row.path)).toBe(path.resolve(file));
+  });
+
+  it("FS-01: restore refuses a backup whose original path left the active workspace", async () => {
+    const { replaceWorkspaceRoots } = await import("../src/security/workspace-guard.js");
+    const outsideRoot = await fs.mkdtemp(path.join(os.tmpdir(), "hx-fs01-out-"));
+    try {
+      // Backup taken while THIS repo is the active workspace…
+      await writeWorkspaceFile(file, "isolation-test");
+      const result = await writeWorkspaceFile(file, "isolation-test-v2");
+      expect(result.backupId).toBeTypeOf("string");
+      // …then switch the active workspace elsewhere.
+      replaceWorkspaceRoots(outsideRoot);
+      // The original path no longer resolves inside the active workspace —
+      // restore must be REFUSED, not silently re-created here.
+      await expect(
+        runWithPolicyApproval("restore_file", () => restoreWorkspaceFile(result.backupId!, "fs-01-test"))
+      ).rejects.toThrow(/outside the active workspace|Restore refused/i);
+      // And nothing materialized in the new workspace.
+      const listing = await fs.readdir(outsideRoot);
+      expect(listing).toEqual([]);
+    } finally {
+      await fs.rm(outsideRoot, { recursive: true, force: true });
+      replaceWorkspaceRoots(path.resolve("."));
+    }
+  });
+
+  it("FS-01: restore refuses a legacy backup row with a relative (non-canonical) path", async () => {
+    // Simulate a pre-fix row whose stored path is relative — it can never be
+    // proven to belong to the current workspace, so restore must fail closed.
+    const id = randomUUID();
+    withAgentDatabase((db) =>
+      db.prepare("INSERT INTO file_backups(id, correlation_id, path, content, created_at) VALUES (?, ?, ?, ?, ?)")
+        .run(id, "legacy-test", "relative/legacy/path.txt", Buffer.from("legacy"), new Date().toISOString())
+    );
+    await expect(
+      runWithPolicyApproval("restore_file", () => restoreWorkspaceFile(id, "legacy-test"))
+    ).rejects.toThrow(/non-canonical|Restore refused/i);
+    // Nothing was materialized anywhere.
+    await expect(fs.access("relative/legacy/path.txt")).rejects.toThrow();
+    await expect(fs.access(path.join(os.tmpdir(), "relative"))).rejects.toThrow();
   });
 
 });

@@ -38,7 +38,8 @@ export interface TaskStep {
 }
 
 export interface TaskExecutionContext {
-  workspace: string;
+  /** Active workspace at task-creation time — null when no workspace was configured (empty-by-default pool). */
+  workspace: string | null;
   roots: string[];
   unrestricted: boolean;
 }

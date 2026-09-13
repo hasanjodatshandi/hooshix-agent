@@ -27,7 +27,7 @@ describe("in-process MCP tool coverage", () => {
     expect(info.platform).toBeTypeOf("string");
     const workspace = json(await client.callTool({ name: "get_workspace", arguments: {} }));
     expect(workspace.active).toBeTypeOf("string");
-    expect(workspace.unrestricted).toBe(false);
+    expect(workspace.security.fileToolsScope).toBe("active workspace only");
   });
 
   it("file tools: create, read, write, modify, list, search, delete via task approval", async () => {
@@ -73,9 +73,26 @@ describe("in-process MCP tool coverage", () => {
     process.env.GIT_AUTHOR_EMAIL ??= "test@example.com";
     process.env.GIT_COMMITTER_NAME ??= "Test User";
     process.env.GIT_COMMITTER_EMAIL ??= "test@example.com";
-    // git_init is not approval-gated (it only creates a repo)
-    json(await client.callTool({ name: "git_init", arguments: { path: cwd, initialBranch: "main" } }));
+    // git_init is approval-gated like other git mutations — run through a task.
+    // The init task pauses for approval (git_init ∈ APPROVAL_TOOLS), so drive
+    // the full task_create → task_run → task_approve → task_resume cycle.
+    const initTask = json(await client.callTool({ name: "task_create", arguments: {
+      title: "init repo",
+      steps: [{ action: "init", tool: "git_init", arguments: { path: cwd, initialBranch: "main" } }]
+    } }));
+    let initRun = json(await client.callTool({ name: "task_run", arguments: { taskId: initTask.id, maxRecovery: 0 } }));
+    for (let i = 0; i < 4 && initRun.status === "pending_approval"; i++) {
+      json(await client.callTool({ name: "task_approve", arguments: { approvalId: initRun.approvalId } }));
+      initRun = json(await client.callTool({ name: "task_resume", arguments: { approvalId: initRun.approvalId } }));
+    }
+    expect(initRun.status).toBe("completed");
     await fs.writeFile(path.join(root, "f.txt"), "content", "utf8");
+
+    // Direct git_init calls are refused (approval-gated, no approval context):
+    // the contract previously allowed this mutation silently — regression pin.
+    const directInit = await client.callTool({ name: "git_init", arguments: { path: "tests/tool-coverage-init-direct", initialBranch: "main" } });
+    expect(directInit).toMatchObject({ isError: true });
+    expect(JSON.stringify(directInit)).toMatch(/Approval required/i);
 
     // git_add, git_commit, git_branch, git_checkout are approval-gated — run through a task
     const task = json(await client.callTool({ name: "task_create", arguments: {
@@ -151,25 +168,43 @@ describe("in-process MCP tool coverage", () => {
     expect(result.exitCode).toBe(0);
   });
 
-  it("workspace tools: set_workspace keeps restriction and supports explicit unrestricted", async () => {
+  it("workspace tools: set_workspace is a pure selector — no unrestricted capability exists", async () => {
+    // Multi-root pool model: the path must be an allowed root before set_workspace can select it.
+    const added = json(await client.callTool({ name: "add_workspace_roots", arguments: { paths: [root] } }));
+    expect(added.results).toEqual([{ path: root, added: true }]);
     const set = json(await client.callTool({ name: "set_workspace", arguments: { path: root } }));
-    expect(set.unrestricted).toBe(false);
-    const setUnrestricted = json(await client.callTool({ name: "set_workspace", arguments: { path: root, unrestricted: true } }));
-    expect(setUnrestricted.unrestricted).toBe(true);
-    // restore restricted state for other tests
-    json(await client.callTool({ name: "set_workspace", arguments: { path: process.cwd(), unrestricted: false } }));
+    // Selecting a workspace can never change file-tool scope.
+    expect(set.fileToolsScope).toBe("active workspace only");
+    expect(JSON.stringify(set)).not.toContain("unrestricted");
+    // The unrestricted parameter no longer exists in the schema — the strict
+    // validator rejects it outright instead of honoring or ignoring it.
+    const rejected = await client.callTool({ name: "set_workspace", arguments: { path: root, unrestricted: true } });
+    expect(rejected).toMatchObject({ isError: true });
+    expect(JSON.stringify(rejected)).toMatch(/unrestricted|Unrecognized key/i);
+    const after = json(await client.callTool({ name: "get_workspace", arguments: {} }));
+    expect(after.security.fileToolsScope).toBe("active workspace only");
+    expect(JSON.stringify(after)).not.toContain("unrestricted");
   });
 
-  it("workspace tools: remove_workspace_root and replace_workspace_roots", async () => {
-    // Add a second root so removal leaves the primary intact
-    const addRoot = path.resolve("tests/tool-coverage");
-    json(await client.callTool({ name: "set_workspace", arguments: { path: addRoot } }));
-    const removed = json(await client.callTool({ name: "remove_workspace_root", arguments: { path: addRoot } }));
-    expect(removed.removed).toBe(true);
-    // Replace all roots with the repo cwd (restores default state)
-    const replaced = json(await client.callTool({ name: "replace_workspace_roots", arguments: { path: process.cwd() } }));
-    expect(replaced.roots.length).toBe(1);
-    expect(replaced.workspace).toBe(process.cwd());
+  it("workspace tools: set_workspace only selects from the allowed pool; active root cannot be removed", async () => {
+    // Selecting a non-allowed root is refused — set_workspace never mutates the pool.
+    const unallowed = path.resolve("tests/security");
+    const refused = await client.callTool({ name: "set_workspace", arguments: { path: unallowed } });
+    expect(refused).toMatchObject({ isError: true });
+    // Add + select a second root: pool keeps BOTH roots.
+    const otherRoot = path.resolve("tests/tool-coverage");
+    json(await client.callTool({ name: "add_workspace_roots", arguments: { paths: [otherRoot] } }));
+    const switched = json(await client.callTool({ name: "set_workspace", arguments: { path: otherRoot } }));
+    expect(switched.workspace).toBe(otherRoot);
+    expect(switched.allRoots.length).toBeGreaterThanOrEqual(2);
+    // The active workspace cannot be removed — select another first.
+    const denied = await client.callTool({ name: "remove_workspace_root", arguments: { path: otherRoot } });
+    expect(denied).toMatchObject({ isError: true });
+    // Restore the repo cwd as active, then drop the other root.
+    json(await client.callTool({ name: "add_workspace_roots", arguments: { paths: [process.cwd()] } }));
+    json(await client.callTool({ name: "set_workspace", arguments: { path: process.cwd() } }));
+    const dropped = json(await client.callTool({ name: "remove_workspace_root", arguments: { path: otherRoot } }));
+    expect(dropped.removed).toBe(true);
   });
 
   it("agent_metrics tool", async () => {
@@ -196,7 +231,17 @@ describe("in-process MCP tool coverage", () => {
     process.env.GIT_AUTHOR_EMAIL ??= "test@example.com";
     process.env.GIT_COMMITTER_NAME ??= "Test User";
     process.env.GIT_COMMITTER_EMAIL ??= "test@example.com";
-    json(await client.callTool({ name: "git_init", arguments: { path: cwd, initialBranch: "main" } }));
+    // git_init is approval-gated — run the init through the approval cycle.
+    const initTask = json(await client.callTool({ name: "task_create", arguments: {
+      title: "init repo",
+      steps: [{ action: "init", tool: "git_init", arguments: { path: cwd, initialBranch: "main" } }]
+    } }));
+    let initRun = json(await client.callTool({ name: "task_run", arguments: { taskId: initTask.id, maxRecovery: 0 } }));
+    for (let i = 0; i < 4 && initRun.status === "pending_approval"; i++) {
+      json(await client.callTool({ name: "task_approve", arguments: { approvalId: initRun.approvalId } }));
+      initRun = json(await client.callTool({ name: "task_resume", arguments: { approvalId: initRun.approvalId } }));
+    }
+    expect(initRun.status).toBe("completed");
     await fs.writeFile(path.join(root, "s.txt"), "v1", "utf8");
 
     const task = json(await client.callTool({ name: "task_create", arguments: {
@@ -226,7 +271,17 @@ describe("in-process MCP tool coverage", () => {
 
   it("task_rollback rejects a tampered snapshot (non-snapshot backup id)", async () => {
     const cwd = "tests/tool-coverage";
-    json(await client.callTool({ name: "git_init", arguments: { path: cwd, initialBranch: "main" } }));
+    // git_init is approval-gated — run the init through the approval cycle.
+    const tamperInit = json(await client.callTool({ name: "task_create", arguments: {
+      title: "init repo",
+      steps: [{ action: "init", tool: "git_init", arguments: { path: cwd, initialBranch: "main" } }]
+    } }));
+    let tamperInitRun = json(await client.callTool({ name: "task_run", arguments: { taskId: tamperInit.id, maxRecovery: 0 } }));
+    for (let i = 0; i < 4 && tamperInitRun.status === "pending_approval"; i++) {
+      json(await client.callTool({ name: "task_approve", arguments: { approvalId: tamperInitRun.approvalId } }));
+      tamperInitRun = json(await client.callTool({ name: "task_resume", arguments: { approvalId: tamperInitRun.approvalId } }));
+    }
+    expect(tamperInitRun.status).toBe("completed");
     await fs.writeFile(path.join(root, "t.txt"), "{\"head\":\"main & calc.exe & rem\"}", "utf8");
     // Create a task that backs this file up (delete), then try to use that backup id as a snapshot id
     const task = json(await client.callTool({ name: "task_create", arguments: {

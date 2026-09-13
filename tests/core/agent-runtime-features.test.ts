@@ -488,7 +488,11 @@ describe("Feature 7: Error Classification", () => {
 
     const result = await runClosedAgentLoop(plan, executor, 3);
     expect(result.status).toBe("failed");
-    expect(attempts).toBe(1); // Only 1 attempt, no retries
+    // Governance now BLOCKS outside-workspace read_file paths BEFORE execution
+    // (pre-execution hard-scope classification), so the executor never runs —
+    // zero attempts, no retries, no approval consumed.
+    expect(attempts).toBe(0);
+    expect(result.plan.steps[0].status).toBe("blocked");
   });
 });
 
