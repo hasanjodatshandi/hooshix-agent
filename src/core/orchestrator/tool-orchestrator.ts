@@ -57,7 +57,7 @@ export const TOOL_CATEGORY_MAP: Record<string, ToolCategory> = {
   restore_file: "Write actions",
   set_workspace: "Write actions",
   remove_workspace_root: "Write actions",
-  replace_workspace_roots: "Write actions",
+  add_workspace_roots: "Write actions",
   task_append_steps: "Write actions",
   task_link: "Write actions",
   project_save: "Write actions",

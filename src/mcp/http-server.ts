@@ -603,8 +603,8 @@ function getToolDescription(tool: ToolName): string {
     task_rollback: "Reset a workspace to its pre-task git snapshot (destructive).",
     set_workspace: "Change the active workspace directory at runtime.",
     get_workspace: "View the current workspace and all configured workspace roots.",
-    remove_workspace_root: "📂 WORKSPACE — Remove one directory from the allowed workspace roots list.",
-    replace_workspace_roots: "📂 WORKSPACE — Replace ALL workspace roots with a single new root (switch projects).",
+    remove_workspace_root: "📂 WORKSPACE — Remove one directory from the allowed workspace roots pool.",
+    add_workspace_roots: "📂 WORKSPACE — Add one or more directories to the allowed workspace roots pool (idempotent).",
     // Management tools registered via tools/task (not step-executable, so absent from TOOL_CAPABILITIES):
     task_create: "🗂️ TASK — Persist an explicit multi-step plan. Lifecycle: task_create → task_run → (approval?) task_approve → task_resume → task_report.",
     task_get: "🗂️ TASK (read) — Full task object: state, steps with statuses/outputs/errors, pending approval info.",

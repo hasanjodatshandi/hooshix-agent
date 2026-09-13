@@ -34,23 +34,27 @@ export function getWorkspaceRoot(): string {
 }
 
 /**
- * Set the active workspace root. This REPLACES the allowed root list with the
- * single new workspace — the previous workspace is no longer reachable by file
- * tools after a switch (switching projects must not accumulate permissions).
+ * Set the active workspace root. With the multi-root pool model, the target
+ * must ALREADY be an allowed root (added via add_workspace_roots or
+ * HOOSHIX_WORKSPACE) — set_workspace only SELECTS among the allowed pool and
+ * never mutates it (no permission accumulation through switching).
  * Returns { resolved, previous }.
  */
 export function setActiveWorkspace(rootPath: string): { resolved: string; previous: string | null } {
+  initWorkspaceRoots();
   const resolved = path.resolve(rootPath);
   if (!fs.existsSync(resolved)) {
     throw new Error(`Workspace path does not exist: ${resolved}`);
   }
   const real = fs.realpathSync(resolved);
+  if (!workspaceRoots.includes(real)) {
+    throw new Error(
+      `Access denied: ${real} is not an allowed workspace root. ` +
+      `Add it first with add_workspace_roots. Allowed: ${workspaceRoots.join(", ")}`
+    );
+  }
   const previous = activeWorkspace;
   activeWorkspace = real;
-  // The new workspace becomes the ONLY allowed root. File tools are scoped to
-  // the active workspace (see validateWorkspace), so the roots list exists to
-  // keep that single root authoritative — no permission accumulation.
-  workspaceRoots = [real];
   // NOTE: unrestricted mode is NOT enabled implicitly — enabling it is a
   // separate, explicit decision (setUnrestrictedMode(true) / HOOSHIX_UNRESTRICTED).
   return { resolved: real, previous };
@@ -68,15 +72,15 @@ export function listWorkspaceRoots(): Array<{ path: string; exists: boolean; act
 }
 
 /**
- * Remove a workspace root by path. The ACTIVE workspace cannot be removed —
- * it is the only scope file tools are allowed to touch; switching away is
- * done via set_workspace (which replaces the root list).
+ * Remove a workspace root from the allowed pool. The ACTIVE workspace cannot
+ * be removed — it is the scope file tools actually operate in; switch to
+ * another allowed root first.
  */
 export function removeWorkspaceRoot(rootPath: string): boolean {
   initWorkspaceRoots();
   const resolved = path.resolve(rootPath);
   if (resolved === getWorkspaceRoot()) {
-    throw new Error("Cannot remove the active workspace — use set_workspace to switch to another directory first.");
+    throw new Error("Cannot remove the active workspace — use set_workspace to select another allowed root first.");
   }
   const index = workspaceRoots.findIndex((r) => r === resolved || r === path.normalize(resolved));
   if (index === -1) return false;
@@ -84,7 +88,39 @@ export function removeWorkspaceRoot(rootPath: string): boolean {
   return true;
 }
 
-/** Replace all workspace roots with a single new root */
+/**
+ * Add one or more roots to the allowed pool (idempotent — already-allowed
+ * roots resolve to added:false). Roots must exist. The FIRST root ever added
+ * also becomes the active workspace (there must always be exactly one active
+ * workspace for file tools to operate in).
+ */
+export function addWorkspaceRoots(paths: string[]): Array<{ path: string; added: boolean }> {
+  initWorkspaceRoots();
+  const results: Array<{ path: string; added: boolean }> = [];
+  for (const p of paths) {
+    const resolved = path.resolve(p);
+    if (!fs.existsSync(resolved)) {
+      throw new Error(`Workspace path does not exist: ${resolved}`);
+    }
+    const real = fs.realpathSync(resolved);
+    if (workspaceRoots.includes(real)) {
+      results.push({ path: real, added: false });
+      continue;
+    }
+    workspaceRoots.push(real);
+    results.push({ path: real, added: true });
+  }
+  if (activeWorkspace === null && workspaceRoots.length > 0) {
+    activeWorkspace = workspaceRoots[0];
+  }
+  return results;
+}
+
+/**
+ * Test/bootstrap helper: reset the root pool to a single root and make it
+ * active. NOT registered as an MCP tool — the pool is only mutated through
+ * add/remove at runtime; tests use this to set up isolation.
+ */
 export function replaceWorkspaceRoots(rootPath: string): string[] {
   const resolved = path.resolve(rootPath);
   if (!fs.existsSync(resolved)) {

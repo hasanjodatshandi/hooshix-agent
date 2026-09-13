@@ -152,6 +152,9 @@ describe("in-process MCP tool coverage", () => {
   });
 
   it("workspace tools: set_workspace keeps restriction and rejects unapproved unrestricted", async () => {
+    // Multi-root pool model: the path must be an allowed root before set_workspace can select it.
+    const added = json(await client.callTool({ name: "add_workspace_roots", arguments: { paths: [root] } }));
+    expect(added.results).toEqual([{ path: root, added: true }]);
     const set = json(await client.callTool({ name: "set_workspace", arguments: { path: root } }));
     expect(set.unrestricted).toBe(false);
     // Elevation is approval-gated: a direct call without approval context
@@ -162,20 +165,25 @@ describe("in-process MCP tool coverage", () => {
     expect(after.unrestricted).toBe(false);
   });
 
-  it("workspace tools: set_workspace REPLACES roots; active root cannot be removed", async () => {
-    // Switching workspaces replaces the allowed root list — the previous
-    // workspace becomes inaccessible to file tools (no permission accumulation).
+  it("workspace tools: set_workspace only selects from the allowed pool; active root cannot be removed", async () => {
+    // Selecting a non-allowed root is refused — set_workspace never mutates the pool.
+    const unallowed = path.resolve("tests/security");
+    const refused = await client.callTool({ name: "set_workspace", arguments: { path: unallowed } });
+    expect(refused).toMatchObject({ isError: true });
+    // Add + select a second root: pool keeps BOTH roots.
     const otherRoot = path.resolve("tests/tool-coverage");
+    json(await client.callTool({ name: "add_workspace_roots", arguments: { paths: [otherRoot] } }));
     const switched = json(await client.callTool({ name: "set_workspace", arguments: { path: otherRoot } }));
-    expect(switched.allRoots).toHaveLength(1);
-    expect(switched.allRoots[0].active).toBe(true);
-    // The (only) active workspace cannot be removed — switch away first.
+    expect(switched.workspace).toBe(otherRoot);
+    expect(switched.allRoots.length).toBeGreaterThanOrEqual(2);
+    // The active workspace cannot be removed — select another first.
     const denied = await client.callTool({ name: "remove_workspace_root", arguments: { path: otherRoot } });
     expect(denied).toMatchObject({ isError: true });
-    // Replace all roots with the repo cwd (restores default state)
-    const replaced = json(await client.callTool({ name: "replace_workspace_roots", arguments: { path: process.cwd() } }));
-    expect(replaced.roots.length).toBe(1);
-    expect(replaced.workspace).toBe(process.cwd());
+    // Restore the repo cwd as active, then drop the other root.
+    json(await client.callTool({ name: "add_workspace_roots", arguments: { paths: [process.cwd()] } }));
+    json(await client.callTool({ name: "set_workspace", arguments: { path: process.cwd() } }));
+    const dropped = json(await client.callTool({ name: "remove_workspace_root", arguments: { path: otherRoot } }));
+    expect(dropped.removed).toBe(true);
   });
 
   it("agent_metrics tool", async () => {

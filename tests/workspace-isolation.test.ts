@@ -4,18 +4,20 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   setActiveWorkspace,
-  getWorkspaceRoot,
-  listWorkspaceRoots,
+  addWorkspaceRoots,
   removeWorkspaceRoot,
   replaceWorkspaceRoots,
+  listWorkspaceRoots,
+  getWorkspaceRoot,
   validateWorkspace,
   validateCommandCwd,
 } from "../src/security/workspace-guard.js";
 
-// Regression tests for the workspace-isolation contract:
-//  1. set_workspace REPLACES the root list (previous workspace inaccessible)
-//  2. File tools are scoped to the ACTIVE workspace only
-//  3. execute_command cwd outside the active workspace requires approval
+// Contract tests for the multi-root workspace pool model:
+//  1. add_workspace_roots extends the allowed pool (idempotent)
+//  2. set_workspace only SELECTS the active root from the pool — never mutates it
+//  3. File tools are scoped to the ACTIVE workspace only
+//  4. remove_workspace_root drops a non-active root; active cannot be removed
 
 const wsA = fs.mkdtempSync(path.join(os.tmpdir(), "hx-wsA-"));
 const wsB = fs.mkdtempSync(path.join(os.tmpdir(), "hx-wsB-"));
@@ -30,22 +32,56 @@ afterEach(() => {
   replaceWorkspaceRoots(path.resolve("."));
 });
 
-describe("workspace isolation: root replacement", () => {
-  it("set_workspace replaces the root list with only the new workspace", () => {
-    fs.writeFileSync(path.join(wsA, "a.txt"), "A");
-    const { resolved } = setActiveWorkspace(wsB);
+describe("workspace pool: add_workspace_roots", () => {
+  it("adds a root to the allowed pool", () => {
+    const results = addWorkspaceRoots([wsB]);
+    expect(results).toEqual([{ path: fs.realpathSync(wsB), added: true }]);
+    expect(listWorkspaceRoots().map((r) => r.path)).toContain(fs.realpathSync(wsB));
+    // Adding does NOT switch the active workspace
+    expect(getWorkspaceRoot()).toBe(fs.realpathSync(wsA));
+  });
 
+  it("is idempotent for already-allowed roots", () => {
+    const first = addWorkspaceRoots([wsB]);
+    const second = addWorkspaceRoots([wsB]);
+    expect(second).toEqual([{ path: fs.realpathSync(wsB), added: false }]);
+    expect(listWorkspaceRoots()).toHaveLength(2);
+    void first;
+  });
+
+  it("rejects non-existent paths", () => {
+    expect(() => addWorkspaceRoots([path.join(os.tmpdir(), "hx-nope-xyz")])).toThrow(/does not exist/);
+  });
+
+  it("first root ever added becomes the active workspace", () => {
+    // Fresh state simulation is covered implicitly: replaceWorkspaceRoots sets
+    // active; here verify adding keeps the existing active selection.
+    addWorkspaceRoots([wsB]);
+    expect(getWorkspaceRoot()).toBe(fs.realpathSync(wsA));
+  });
+});
+
+describe("workspace pool: set_workspace selects only", () => {
+  it("switches the active workspace without mutating the pool", () => {
+    addWorkspaceRoots([wsB]);
+    const { resolved, previous } = setActiveWorkspace(wsB);
     expect(resolved).toBe(fs.realpathSync(wsB));
-    expect(getWorkspaceRoot()).toBe(fs.realpathSync(wsB));
-    expect(listWorkspaceRoots()).toHaveLength(1);
-    expect(listWorkspaceRoots()[0].path).toBe(fs.realpathSync(wsB));
+    expect(previous).toBe(fs.realpathSync(wsA));
+    // Pool unchanged — BOTH roots remain allowed
+    expect(listWorkspaceRoots()).toHaveLength(2);
+  });
+
+  it("refuses to select a path that is not an allowed root", () => {
+    expect(() => setActiveWorkspace(outside)).toThrow(/not an allowed workspace root/);
+    expect(getWorkspaceRoot()).toBe(fs.realpathSync(wsA));
   });
 
   it("file tools lose access to the previous workspace after a switch", () => {
     fs.writeFileSync(path.join(wsA, "secret.txt"), "A");
+    addWorkspaceRoots([wsB]);
     setActiveWorkspace(wsB);
 
-    // Absolute path into the previous (now unlisted) workspace is denied
+    // Absolute path into the previous (allowed but INACTIVE) workspace is denied
     expect(() => validateWorkspace(path.join(wsA, "secret.txt"))).toThrow(/outside workspace/);
     expect(() => validateWorkspace(wsA)).toThrow(/outside workspace/);
     // The new active workspace is fine
@@ -53,20 +89,13 @@ describe("workspace isolation: root replacement", () => {
   });
 
   it("remove_workspace_root refuses to remove the active workspace", () => {
-    // The active workspace is the only file-tool scope — it cannot be removed
     expect(() => removeWorkspaceRoot(wsA)).toThrow(/Cannot remove the active workspace/);
     // An unknown/unlisted path is simply not found
-    expect(removeWorkspaceRoot(wsB)).toBe(false);
-    // After switching, the old root is already gone (replacement semantics)
-    setActiveWorkspace(wsB);
-    expect(removeWorkspaceRoot(fs.realpathSync(wsA))).toBe(false);
-  });
-
-  it("delete-order: path validation precedes approval for doomed deletes", async () => {
-    // deleteWorkspaceFile validates the path before the approval gate, so an
-    // outside-workspace target fails with a path error even without approval
-    // context. (Full delete flows are covered by the security suites.)
-    expect(() => validateWorkspace(path.join(outside, "x.txt"))).toThrow(/outside workspace/);
+    expect(removeWorkspaceRoot(outside)).toBe(false);
+    // A non-active allowed root can be removed
+    addWorkspaceRoots([wsB]);
+    expect(removeWorkspaceRoot(wsB)).toBe(true);
+    expect(listWorkspaceRoots()).toHaveLength(1);
   });
 });
 

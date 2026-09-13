@@ -6,7 +6,7 @@ import { withAgentDatabase } from "../../src/core/memory/database.js";
 import { isDirectApprovalBypassEnabled, runWithPolicyApproval } from "../../src/core/governance/policy-decision-point.js";
 import { executeShellCommand } from "../../src/services/shell/shell-service.js";
 import { readWorkspaceFile } from "../../src/services/filesystem/filesystem-service.js";
-import { setActiveWorkspace, setUnrestrictedMode, isUnrestrictedMode, validateWorkspace } from "../../src/security/workspace-guard.js";
+import { setActiveWorkspace, addWorkspaceRoots, setUnrestrictedMode, isUnrestrictedMode, validateWorkspace } from "../../src/security/workspace-guard.js";
 import { evaluateCommandPermission } from "../../src/security/permissions/command-permission.js";
 import { execa } from "execa";
 
@@ -71,6 +71,8 @@ describe("adversarial: unrestricted mode escalation", () => {
     expect(isUnrestrictedMode()).toBe(false);
     // Elevation is governed — enable it inside an approved-step context.
     runWithPolicyApproval("set_workspace", () => setUnrestrictedMode(true));
+    // Multi-root pool model: set_workspace only selects among allowed roots.
+    addWorkspaceRoots([root]);
     setActiveWorkspace(root);
     // set_workspace must NOT silently disable unrestricted mode, and the new
     // workspace becomes the ONLY root (previous ones are dropped).
