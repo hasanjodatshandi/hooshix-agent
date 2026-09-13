@@ -9,7 +9,7 @@ export function registerWorkspaceTools(server: McpServer): void {
     "set_workspace",
     {
       title: "Set Workspace",
-      description: "📂 WORKSPACE — Set the active workspace directory for all file tools.\n\nFile tools are restricted to workspace roots (HOOSHIX_WORKSPACE env or this tool). Paths outside roots are rejected.\n\nExamples: { \"path\": \"D:/Projects/my-app\" } · { \"path\": \"D:/Projects/my-app\", \"unrestricted\": true } — unrestricted grants file tools access to ANY system path and REQUIRES APPROVAL through an approved task step. Only for trusted local use.",
+      description: "📂 WORKSPACE — Set the ACTIVE workspace for all file tools. This REPLACES the allowed roots with just this directory: the previous workspace becomes inaccessible to file tools (no permission accumulation).\n\nFile tools (read/write/delete/search) can only touch the active workspace. Paths outside are rejected.\n\nExamples: { \"path\": \"D:/Projects/my-app\" } · { \"path\": \"D:/Projects/my-app\", \"unrestricted\": true } — unrestricted grants file tools access to ANY system path and REQUIRES APPROVAL through an approved task step. Only for trusted local use.",
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
       inputSchema: z.object({
         path: z.string().min(1),
@@ -64,14 +64,15 @@ export function registerWorkspaceTools(server: McpServer): void {
             unrestricted: isUnrestrictedMode(),
             security: {
               fileToolsRestricted: !isUnrestrictedMode(),
-              subprocessSandboxed: false,
+              fileToolsScope: isUnrestrictedMode() ? "any path on the system" : "active workspace only",
+              subprocessScope: "active workspace; cwd outside requires approval",
               effectiveDescription: isUnrestrictedMode()
-                ? "File tools: unrestricted (any path). Subprocesses: unsandboxed."
-                : "File tools: restricted to workspace roots. Subprocesses: unsandboxed (execute_command has no sandbox).",
+                ? "File tools: unrestricted (any path). Subprocesses: active workspace; cwd outside requires approval."
+                : "File tools: active workspace only. Subprocesses: active workspace; cwd outside requires approval.",
             },
             hint: isUnrestrictedMode()
               ? "Unrestricted mode is ON. All file tools can access any absolute path on the system."
-              : "Use set_workspace to change the active directory and enable unrestricted mode.",
+              : "Use set_workspace to switch (and REPLACE the allowed scope with) the active directory.",
           }, null, 2),
         }],
         _meta: { correlationId: traceId },
@@ -83,7 +84,7 @@ export function registerWorkspaceTools(server: McpServer): void {
     "remove_workspace_root",
     {
       title: "Remove Workspace Root",
-      description: "📂 WORKSPACE — Remove one directory from the allowed workspace roots list.\n\nExample: { \"path\": \"D:/Projects/old-project\" }",
+      description: "📂 WORKSPACE — Remove a directory from the allowed roots list. The ACTIVE workspace cannot be removed (it is the only file-tool scope) — switch first with set_workspace.\n\nExample: { \"path\": \"D:/Projects/old-project\" }",
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
       inputSchema: z.object({
         path: z.string().min(1),
@@ -109,7 +110,7 @@ export function registerWorkspaceTools(server: McpServer): void {
     "replace_workspace_roots",
     {
       title: "Replace Workspace Roots",
-      description: "📂 WORKSPACE — Replace ALL workspace roots with a single new root (switch projects).\n\nExample: { \"path\": \"D:/Projects/new-project\" }",
+      description: "📂 WORKSPACE — Replace ALL workspace roots with a single new root (switch projects). Equivalent to set_workspace.\n\nExample: { \"path\": \"D:/Projects/new-project\" }",
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
       inputSchema: z.object({
         path: z.string().min(1),

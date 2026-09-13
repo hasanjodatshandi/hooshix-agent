@@ -46,6 +46,12 @@ export class PolicyDecisionPoint {
     }
 
     const risk = request.riskLevel ?? TOOL_CAPABILITIES[tool].risk;
+    if (tool === "execute_command" && request.arguments?.cwdOutsideWorkspace === true) {
+      // Subprocess cwd outside the active workspace — filesystem-wide command
+      // execution is allowed but ONLY as a governed escalation (approved task
+      // step / explicit direct-call opt-in).
+      return { allowed: true, requiresApproval: true, risk, reason: "Command cwd is outside the active workspace — requires approval" };
+    }
     if (tool === "execute_command") {
       const command = request.arguments?.command;
       const args = request.arguments?.args;

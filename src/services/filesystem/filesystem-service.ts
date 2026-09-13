@@ -291,6 +291,11 @@ export async function modifyWorkspaceFile(targetPath: string, search: string, re
 
 export async function deleteWorkspaceFile(targetPath: string, correlationId?: string, options?: { idempotencyKey?: string }): Promise<FileMutationResult> {
   return audit("delete", targetPath, correlationId, async (traceId) => {
+    // Validate path + sensitivity BEFORE the approval gate so an invalid or
+    // sensitive target fails fast with a real reason instead of burning an
+    // approval round-trip on a doomed call.
+    const filePath = validateWorkspace(targetPath);
+    assertNotSensitive(filePath);
     policyDecisionPoint.assertAllowed({ tool: "delete_file", arguments: { path: targetPath }, correlationId });
     // Idempotency: check for cached response
     if (options?.idempotencyKey) {
@@ -298,8 +303,6 @@ export async function deleteWorkspaceFile(targetPath: string, correlationId?: st
       const cached = getIdempotentResponse(options.idempotencyKey, "delete", reqHash);
       if (cached !== undefined) return cached as FileMutationResult;
     }
-    const filePath = validateWorkspace(targetPath);
-    assertNotSensitive(filePath);
     const existed = await fs.access(filePath).then(() => true, () => false);
     if (!existed) {
       // Already absent — return idempotent success for retry safety

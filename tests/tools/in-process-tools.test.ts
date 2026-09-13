@@ -162,12 +162,16 @@ describe("in-process MCP tool coverage", () => {
     expect(after.unrestricted).toBe(false);
   });
 
-  it("workspace tools: remove_workspace_root and replace_workspace_roots", async () => {
-    // Add a second root so removal leaves the primary intact
-    const addRoot = path.resolve("tests/tool-coverage");
-    json(await client.callTool({ name: "set_workspace", arguments: { path: addRoot } }));
-    const removed = json(await client.callTool({ name: "remove_workspace_root", arguments: { path: addRoot } }));
-    expect(removed.removed).toBe(true);
+  it("workspace tools: set_workspace REPLACES roots; active root cannot be removed", async () => {
+    // Switching workspaces replaces the allowed root list — the previous
+    // workspace becomes inaccessible to file tools (no permission accumulation).
+    const otherRoot = path.resolve("tests/tool-coverage");
+    const switched = json(await client.callTool({ name: "set_workspace", arguments: { path: otherRoot } }));
+    expect(switched.allRoots).toHaveLength(1);
+    expect(switched.allRoots[0].active).toBe(true);
+    // The (only) active workspace cannot be removed — switch away first.
+    const denied = await client.callTool({ name: "remove_workspace_root", arguments: { path: otherRoot } });
+    expect(denied).toMatchObject({ isError: true });
     // Replace all roots with the repo cwd (restores default state)
     const replaced = json(await client.callTool({ name: "replace_workspace_roots", arguments: { path: process.cwd() } }));
     expect(replaced.roots.length).toBe(1);

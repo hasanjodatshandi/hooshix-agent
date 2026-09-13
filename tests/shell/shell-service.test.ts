@@ -38,9 +38,16 @@ describe("shell service", () => {
     ).rejects.toThrow(/Approval required/);
   });
 
-  it("allows any working directory (no sandbox)", async () => {
-    // Shell commands are unrestricted — can use any cwd
-    const result = await executeShellCommand("node", ["--version"], "..");
+  it("requires approval for cwd outside the active workspace", async () => {
+    // Subprocess scope = active workspace; ".." is outside it.
+    await expect(
+      executeShellCommand("node", ["--version"], "..")
+    ).rejects.toThrow(/Approval required/);
+  });
+
+  it("approved steps may run with cwd outside the active workspace", async () => {
+    const result = await runWithPolicyApproval("execute_command", () =>
+      executeShellCommand("node", ["--version"], ".."));
     expect(result.exitCode).toBe(0);
   });
 

@@ -33,7 +33,12 @@ export function getWorkspaceRoot(): string {
   return activeWorkspace ?? workspaceRoots[0];
 }
 
-/** Set the active workspace root. Returns { resolved, previous } */
+/**
+ * Set the active workspace root. This REPLACES the allowed root list with the
+ * single new workspace — the previous workspace is no longer reachable by file
+ * tools after a switch (switching projects must not accumulate permissions).
+ * Returns { resolved, previous }.
+ */
 export function setActiveWorkspace(rootPath: string): { resolved: string; previous: string | null } {
   const resolved = path.resolve(rootPath);
   if (!fs.existsSync(resolved)) {
@@ -42,11 +47,10 @@ export function setActiveWorkspace(rootPath: string): { resolved: string; previo
   const real = fs.realpathSync(resolved);
   const previous = activeWorkspace;
   activeWorkspace = real;
-  // Ensure it's in the allowed list
-  initWorkspaceRoots();
-  if (!workspaceRoots.includes(real)) {
-    workspaceRoots.push(real);
-  }
+  // The new workspace becomes the ONLY allowed root. File tools are scoped to
+  // the active workspace (see validateWorkspace), so the roots list exists to
+  // keep that single root authoritative — no permission accumulation.
+  workspaceRoots = [real];
   // NOTE: unrestricted mode is NOT enabled implicitly — enabling it is a
   // separate, explicit decision (setUnrestrictedMode(true) / HOOSHIX_UNRESTRICTED).
   return { resolved: real, previous };
@@ -63,10 +67,17 @@ export function listWorkspaceRoots(): Array<{ path: string; exists: boolean; act
   }));
 }
 
-/** Remove a workspace root by path */
+/**
+ * Remove a workspace root by path. The ACTIVE workspace cannot be removed —
+ * it is the only scope file tools are allowed to touch; switching away is
+ * done via set_workspace (which replaces the root list).
+ */
 export function removeWorkspaceRoot(rootPath: string): boolean {
   initWorkspaceRoots();
   const resolved = path.resolve(rootPath);
+  if (resolved === getWorkspaceRoot()) {
+    throw new Error("Cannot remove the active workspace — use set_workspace to switch to another directory first.");
+  }
   const index = workspaceRoots.findIndex((r) => r === resolved || r === path.normalize(resolved));
   if (index === -1) return false;
   workspaceRoots.splice(index, 1);
@@ -110,6 +121,39 @@ export function isUnrestrictedMode(): boolean {
   return unrestrictedMode;
 }
 
+/**
+ * Validate that a subprocess working directory is allowed. The cwd must be
+ * inside the ACTIVE workspace; anything else is an escalation that requires
+ * approval (run inside an approved task step) or explicit direct-call opt-in
+ * (HOOSHIX_DIRECT_AUTO_APPROVE=1). Unrestricted mode does NOT bypass this —
+ * it only widens FILE tools; subprocess scope is governed separately.
+ * Returns the resolved, realpath'd cwd.
+ */
+export function validateCommandCwd(cwd: string): string {
+  const resolved = path.resolve(cwd);
+  if (!fs.existsSync(resolved)) {
+    throw new Error(`Working directory does not exist: ${resolved}`);
+  }
+  let existing = resolved;
+  while (!fs.existsSync(existing)) {
+    const parent = path.dirname(existing);
+    if (parent === existing) throw new Error(`Access denied: cwd does not exist: ${resolved}`);
+    existing = parent;
+  }
+  const real = fs.realpathSync(existing);
+  const inside = (() => {
+    const relative = path.relative(getWorkspaceRoot(), real);
+    return !relative.startsWith("..") && !path.isAbsolute(relative);
+  })();
+  if (!inside) {
+    policyDecisionPoint.assertAllowed({
+      tool: "execute_command",
+      arguments: { cwdOutsideWorkspace: true },
+    });
+  }
+  return real;
+}
+
 function assertInside(allowedRoots: string[], target: string): void {
   for (const root of allowedRoots) {
     const relative = path.relative(root, target);
@@ -121,7 +165,7 @@ function assertInside(allowedRoots: string[], target: string): void {
 }
 
 export function validateWorkspace(targetPath: string): string {
-  const roots = initWorkspaceRoots();
+  initWorkspaceRoots();
   
   // Absolute path: in unrestricted mode, allow any path on the system
   if (path.isAbsolute(targetPath)) {
@@ -139,23 +183,24 @@ export function validateWorkspace(targetPath: string): string {
       return resolved;
     }
     
-    // Restricted: check if inside any allowed root
-    assertInside(roots, resolved);
+    // Restricted: file tools are scoped to the ACTIVE workspace only — other
+    // configured roots are NOT implicitly accessible (least privilege).
+    assertInside([getWorkspaceRoot()], resolved);
     let existing = resolved;
     while (!fs.existsSync(existing)) {
       const parent = path.dirname(existing);
       if (parent === existing) throw new Error("Access denied: invalid path");
       existing = parent;
     }
-    assertInside(roots, fs.realpathSync(existing));
-    if (fs.existsSync(resolved)) assertInside(roots, fs.realpathSync(resolved));
+    assertInside([getWorkspaceRoot()], fs.realpathSync(existing));
+    if (fs.existsSync(resolved)) assertInside([getWorkspaceRoot()], fs.realpathSync(resolved));
     return resolved;
   }
   
   // Relative path — resolve against active workspace
   const root = getWorkspaceRoot();
   const resolved = path.resolve(root, targetPath);
-  assertInside(roots, resolved);
+  assertInside([root], resolved);
 
   let existing = resolved;
   while (!fs.existsSync(existing)) {
@@ -163,7 +208,7 @@ export function validateWorkspace(targetPath: string): string {
     if (parent === existing) throw new Error("Access denied: invalid workspace path");
     existing = parent;
   }
-  assertInside(roots, fs.realpathSync(existing));
-  if (fs.existsSync(resolved)) assertInside(roots, fs.realpathSync(resolved));
+  assertInside([root], fs.realpathSync(existing));
+  if (fs.existsSync(resolved)) assertInside([root], fs.realpathSync(resolved));
   return resolved;
 }
