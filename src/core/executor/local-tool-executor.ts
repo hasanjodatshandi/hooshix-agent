@@ -1,7 +1,6 @@
 import type { TaskStep } from "../planner/task-planner.js";
 import { validateToolName, type ToolName } from "../orchestrator/tool-orchestrator.js";
 import { auditToolCall } from "../memory/tool-audit.js";
-import { runWithPolicyApproval } from "../governance/policy-decision-point.js";
 import { dispatchToHandler } from "./handlers/index.js";
 
 /**
@@ -43,11 +42,16 @@ export function createLocalToolExecutor(correlationId: string, taskId?: string, 
   return async (tool: string, step: TaskStep, signal?: AbortSignal): Promise<unknown> => {
     const validatedTool = validateToolName(tool);
     const input = step.arguments ?? {};
-    const raw = await runWithPolicyApproval(validatedTool, () =>
+    // NOTE: deliberately NOT wrapped in runWithPolicyApproval here. Approval
+    // context is granted ONLY by the task loop for steps that passed a real
+    // approval (closed-agent-loop wraps approval_required steps after
+    // task_approve/task_resume). A blanket wrap here would auto-satisfy every
+    // policy gate invoked inside handlers (e.g. the execute_command cwd
+    // escalation) — that was the task_run workspace-isolation bypass.
+    const raw = await
       auditToolCall(tool, correlationId, taskId, () =>
         dispatchToHandler(validatedTool, input, correlationId, executionContext, signal)
-      )
-    );
+      );
     return enrichResult(validatedTool, input, raw);
   };
 }

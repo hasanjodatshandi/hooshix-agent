@@ -146,7 +146,7 @@ export async function runClosedAgentLoop(
     checkpointStep({ taskId: plan.id, stepId: step.id, stepIndex: index, status: "running", context: runtimeContext });
     move(plan, "executing");
 
-    const governance = checkStepGovernance(step);
+    const governance = checkStepGovernance(step, plan.executionContext?.workspace);
     if (governance.decision === "approval_required" && step.id !== approvedStepId) {
       step.status = "pending_approval";
       persistStep();

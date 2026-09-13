@@ -2,10 +2,21 @@ import fs from "node:fs/promises";
 import { afterEach, describe, expect, it } from "vitest";
 import { execa } from "execa";
 import { createLocalToolExecutor } from "../../src/core/executor/local-tool-executor.js";
+import { runWithPolicyApproval } from "../../src/core/governance/policy-decision-point.js";
 
 const root = "tests/runtime-local-executor";
 const execute = createLocalToolExecutor("local-executor-trace", "local-executor-task");
 const step = (tool: any, arguments_: Record<string, unknown>) => ({ id: 1, action: tool, tool, arguments: arguments_, status: "pending" as const });
+
+/**
+ * Approval-gated tools (delete_file, git_commit, ...) now REQUIRE a real
+ * approval context on the task path too — the executor no longer wraps every
+ * step in runWithPolicyApproval (that blanket wrap was a policy bypass: it
+ * auto-satisfied gates like the execute_command cwd escalation without any
+ * real approval). The task loop wraps ONLY steps that passed task_approve, so
+ * these tests simulate exactly that context.
+ */
+const approved = <T>(tool: string, operation: () => Promise<T>) => runWithPolicyApproval(tool, operation);
 
 afterEach(async () => {
   await fs.rm(root, { recursive: true, force: true });
@@ -21,9 +32,19 @@ describe("local typed tool executor", () => {
     expect(JSON.stringify(await execute("list_directory", step("list_directory", { path: root })))).toContain("created.txt");
     expect(JSON.stringify(await execute("search_files", step("search_files", { path: root, query: "needle" })))).toContain("written.txt");
 
-    const deleted = await execute("delete_file", step("delete_file", { path: `${root}/created.txt` })) as { backupId: string };
-    await execute("restore_file", step("restore_file", { backupId: deleted.backupId }));
+    const deleted = await approved("delete_file", () =>
+      execute("delete_file", step("delete_file", { path: `${root}/created.txt` }))
+    ) as { backupId: string };
+    await approved("restore_file", () =>
+      execute("restore_file", step("restore_file", { backupId: deleted.backupId }))
+    );
     expect(await fs.readFile(`${root}/created.txt`, "utf8")).toBe("needle one");
+  });
+
+  it("approval-gated tools are rejected without an approval context", async () => {
+    await fs.mkdir(root, { recursive: true });
+    await expect(execute("delete_file", step("delete_file", { path: `${root}/x.txt` }))).rejects.toThrow(/Approval required/);
+    await expect(execute("git_commit", step("git_commit", { cwd: root, message: "x" }))).rejects.toThrow(/Approval required/);
   });
 
   it("dispatches Git operations and rejects unsupported tools", async () => {
@@ -34,12 +55,12 @@ describe("local typed tool executor", () => {
     await fs.writeFile(`${root}/file.txt`, "one\n", "utf8");
     await execa("git", ["add", "file.txt"], { cwd: root });
 
-    await execute("git_commit", step("git_commit", { cwd: root, message: "initial" }));
+    await approved("git_commit", () => execute("git_commit", step("git_commit", { cwd: root, message: "initial" })));
     await fs.writeFile(`${root}/file.txt`, "two\n", "utf8");
     expect(JSON.stringify(await execute("git_status", step("git_status", { cwd: root })))).toContain("file.txt");
     expect(JSON.stringify(await execute("git_diff", step("git_diff", { cwd: root, staged: false })))).toContain("+two");
-    await execute("git_branch", step("git_branch", { cwd: root, name: "executor-branch" }));
-    await execute("git_checkout", step("git_checkout", { cwd: root, name: "executor-branch" }));
+    await approved("git_branch", () => execute("git_branch", step("git_branch", { cwd: root, name: "executor-branch" })));
+    await approved("git_checkout", () => execute("git_checkout", step("git_checkout", { cwd: root, name: "executor-branch" })));
 
     await expect(execute("git_clone", step("git_clone", { url: "file:///unsafe", path: `${root}/clone` }))).rejects.toThrow("credential-free HTTPS");
     await expect(execute("unknown", step("unknown", {}))).rejects.toThrow("Unknown tool");

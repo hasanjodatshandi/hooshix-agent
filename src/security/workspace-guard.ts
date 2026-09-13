@@ -122,6 +122,30 @@ export function isUnrestrictedMode(): boolean {
 }
 
 /**
+ * Resolve + classify a command cwd against the ACTIVE workspace — shared by
+ * governance (which must classify cwd escalations BEFORE execution, so the
+ * task loop pauses for approval instead of the executor auto-satisfying the
+ * gate) and by validateCommandCwd (the enforcement point at execution time).
+ * Mirrors validateCommandCwd's resolution exactly (existence walk + realpath)
+ * so the two can never disagree. Unresolvable/nonexistent paths classify as
+ * OUTSIDE (fail-closed).
+ */
+export function classifyCommandCwd(cwd: string): { cwd: string; inside: boolean } {
+  const resolved = path.resolve(cwd);
+  if (!fs.existsSync(resolved)) return { cwd: resolved, inside: false };
+  let existing = resolved;
+  while (!fs.existsSync(existing)) {
+    const parent = path.dirname(existing);
+    if (parent === existing) return { cwd: resolved, inside: false };
+    existing = parent;
+  }
+  const real = fs.realpathSync(existing);
+  const relative = path.relative(getWorkspaceRoot(), real);
+  const inside = !relative.startsWith("..") && !path.isAbsolute(relative);
+  return { cwd: real, inside };
+}
+
+/**
  * Validate that a subprocess working directory is allowed. The cwd must be
  * inside the ACTIVE workspace; anything else is an escalation that requires
  * approval (run inside an approved task step) or explicit direct-call opt-in
@@ -130,21 +154,10 @@ export function isUnrestrictedMode(): boolean {
  * Returns the resolved, realpath'd cwd.
  */
 export function validateCommandCwd(cwd: string): string {
-  const resolved = path.resolve(cwd);
-  if (!fs.existsSync(resolved)) {
-    throw new Error(`Working directory does not exist: ${resolved}`);
+  const { cwd: real, inside } = classifyCommandCwd(cwd);
+  if (!fs.existsSync(real)) {
+    throw new Error(`Working directory does not exist: ${real}`);
   }
-  let existing = resolved;
-  while (!fs.existsSync(existing)) {
-    const parent = path.dirname(existing);
-    if (parent === existing) throw new Error(`Access denied: cwd does not exist: ${resolved}`);
-    existing = parent;
-  }
-  const real = fs.realpathSync(existing);
-  const inside = (() => {
-    const relative = path.relative(getWorkspaceRoot(), real);
-    return !relative.startsWith("..") && !path.isAbsolute(relative);
-  })();
   if (!inside) {
     policyDecisionPoint.assertAllowed({
       tool: "execute_command",
