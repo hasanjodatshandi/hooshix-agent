@@ -1153,5 +1153,20 @@ export function startHttpServer(): Promise<void> {
       }
       resolve();
     });
+    // A second start attempt (script + watchdog overlap, manual + script) must
+    // fail with a clear, actionable message instead of an unhandled stack trace.
+    server.on("error", (error: NodeJS.ErrnoException) => {
+      if (error.code === "EADDRINUSE") {
+        console.error(`
+Port ${PORT} is already in use — the MCP server appears to be running.
+
+  Health check : curl "http://localhost:${PORT}/health"
+  Stop it first: taskkill /F /PID <pid>   (find the pid: netstat -ano | findstr :${PORT})
+
+If the running instance is STALE (older dist), kill it and start again.`);
+        process.exit(1);
+      }
+      console.error("MCP HTTP server error:", error);
+    });
   });
 }
