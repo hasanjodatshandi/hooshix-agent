@@ -1,11 +1,11 @@
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { managePackage, restorePackage, type PackageAction } from "../../services/package/package-service.js";
+import { PACKAGE_MANAGERS, managePackage, restorePackage, type PackageAction } from "../../services/package/package-service.js";
 import { auditToolCall } from "../../core/memory/tool-audit.js";
 import { resolveCorrelationId } from "../../core/runtime/correlation-id.js";
 
 const schema = z.object({
-  manager: z.enum(["npm", "pnpm", "pip", "winget", "choco"]),
+  manager: z.enum(PACKAGE_MANAGERS),
   name: z.string().min(1).max(214),
   cwd: z.string().default("."),
   timeout: z.number().int().min(1000).max(600000).default(300000),
@@ -15,7 +15,7 @@ const schema = z.object({
 
 function register(server: McpServer, tool: "install_package" | "remove_package" | "update_package", action: PackageAction) {
   const title = action[0].toUpperCase() + action.slice(1) + " Package";
-  const desc = `📦 PACKAGE (${action}, needs approval) — ${action.charAt(0).toUpperCase() + action.slice(1)} a package. Managers: npm, pnpm, pip, winget (ADMIN), choco (ADMIN).\n\nExamples: { \"manager\": \"npm\", \"name\": \"lodash\" } · { \"manager\": \"pip\", \"name\": \"requests\" }\n\nReturns snapshotId (for package_restore) + verification result. cwd/timeout optional.`;
+  const desc = `📦 PACKAGE (${action}, needs approval) — ${action.charAt(0).toUpperCase() + action.slice(1)} a package. Managers: ${PACKAGE_MANAGERS.join(" · ")}. System-level managers (winget, choco, apt, dnf, pacman, zypper) require ADMIN_MODE.\n\nExamples: { \"manager\": \"npm\", \"name\": \"lodash\" } · { \"manager\": \"cargo\", \"name\": \"ripgrep\" }\n\nReturns snapshotId (for package_restore) + verification result. cwd/timeout optional.`;
   server.registerTool(tool, {
     title,
     description: desc,

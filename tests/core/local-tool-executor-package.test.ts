@@ -1,7 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 
 const { managePackageMock } = vi.hoisted(() => ({ managePackageMock: vi.fn(async (input) => input) }));
-vi.mock("../../src/services/package/package-service.js", () => ({ managePackage: managePackageMock }));
+vi.mock("../../src/services/package/package-service.js", () => ({
+  managePackage: managePackageMock,
+  PACKAGE_MANAGERS: ["npm", "pnpm", "yarn", "bun", "pip", "uv", "poetry", "cargo", "dotnet", "composer", "bundler", "gem", "go", "maven", "gradle", "winget", "choco", "brew", "apt", "dnf", "pacman", "zypper"] as const,
+}));
 
 import { createLocalToolExecutor } from "../../src/core/executor/local-tool-executor.js";
 

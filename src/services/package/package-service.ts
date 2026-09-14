@@ -10,35 +10,214 @@ import { randomUUID } from "node:crypto";
 import { withAgentDatabase } from "../../core/memory/database.js";
 import { assertCwdExists, describeExecaFailure } from "../execa-result.js";
 
-export type PackageManager = "npm" | "pnpm" | "pip" | "winget" | "choco";
+/**
+ * Canonical package-manager list. Single source of truth — the zod schemas in
+ * tools/package/index.ts and core/executor/handlers/package-handler.ts are
+ * derived from this tuple so the registry can never drift from the service.
+ */
+export const PACKAGE_MANAGERS = [
+  "npm", "pnpm", "yarn", "bun",
+  "pip", "uv", "poetry",
+  "cargo", "dotnet", "composer", "bundler", "gem", "go",
+  "maven", "gradle",
+  "winget", "choco", "brew", "apt", "dnf", "pacman", "zypper",
+] as const;
+export type PackageManager = (typeof PACKAGE_MANAGERS)[number];
 export type PackageAction = "install" | "remove" | "update";
+
+/** Managers that install OS-wide software and therefore require ADMIN_MODE. */
+const ADMIN_MANAGERS: ReadonlySet<PackageManager> = new Set([
+  "winget", "choco", "apt", "dnf", "pacman", "zypper",
+]);
 
 interface PackageSnapshotFile { path: string; existed: boolean; content?: string }
 interface PackageSnapshot { id: string; files: PackageSnapshotFile[] }
 
+/**
+ * Manifest files snapshotted before the operation so package_restore can undo
+ * it. Entries may be exact file names or simple top-level globs ("*.csproj").
+ * System-level managers (winget/choco/brew/apt/dnf/pacman/zypper) and `gem`
+ * mutate machine state outside the workspace — nothing to snapshot.
+ */
 const SNAPSHOT_FILES: Record<PackageManager, readonly string[]> = {
   npm: ["package.json", "package-lock.json", "npm-shrinkwrap.json"],
   pnpm: ["package.json", "pnpm-lock.yaml"],
+  yarn: ["package.json", "yarn.lock"],
+  bun: ["package.json", "bun.lock", "bun.lockb"],
   pip: ["requirements.txt", "pyproject.toml", "poetry.lock", ".python-version"],
+  uv: ["pyproject.toml", "uv.lock", "requirements.txt"],
+  poetry: ["pyproject.toml", "poetry.lock"],
+  cargo: ["Cargo.toml", "Cargo.lock"],
+  dotnet: ["*.csproj", "*.fsproj", "*.vbproj", "packages.config"],
+  composer: ["composer.json", "composer.lock"],
+  bundler: ["Gemfile", "Gemfile.lock"],
+  gem: [],
+  go: ["go.mod", "go.sum"],
+  maven: ["pom.xml"],
+  gradle: ["build.gradle", "build.gradle.kts", "settings.gradle", "settings.gradle.kts"],
   winget: [],
-  choco: []
+  choco: [],
+  brew: [],
+  apt: [],
+  dnf: [],
+  pacman: [],
+  zypper: []
 };
 const MAX_SNAPSHOT_BYTES = 8 * 1024 * 1024;
+const MAX_GLOB_MATCHES = 10;
+
+interface CommandSpec { command: string; args: string[] }
+
+/**
+ * Command table: how each manager performs install/remove/update.
+ * A missing action means the manager has no CLI form for it — commandFor
+ * throws a clear error instead of guessing. `go`/`maven` re-install latest
+ * for update; `cargo` update is `install --force`; `dotnet` update re-adds
+ * the package (restoring the latest version).
+ */
+const COMMANDS: Record<PackageManager, Partial<Record<PackageAction, (name: string) => CommandSpec>>> = {
+  npm: {
+    install: (n) => ({ command: "npm", args: ["install", n] }),
+    remove: (n) => ({ command: "npm", args: ["uninstall", n] }),
+    update: (n) => ({ command: "npm", args: ["update", n] }),
+  },
+  pnpm: {
+    install: (n) => ({ command: "pnpm", args: ["add", n] }),
+    remove: (n) => ({ command: "pnpm", args: ["remove", n] }),
+    update: (n) => ({ command: "pnpm", args: ["update", n] }),
+  },
+  yarn: {
+    install: (n) => ({ command: "yarn", args: ["add", n] }),
+    remove: (n) => ({ command: "yarn", args: ["remove", n] }),
+    update: (n) => ({ command: "yarn", args: ["upgrade", n] }),
+  },
+  bun: {
+    install: (n) => ({ command: "bun", args: ["add", n] }),
+    remove: (n) => ({ command: "bun", args: ["remove", n] }),
+    update: (n) => ({ command: "bun", args: ["update", n] }),
+  },
+  pip: {
+    install: (n) => ({ command: "python", args: ["-m", "pip", "install", n] }),
+    remove: (n) => ({ command: "python", args: ["-m", "pip", "uninstall", "-y", n] }),
+    update: (n) => ({ command: "python", args: ["-m", "pip", "install", "--upgrade", n] }),
+  },
+  uv: {
+    install: (n) => ({ command: "uv", args: ["pip", "install", n] }),
+    remove: (n) => ({ command: "uv", args: ["pip", "uninstall", n] }),
+    update: (n) => ({ command: "uv", args: ["pip", "install", "--upgrade", n] }),
+  },
+  poetry: {
+    install: (n) => ({ command: "poetry", args: ["add", n] }),
+    remove: (n) => ({ command: "poetry", args: ["remove", n] }),
+    update: (n) => ({ command: "poetry", args: ["update", n] }),
+  },
+  cargo: {
+    install: (n) => ({ command: "cargo", args: ["install", n] }),
+    remove: (n) => ({ command: "cargo", args: ["uninstall", n] }),
+    update: (n) => ({ command: "cargo", args: ["install", "--force", n] }),
+  },
+  dotnet: {
+    install: (n) => ({ command: "dotnet", args: ["add", "package", n] }),
+    remove: (n) => ({ command: "dotnet", args: ["remove", "package", n] }),
+    update: (n) => ({ command: "dotnet", args: ["add", "package", n] }),
+  },
+  composer: {
+    install: (n) => ({ command: "composer", args: ["require", n] }),
+    remove: (n) => ({ command: "composer", args: ["remove", n] }),
+    update: (n) => ({ command: "composer", args: ["update", n] }),
+  },
+  bundler: {
+    install: (n) => ({ command: "bundle", args: ["add", n] }),
+    remove: (n) => ({ command: "bundle", args: ["remove", n] }),
+    update: (n) => ({ command: "bundle", args: ["update", n] }),
+  },
+  gem: {
+    install: (n) => ({ command: "gem", args: ["install", n] }),
+    remove: (n) => ({ command: "gem", args: ["uninstall", n] }),
+    update: (n) => ({ command: "gem", args: ["update", n] }),
+  },
+  go: {
+    install: (n) => ({ command: "go", args: ["install", `${n}@latest`] }),
+    update: (n) => ({ command: "go", args: ["install", `${n}@latest`] }),
+  },
+  maven: {
+    install: (n) => ({ command: "mvn", args: ["dependency:get", `-Dartifact=${n}`] }),
+  },
+  gradle: {
+    // Dependency management is declarative (build.gradle) — no CLI install.
+  },
+  winget: {
+    install: (n) => ({ command: "winget", args: ["install", "--id", n, "--exact", "--accept-source-agreements"] }),
+    remove: (n) => ({ command: "winget", args: ["uninstall", "--id", n, "--exact", "--accept-source-agreements"] }),
+    update: (n) => ({ command: "winget", args: ["upgrade", "--id", n, "--exact", "--accept-source-agreements"] }),
+  },
+  choco: {
+    install: (n) => ({ command: "choco", args: ["install", n, "-y"] }),
+    remove: (n) => ({ command: "choco", args: ["uninstall", n, "-y"] }),
+    update: (n) => ({ command: "choco", args: ["upgrade", n, "-y"] }),
+  },
+  brew: {
+    install: (n) => ({ command: "brew", args: ["install", n] }),
+    remove: (n) => ({ command: "brew", args: ["uninstall", n] }),
+    update: (n) => ({ command: "brew", args: ["upgrade", n] }),
+  },
+  apt: {
+    install: (n) => ({ command: "apt-get", args: ["install", "-y", n] }),
+    remove: (n) => ({ command: "apt-get", args: ["remove", "-y", n] }),
+    update: (n) => ({ command: "apt-get", args: ["install", "--only-upgrade", "-y", n] }),
+  },
+  dnf: {
+    install: (n) => ({ command: "dnf", args: ["install", "-y", n] }),
+    remove: (n) => ({ command: "dnf", args: ["remove", "-y", n] }),
+    update: (n) => ({ command: "dnf", args: ["upgrade", "-y", n] }),
+  },
+  pacman: {
+    install: (n) => ({ command: "pacman", args: ["-S", "--noconfirm", n] }),
+    remove: (n) => ({ command: "pacman", args: ["-R", "--noconfirm", n] }),
+    update: (n) => ({ command: "pacman", args: ["-S", "--noconfirm", n] }),
+  },
+  zypper: {
+    install: (n) => ({ command: "zypper", args: ["--non-interactive", "install", n] }),
+    remove: (n) => ({ command: "zypper", args: ["--non-interactive", "remove", n] }),
+    update: (n) => ({ command: "zypper", args: ["--non-interactive", "update", n] }),
+  },
+};
+
+async function captureSnapshotFile(cwd: string, relative: string, files: PackageSnapshotFile[], bytes: { value: number }): Promise<void> {
+  const file = path.join(cwd, relative);
+  const content = await fs.readFile(file).catch((error: NodeJS.ErrnoException) => error.code === "ENOENT" ? undefined : Promise.reject(error));
+  if (content) {
+    bytes.value += content.byteLength;
+    if (bytes.value > MAX_SNAPSHOT_BYTES) throw new Error("Package snapshot exceeds the 8 MiB limit");
+    files.push({ path: relative, existed: true, content: content.toString("base64") });
+  } else {
+    files.push({ path: relative, existed: false });
+  }
+}
+
+/** Simple top-level glob match for "*.csproj"-style patterns. */
+function matchesGlob(fileName: string, pattern: string): boolean {
+  const star = pattern.indexOf("*");
+  if (star < 0) return fileName === pattern;
+  const prefix = pattern.slice(0, star);
+  const suffix = pattern.slice(star + 1);
+  return fileName.startsWith(prefix) && fileName.endsWith(suffix);
+}
 
 async function createPackageSnapshot(manager: PackageManager, action: PackageAction, name: string, cwd: string, correlationId: string): Promise<PackageSnapshot> {
   const id = randomUUID();
   const files: PackageSnapshotFile[] = [];
-  let bytes = 0;
-  for (const relative of SNAPSHOT_FILES[manager]) {
-    const file = path.join(cwd, relative);
-    const content = await fs.readFile(file).catch((error: NodeJS.ErrnoException) => error.code === "ENOENT" ? undefined : Promise.reject(error));
-    if (content) {
-      bytes += content.byteLength;
-      if (bytes > MAX_SNAPSHOT_BYTES) throw new Error("Package snapshot exceeds the 8 MiB limit");
-      files.push({ path: relative, existed: true, content: content.toString("base64") });
-    } else {
-      files.push({ path: relative, existed: false });
+  const bytes = { value: 0 };
+  for (const entry of SNAPSHOT_FILES[manager]) {
+    if (!entry.includes("*")) {
+      await captureSnapshotFile(cwd, entry, files, bytes);
+      continue;
     }
+    // Glob entry: snapshot every top-level project file matching it (bounded).
+    let entries: string[] = [];
+    try { entries = await fs.readdir(cwd); } catch { /* unreadable cwd — treat as no matches */ }
+    const matched = entries.filter((e) => matchesGlob(e, entry)).slice(0, MAX_GLOB_MATCHES);
+    for (const file of matched) await captureSnapshotFile(cwd, file, files, bytes);
   }
   withAgentDatabase((db) => db.prepare(`
     INSERT INTO package_snapshots(id, correlation_id, manager, action, package_name, cwd, snapshot, status, created_at)
@@ -70,44 +249,76 @@ function updateSnapshot(id: string, status: "committed" | "rolled_back" | "rollb
 }
 
 export function validatePackageName(name: string): string {
-  if (!/^[A-Za-z0-9@][A-Za-z0-9@._/-]{0,213}$/.test(name) || name.includes("..")) throw new Error("Invalid package name");
+  // ":" is allowed for Maven coordinates (group:artifact:version); names are
+  // always passed as argv elements (no shell), so the character class is about
+  // flag injection (leading "-") and traversal (".."), not metacharacters.
+  if (!/^[A-Za-z0-9@][A-Za-z0-9@._:/-]{0,213}$/.test(name) || name.includes("..")) throw new Error("Invalid package name");
   return name;
 }
 
-export function commandFor(manager: PackageManager, action: PackageAction, packageName: string): { command: string; args: string[] } {
-  if (manager === "npm") return { command: "npm", args: [action === "remove" ? "uninstall" : action, packageName] };
-  if (manager === "pnpm") return { command: "pnpm", args: [action === "install" ? "add" : action, packageName] };
-  if (manager === "pip") return { command: "python", args: ["-m", "pip", action === "remove" ? "uninstall" : "install", ...(action === "remove" ? ["-y"] : action === "update" ? ["--upgrade"] : []), packageName] };
-  if (manager === "winget") return { command: "winget", args: [action === "remove" ? "uninstall" : action === "update" ? "upgrade" : "install", "--id", packageName, "--exact", "--accept-source-agreements"] };
-  return { command: "choco", args: [action === "remove" ? "uninstall" : action === "update" ? "upgrade" : "install", packageName, "-y"] };
+export function commandFor(manager: PackageManager, action: PackageAction, packageName: string): CommandSpec {
+  const build = COMMANDS[manager]?.[action];
+  if (!build) throw new Error(`Package manager "${manager}" does not support "${action}" via CLI (manage it declaratively instead)`);
+  return build(packageName);
 }
 
+// JS-ecosystem managers share the name@version convention.
+const JS_NAME_VERSION_MANAGERS: ReadonlySet<PackageManager> = new Set(["npm", "pnpm", "yarn", "bun"]);
+
 function verificationName(manager: PackageManager, packageName: string): string {
-  if (manager !== "npm" && manager !== "pnpm") return packageName;
+  if (!JS_NAME_VERSION_MANAGERS.has(manager)) return packageName;
   const versionSeparator = packageName.lastIndexOf("@");
   return versionSeparator > 0 ? packageName.slice(0, versionSeparator) : packageName;
 }
 
-export function verificationCommandFor(manager: PackageManager, packageName: string): { command: string; args: string[] } {
+/**
+ * Post-operation verification command per manager. Returns null when the
+ * manager offers no list/query form — in that case the primary command's own
+ * exit code is the verification (those commands fail loudly on any error).
+ */
+export function verificationCommandFor(manager: PackageManager, packageName: string): CommandSpec | null {
   const name = verificationName(manager, packageName);
-  if (manager === "npm") return { command: "npm", args: ["list", name, "--depth=0", "--json"] };
-  if (manager === "pnpm") return { command: "pnpm", args: ["list", name, "--depth=0", "--json"] };
-  if (manager === "pip") return { command: "python", args: ["-m", "pip", "show", packageName] };
-  if (manager === "winget") return { command: "winget", args: ["list", "--id", packageName, "--exact", "--accept-source-agreements"] };
-  return { command: "choco", args: ["list", "--local-only", "--exact", packageName] };
+  switch (manager) {
+    case "npm": return { command: "npm", args: ["list", name, "--depth=0", "--json"] };
+    case "pnpm": return { command: "pnpm", args: ["list", name, "--depth=0", "--json"] };
+    case "yarn": return { command: "yarn", args: ["list", "--pattern", name, "--depth=0"] };
+    case "bun": return { command: "bun", args: ["pm", "ls"] };
+    case "pip": return { command: "python", args: ["-m", "pip", "show", packageName] };
+    case "uv": return { command: "uv", args: ["pip", "show", packageName] };
+    case "poetry": return { command: "poetry", args: ["show", packageName] };
+    case "cargo": return { command: "cargo", args: ["install", "--list"] };
+    case "dotnet": return { command: "dotnet", args: ["list", "package"] };
+    case "composer": return { command: "composer", args: ["show", packageName] };
+    case "bundler": return { command: "bundle", args: ["list"] };
+    case "gem": return { command: "gem", args: ["list", "--exact", packageName] };
+    case "winget": return { command: "winget", args: ["list", "--id", packageName, "--exact", "--accept-source-agreements"] };
+    case "choco": return { command: "choco", args: ["list", "--local-only", "--exact", packageName] };
+    case "brew": return { command: "brew", args: ["list", packageName] };
+    case "apt": return { command: "dpkg", args: ["-s", packageName] };
+    case "dnf": return { command: "rpm", args: ["-q", packageName] };
+    case "pacman": return { command: "pacman", args: ["-Q", packageName] };
+    case "zypper": return { command: "rpm", args: ["-q", packageName] };
+    case "go":
+    case "maven":
+      return null;
+    default:
+      return null;
+  }
 }
 
 export async function managePackage(input: { manager: PackageManager; action: PackageAction; name: string; cwd?: string; timeout?: number; correlationId?: string; signal?: AbortSignal }) {
-  const tool = `${input.action === "install" ? "install" : input.action === "remove" ? "remove" : "update"}_package`;
+  const tool = `${input.action}_package`;
   policyDecisionPoint.assertAllowed({ tool, arguments: input as unknown as Record<string, unknown>, correlationId: input.correlationId });
-  if (input.manager === "winget" || input.manager === "choco") assertAdminPermission();
+  if (ADMIN_MANAGERS.has(input.manager)) assertAdminPermission();
   const name = validatePackageName(input.name);
   const cwd = validateWorkspace(input.cwd ?? ".");
   // Fail fast on a non-existent cwd instead of a confusing spawn failure.
   assertCwdExists(cwd, "Package working directory");
+  // Resolve the command BEFORE snapshotting so unsupported manager/action
+  // combinations fail cleanly without leaving an orphan snapshot row.
+  const { command, args } = commandFor(input.manager, input.action, name);
   const traceId = resolveCorrelationId(input.correlationId);
   const snapshot = await createPackageSnapshot(input.manager, input.action, name, cwd, traceId);
-  const { command, args } = commandFor(input.manager, input.action, name);
   try {
     const pkgExecaOpts: Record<string, unknown> = { cwd, shell: false, reject: false, timeout: input.timeout ?? 300000, maxBuffer: 2 * 1024 * 1024 };
     if (input.signal) pkgExecaOpts.cancelSignal = input.signal;
@@ -117,6 +328,12 @@ export async function managePackage(input: { manager: PackageManager; action: Pa
     if (result.exitCode !== 0) throw new Error(result.stderr || describeExecaFailure(command, result));
 
     const verification = verificationCommandFor(input.manager, name);
+    if (!verification) {
+      // No post-hoc verification exists for this manager; the primary command
+      // already fails loudly on any error, so exit 0 means success.
+      updateSnapshot(snapshot.id, "committed");
+      return { manager: input.manager, action: input.action, name, verified: true, verificationSkipped: true, snapshotId: snapshot.id, exitCode: result.exitCode, stdout: result.stdout, stderr: result.stderr, correlationId: traceId };
+    }
     const verifyExecaOpts: Record<string, unknown> = { cwd, shell: false, reject: false, timeout: Math.min(input.timeout ?? 300000, 120000), maxBuffer: 2 * 1024 * 1024 };
     if (input.signal) verifyExecaOpts.cancelSignal = input.signal;
     const checked = await execa(verification.command, verification.args, verifyExecaOpts);

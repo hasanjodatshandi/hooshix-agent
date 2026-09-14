@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { ToolHandler, ToolHandlerContext } from "./tool-handler.js";
 import type { ToolName } from "../../orchestrator/tool-orchestrator.js";
-import { managePackage, restorePackage } from "../../../services/package/package-service.js";
+import { PACKAGE_MANAGERS, managePackage, restorePackage } from "../../../services/package/package-service.js";
 
 const PACKAGE_TOOLS: ReadonlySet<ToolName> = new Set([
   "install_package", "remove_package", "update_package", "package_restore"
@@ -21,7 +21,7 @@ export class PackageToolHandler implements ToolHandler {
       return restorePackage(value.snapshotId, correlationId);
     }
     const value = z.object({
-      manager: z.enum(["npm", "pnpm", "pip", "winget", "choco"]),
+      manager: z.enum(PACKAGE_MANAGERS),
       name: z.string(),
       cwd: z.string().default("."),
       timeout: z.number().int().min(1000).max(600000).default(300000)
