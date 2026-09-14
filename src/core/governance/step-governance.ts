@@ -2,7 +2,7 @@ import type { TaskStep } from "../planner/task-planner.js";
 import { policyDecisionPoint } from "./policy-decision-point.js";
 import { selectTool, type ToolName } from "../orchestrator/tool-orchestrator.js";
 import { evaluateAction } from "./governance-engine.js";
-import { validateWorkspace, classifyCommandCwd } from "../../security/workspace-guard.js";
+import { validateWorkspace, classifyCommandCwd, getWorkspaceRoot } from "../../security/workspace-guard.js";
 
 /** File tools whose `path` argument is hard-scoped to the active workspace. */
 const FILE_PATH_TOOLS = new Set<ToolName>([
@@ -12,6 +12,10 @@ const FILE_PATH_TOOLS = new Set<ToolName>([
 /** Git tools whose `cwd` argument is hard-scoped to the active workspace. */
 const GIT_CWD_TOOLS = new Set<ToolName>([
   "git_status", "git_diff", "git_commit", "git_branch", "git_checkout", "git_add", "git_log",
+]);
+/** Package tools whose `cwd` argument is hard-scoped to the active workspace. */
+const PACKAGE_CWD_TOOLS = new Set<ToolName>([
+  "install_package", "remove_package", "update_package",
 ]);
 
 /**
@@ -48,6 +52,20 @@ export function checkStepGovernance(step: TaskStep | string, effectiveCwd?: stri
         decision: "blocked" as const,
         risk: "high" as const,
         reason: `Access denied: cwd outside workspace. Allowed: active workspace only.`,
+      };
+    }
+  }
+  // Package tools operate in the ACTIVE workspace (their cwd is validated at
+  // execution in package-service). Classification must mirror that: an
+  // explicit cwd outside the active workspace is a SECURITY_POLICY block
+  // BEFORE approval — no approval can legitimize it (same contract as file
+  // tools, which cannot be approved out of the workspace either).
+  if (PACKAGE_CWD_TOOLS.has(tool) && typeof args.cwd === "string" && args.cwd !== ".") {
+    if (!classifyCommandCwd(args.cwd).inside) {
+      return {
+        decision: "blocked" as const,
+        risk: "high" as const,
+        reason: `Access denied: cwd outside workspace. Allowed: ${getWorkspaceRoot() ?? "(none active)"}.`,
       };
     }
   }

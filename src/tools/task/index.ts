@@ -219,7 +219,7 @@ export function registerTaskTools(server: McpServer) {
       const { checkStepGovernance } = await import("../../core/governance/step-governance.js");
       const results = steps.map((s, i) => {
         const gov = checkStepGovernance({ id: i + 1, action: s.tool, tool: s.tool as any, arguments: s.arguments, status: "pending" });
-        return { stepId: i + 1, tool: s.tool, risk: gov.risk, approvalRequired: gov.decision === "approval_required", reason: gov.reason };
+        return { stepId: i + 1, tool: s.tool, risk: gov.risk, decision: gov.decision, blocked: gov.decision === "blocked", approvalRequired: gov.decision === "approval_required", reason: gov.reason };
       });
       return response(results, traceId);
     });

@@ -1,26 +1,62 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { checkStepGovernance } from "../../src/core/governance/step-governance.js";
 import { policyDecisionPoint, PolicyDecisionPoint } from "../../src/core/governance/policy-decision-point.js";
+import { addWorkspaceRoots, setActiveWorkspace, __clearWorkspaceStateForTests } from "../../src/security/workspace-guard.js";
 
 const original = process.env.HOOSHIX_PERMISSION_LEVEL;
+let wsActive = "";
+let wsInactive = "";
+
+beforeEach(() => {
+  // Real temp dirs per the PM-01 repro: active + allowed-but-inactive root.
+  wsActive = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "hx-pm01-active-")));
+  wsInactive = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "hx-pm01-inactive-")));
+  addWorkspaceRoots([wsActive, wsInactive]);
+  setActiveWorkspace(wsActive);
+});
+
 afterEach(() => {
   if (original === undefined) delete process.env.HOOSHIX_PERMISSION_LEVEL;
   else process.env.HOOSHIX_PERMISSION_LEVEL = original;
+  __clearWorkspaceStateForTests();
+  fs.rmSync(wsActive, { recursive: true, force: true });
+  fs.rmSync(wsInactive, { recursive: true, force: true });
 });
 
 describe("step governance", () => {
   it("evaluates before execution", () => {
     expect(checkStepGovernance("delete file").decision)
       .toBe("approval_required");
-  });
-
-  it("uses the typed tool as the security authority", () => {
+  });  it("uses the typed tool as the security authority", () => {
     expect(checkStepGovernance({ id: 1, action: "harmless label", tool: "delete_file", status: "pending" }).decision)
       .toBe("approval_required");
     expect(checkStepGovernance({ id: 2, action: "harmless label", tool: "install_package", status: "pending" }).decision)
       .toBe("approval_required");
     expect(checkStepGovernance({ id: 3, action: "read deletion guide", tool: "read_file", status: "pending" }).decision)
       .toBe("allow");
+  });
+
+  it("PM-01: package steps with cwd outside the active workspace are BLOCKED pre-approval, not approval_required", () => {
+    for (const tool of ["install_package", "remove_package", "update_package"] as const) {
+      const gov = checkStepGovernance({ id: 1, action: "pkg", tool, status: "pending", arguments: { manager: "npm", name: "lodash", cwd: wsInactive } });
+      expect({ tool, decision: gov.decision, risk: gov.risk }).toEqual({ tool, decision: "blocked", risk: "high" });
+      expect(gov.reason).toMatch(/Access denied: cwd outside workspace/);
+    }
+  });
+
+  it("PM-01: package steps inside the active workspace or with omitted cwd keep normal approval flow", () => {
+    // Explicit cwd inside the active workspace → normal critical/approval.
+    const inside = checkStepGovernance({ id: 1, action: "pkg", tool: "install_package", status: "pending", arguments: { manager: "npm", name: "lodash", cwd: wsActive } });
+    expect({ decision: inside.decision, risk: inside.risk }).toEqual({ decision: "approval_required", risk: "critical" });
+    // Omitted cwd → task's persisted workspace (effectiveCwd) → also inside → approval.
+    const omitted = checkStepGovernance({ id: 2, action: "pkg", tool: "install_package", status: "pending", arguments: { manager: "npm", name: "lodash" } }, wsActive);
+    expect(omitted.decision).toBe("approval_required");
+    // git tools keep their existing hard-scope block for outside cwds.
+    const gitOutside = checkStepGovernance({ id: 3, action: "git", tool: "git_status", status: "pending", arguments: { cwd: wsInactive } });
+    expect(gitOutside.decision).toBe("blocked");
   });
 });
 
