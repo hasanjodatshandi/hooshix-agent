@@ -15,7 +15,7 @@ const schema = z.object({
 
 function register(server: McpServer, tool: "install_package" | "remove_package" | "update_package", action: PackageAction) {
   const title = action[0].toUpperCase() + action.slice(1) + " Package";
-  const desc = action + " a package. Needs approval. Managers: npm, pnpm, pip, winget (ADMIN), choco (ADMIN).\n\nExamples: { \"manager\": \"npm\", \"name\": \"lodash\" } · { \"manager\": \"pip\", \"name\": \"requests\" }\n\nReturns snapshotId (for package_restore) + verification result. cwd/timeout optional.";
+  const desc = `📦 PACKAGE (${action}, needs approval) — ${action.charAt(0).toUpperCase() + action.slice(1)} a package. Managers: npm, pnpm, pip, winget (ADMIN), choco (ADMIN).\n\nExamples: { \"manager\": \"npm\", \"name\": \"lodash\" } · { \"manager\": \"pip\", \"name\": \"requests\" }\n\nReturns snapshotId (for package_restore) + verification result. cwd/timeout optional.`;
   server.registerTool(tool, {
     title,
     description: desc,

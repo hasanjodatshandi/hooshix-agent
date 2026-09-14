@@ -1,7 +1,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { registerTools } from "./registry.js";
-import { TOOL_NAMES, TOOL_CAPABILITIES, TOOL_CATEGORIES, TOOL_CATEGORY_MAP, type ToolName } from "../core/orchestrator/tool-orchestrator.js";
+import { TOOL_CAPABILITIES, TOOL_CATEGORIES, TOOL_CATEGORY_MAP, ALL_REGISTERED_TOOLS, type ToolName } from "../core/orchestrator/tool-orchestrator.js";
 import { OAuthProvider } from "./oauth.js";
 import { mcpMetrics } from "./metrics.js";
 import { createMetricsServer } from "./metrics-server.js";
@@ -469,15 +469,10 @@ interface ToolInfo {
 }
 
 function toolsList(): ToolInfo[] {
-  // Full registry inventory (includes task/project/memory management tools that
-  // are not step-executable and therefore absent from TOOL_NAMES).
-  const allNames = [
-    ...TOOL_NAMES,
-    "task_create", "task_get", "task_list", "task_run", "task_approve", "task_resume",
-    "task_report", "task_replay", "task_cancel", "task_append_steps", "task_link", "task_links", "task_step_risks",
-    "project_save", "project_get", "project_delete", "project_archive", "project_list",
-    "memory_add", "memory_list", "memory_get", "memory_delete",
-  ];
+  // Full registry inventory from the orchestrator's canonical list (includes
+  // task/project/memory management and workspace-pool tools that are not
+  // step-executable and therefore absent from TOOL_NAMES).
+  const allNames = ALL_REGISTERED_TOOLS;
   return allNames.map((name) => {
     const cap = TOOL_CAPABILITIES[name as ToolName];
     return {
@@ -575,7 +570,7 @@ function toolDocsPage(): string {
 
 function getToolDescription(tool: ToolName): string {
   const descriptions: Record<string, string> = {
-    get_system_info: "Get OS, CPU, memory, and disk info about the local machine.",
+    get_system_info: "Local machine info: platform, CPU model, and total memory.",
     agent_metrics: "View recovery, tool reliability, and performance dashboard.",
     list_directory: "List files and directories inside the active workspace.",
     read_file: "Read a file (relative or absolute path). Returns text content.",
