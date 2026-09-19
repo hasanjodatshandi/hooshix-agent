@@ -2,7 +2,7 @@
 
 **Project:** `D:/workspace/hooshix-agent`  
 **Program:** Full Hexagonal/Clean redesign + complete consolidated-audit remediation  
-**Status:** NOT STARTED — documentation package only  
+**Status:** R0 IN_PROGRESS — baseline and initial regression capture recorded; G0 NOT PASSED
 **Owner directive:** all 13 HIGH, 29 MEDIUM, 12 LOW findings must be fixed and verified.
 
 This file is intentionally a live execution ledger. The implementing assistant updates it during implementation. Do not erase previous evidence; append/update status while preserving history.
@@ -12,21 +12,21 @@ This file is intentionally a live execution ledger. The implementing assistant u
 ## 1. Baseline
 
 ```text
-Baseline captured: NO
-Date:
-Branch:
-Commit/HEAD reference (informational only; dirty working tree is baseline):
-Git status artifact/summary:
-Node:
-pnpm:
-MCP SDK current before migration:
-DB schema/version:
-Build result:
-Typecheck result:
-Full test result:
-Coverage:
-pnpm audit:
-Notes on pre-existing dirty changes:
+Baseline captured: YES (pre-R0 snapshot only; full G0 not passed)
+Date: 2026-09-19
+Branch: release/hardening-2026-09-19
+Commit/HEAD reference (informational only; dirty working tree is baseline): 8f43e5ba9d956fcc53b5b976663304aaa683fbe8
+Git status artifact/summary: clean at pre-R0 baseline; 3 commits ahead of local main, 7 ahead of origin/main
+Node: v24.18.0
+pnpm: 11.24.0
+MCP SDK current before migration: @modelcontextprotocol/sdk v1 1.30.0 (monolithic)
+DB schema/version: 8, previous online-backup copy rehearsal only; live DB not modified in R0
+Build result: PASS on clean hardening checkout before R0 source changes
+Typecheck result: PASS on clean hardening checkout; new R0 helper/typecheck also PASS
+Full test result: 92 files / 470 passing pre-R0; new R0 tests 12 PASS + 2 expected RED
+Coverage: 86.35% statements, 76.93% branches, 87.35% functions, 89.88% lines
+pnpm audit: production dependencies PASS in prior local release hardening; not independently rerun in R0
+Notes on pre-existing dirty changes: none at R0 baseline; source hardening already committed on isolated release branch
 ```
 
 ---
@@ -35,7 +35,7 @@ Notes on pre-existing dirty changes:
 
 | Phase | Status | Gate | Started | Completed | Evidence summary |
 |---|---|---|---|---|---|
-| R0 Baseline + regressions | NOT_STARTED | — | | | |
+| R0 Baseline + regressions | IN_PROGRESS | G0 NOT PASSED | 2026-09-19 | | Baseline captured; disposable fixtures + architecture scaffold; HIGH-03/HIGH-10 intentionally RED; remaining HIGH contracts open |
 | R1 Architecture + MCP v2 foundation | NOT_STARTED | — | | | |
 | R2 Unified tool/auth/workspace | NOT_STARTED | — | | | |
 | R3 Task/recovery/idempotency/lease | NOT_STARTED | — | | | |
@@ -67,16 +67,16 @@ The detailed source is `20_FINDINGS_TRACEABILITY_MATRIX.md`; keep totals consist
 ## 4. Current task
 
 ```text
-Task ID (e.g. R2-07):
-Finding IDs:
-Status:
-Goal:
-Files/modules planned:
-Architecture layer(s):
-Tests to add first:
-External docs rechecked (if version-sensitive):
-Start timestamp:
-Notes:
+Task ID (e.g. R2-07): R0.03/R0.04 regression completion
+Finding IDs: HIGH-01...HIGH-13, MED-21
+Status: IN_PROGRESS — no finding closure claimed
+Goal: finish actual MCP/Task security contracts and safe reliability/failure-injection fixtures for each HIGH
+Files/modules planned: tests/security/**, tests/core/**, tests/helpers/** (see R0 baseline report)
+Architecture layer(s): TESTS ONLY until R0 gate; preserve old runtime for red-before-fix evidence
+Tests to add first: actual MCP + Task workspace/sensitive reads; no-index disclosure; HTTP/OAuth; timeout/crash; Git/package; process lease
+External docs rechecked (if version-sensitive): Not verified; SDK v2/protocol migration belongs to R1/R5
+Start timestamp: 2026-09-19
+Notes: R0 baseline report docs/implementation/R0_BASELINE_2026-09-19.md; 2 it.fails tests are release blockers, not security passes
 ```
 
 ---
@@ -210,9 +210,9 @@ Record machine/runtime fixture metadata for comparisons.
 ## 11. Test/coverage ledger
 
 ```text
-Current build:
-Current typecheck:
-Unit/domain/application:
+Current build: baseline PASS (pre-R0 clean checkout)
+Current typecheck: baseline PASS; R0 specific new code PASS
+Unit/domain/application: pre-R0 full 92 files/470 passing; R0 targeted 12 PASS + 2 expected RED
 Architecture:
 Security regressions:
 Integration/adapters:
@@ -220,8 +220,8 @@ Failure injection:
 Property/fuzz:
 Stdio E2E:
 HTTP/OAuth modern E2E:
-Coverage global:
-Critical branch thresholds:
+Coverage global: statements 86.35%, branches 76.93%, functions 87.35%, lines 89.88% (pre-R0)
+Critical branch thresholds: NOT PASSED/NOT ESTABLISHED; 30 source entries below 75% branch coverage
 Workers/profile:
 Prometheus validation:
 Container smoke:
@@ -249,7 +249,10 @@ Protocol compatibility doc generated:
 ## 13. Current blockers
 
 ```text
-None recorded yet.
+Code/security: HIGH-03 git diff --no-index currently auto-allowed (intentionally RED test); HIGH-10 Dockerfile falls back to non-frozen install (intentionally RED test).
+Testing: G0 needs remaining HIGH direct-entrypoint/fixture regressions; actual multi-process lease and high-load verification remain unperformed. No finding is marked deferred or closed.
+Architecture: full R1/R2 boundary and MCP SDK v2 remain unimplemented; protected new-tree tests are a scaffold only.
+Operational: public HTTP and R10 blocked. No push, merge, tag, deployment or live DB migration authorized by R0.
 ```
 
 For each blocker specify whether it is:
@@ -288,3 +291,14 @@ Final implementation report path:
 ```
 
 Do not mark public production approved automatically.
+
+---
+
+## R0 evidence entry — 2026-09-19
+
+- Pre-R0 clean baseline commit: `8f43e5ba9d956fcc53b5b976663304aaa683fbe8`; exact measurements and per-HIGH coverage inventory: `R0_BASELINE_2026-09-19.md`.
+- `pnpm exec vitest run --coverage` (pre-R0): PASS 92 files/470 tests; 86.35% statements, 76.93% branches, 87.35% functions, 89.88% lines.
+- R0 fixtures and new-tree architecture scanner: 12 PASS. HIGH-03/HIGH-10: 2 expected-RED contracts; these are NOT security passes or finding closures.
+- `pnpm run typecheck` after new fixtures, architecture and RED tests: PASS.
+- New files: `tests/helpers/r0-disposable-fixtures.ts`, `tests/core/r0-disposable-fixtures.test.ts`, `tests/core/r0-architecture-boundary.test.ts`, `tests/core/r0-known-defects.test.ts`, `docs/implementation/R0_BASELINE_2026-09-19.md`.
+- R0 status IN_PROGRESS; Gate G0 NOT PASSED. No edits to the 54-row finding status matrix; no source implementation, server restart or production change.
