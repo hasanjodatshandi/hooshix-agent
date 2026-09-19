@@ -2,7 +2,7 @@
 
 **Project:** `D:/workspace/hooshix-agent`  
 **Program:** Full Hexagonal/Clean redesign + complete consolidated-audit remediation  
-**Status:** R0 GATE_PASSED — G0 PASS (test capture only); R1 NOT_STARTED
+**Status:** R0 GATE_PASSED; R1 foundation implemented on isolated branch — G1 GLOBAL NOT PASSED (legacy migration remaining)
 **Owner directive:** all 13 HIGH, 29 MEDIUM, 12 LOW findings must be fixed and verified.
 
 This file is intentionally a live execution ledger. The implementing assistant updates it during implementation. Do not erase previous evidence; append/update status while preserving history.
@@ -36,7 +36,7 @@ Notes on pre-existing dirty changes: none at R0 baseline; source hardening alrea
 | Phase | Status | Gate | Started | Completed | Evidence summary |
 |---|---|---|---|---|---|
 | R0 Baseline + regressions | GATE_PASSED | G0 PASS — all HIGH pre-fix contracts encoded; none resolved | 2026-09-19 | 2026-09-19 | 103 files / 492 passing / 18 expected failures; real two-process lease fixture; see R0_G0_COMPLETION_2026-09-19.md |
-| R1 Architecture + MCP v2 foundation | NOT_STARTED | — | | | |
+| R1 Architecture + MCP v2 foundation | IN_PROGRESS | G1 NEW_TREE PASS; G1 GLOBAL NOT PASSED (legacy source debt) | 2026-09-19 | | Domain/Application contracts, fake composition and standalone compilation completed; see R1_FOUNDATION_AND_G1_ASSESSMENT_2026-09-19.md |
 | R2 Unified tool/auth/workspace | NOT_STARTED | — | | | |
 | R3 Task/recovery/idempotency/lease | NOT_STARTED | — | | | |
 | R4 Data integrity/compensation | NOT_STARTED | — | | | |
@@ -67,16 +67,16 @@ The detailed source is `20_FINDINGS_TRACEABILITY_MATRIX.md`; keep totals consist
 ## 4. Current task
 
 ```text
-Task ID (e.g. R2-07): R1.01 — architecture foundation (not started)
+Task ID (e.g. R2-07): R1.06 — complete global G1 by migrating remaining legacy dependencies in assigned phases
 Finding IDs: architectural G1; existing HIGH/MED remain TEST_ENCODED or OPEN until fixed
-Status: NOT_STARTED — R0 G0 passed for test capture; no defect closure claimed
-Goal: begin R1 only after reviewing R0 G0 completion evidence; maintain RED contracts until each underlying flaw is fixed
-Files/modules planned: src/domain/**, src/application/**, src/adapters/**, src/bootstrap/** per R1 design; preserve R0 test fixtures
-Architecture layer(s): Domain/Application/Ports/adapters in R1; preserve existing legacy runtime during compatibility
-Tests to add first: G1 independent compilation/fake-adapter use cases, plus existing R0 boundary scanner
-External docs rechecked (if version-sensitive): Not verified; SDK v2/protocol migration belongs to R1/R5
-Start timestamp: NOT_STARTED
-Notes: R0 complete report docs/implementation/R0_G0_COMPLETION_2026-09-19.md; 18 expected failures are live release blockers, not fixes
+Status: IN_PROGRESS — R1 skeleton implemented; G1 global not passed due to remaining legacy dependencies
+Goal: maintain R1 target-tree boundary and migrate existing legacy shortcuts through R2–R9 without relaxing global G1
+Files/modules planned: src/domain/**, src/application/**, src/adapters/**, src/infrastructure/** and src/bootstrap/** created; future migration of src/core/**, src/tools/**, src/mcp/** belongs to mapped later phases
+Architecture layer(s): R1 Domain/Application standalone PASS, test-only in-memory adapters/composition PASS; legacy runtime remains live and has outstanding G1 violations
+Tests to add first: R1 independent/fake adapter tests and new-tree boundary checks implemented; future phases must close legacy global gate and R0 RED defects
+External docs rechecked (if version-sensitive): SDK v2 NOT selected or migrated in R1; existing SDK v1 remains only in legacy inbound paths; verify actual v2 packages/spec before R5 migration
+Start timestamp: 2026-09-19
+Notes: R1 foundation report docs/implementation/R1_FOUNDATION_AND_G1_ASSESSMENT_2026-09-19.md; 18 expected failures and 54 findings remain open/test-encoded
 ```
 
 ---
@@ -160,7 +160,10 @@ R1 may establish a temporary migration baseline of legacy violations. Every viol
 
 | Violation | Current file | Target removal phase | Status | Evidence |
 |---|---|---|---|---|
-| Example: core handler -> concrete FS service | current path | R2/R9 | OPEN | architecture test baseline |
+| Legacy core handler -> concrete filesystem service | src/core/executor/handlers/file-handler.ts | R2/R9 | OPEN | R1 baseline: 44 candidate legacy concrete-import files; R1 new-tree static checks PASS |
+| Raw SQL outside new SQLite adapter/migrations | src/core/memory/task-repository.ts; src/tools/task/index.ts; src/security/workspace-policy-repository.ts | R2/R6/R9 | OPEN | R1 baseline: 20 candidate legacy SQL-containing files, including old migration modules |
+| process.env outside target config/bootstrap | src/security/workspace-guard.ts; src/mcp/http-server.ts | R2/R5/R7/R9 | OPEN | R1 baseline: nine candidate legacy files |
+| Legacy MCP SDK imports outside new inbound MCP | src/mcp/server.ts; src/tools/task/index.ts | R2/R5/R9 | OPEN | R1 baseline: 19 candidate legacy source files |
 
 No new violation may be added after R1.
 
@@ -210,10 +213,10 @@ Record machine/runtime fixture metadata for comparisons.
 ## 11. Test/coverage ledger
 
 ```text
-Current build: baseline PASS (pre-R0 clean checkout)
-Current typecheck: PASS after full R0 regressions
-Unit/domain/application: full R0 103 files / 492 passing + 18 expected failures; no unexpected failures
-Architecture:
+Current build: PASS after R1 skeleton, legacy live runtime unchanged
+Current typecheck: PASS after R1 foundation; standalone Domain/Application compilation PASS
+Unit/domain/application: 105 files / 502 passing + 18 expected failures after R1 foundation; 14 focused architecture/use-case tests PASS
+Architecture: R1 NEW_TREE PASS; GLOBAL G1 NOT PASSED due to scoped legacy migration baseline (20 SQL/9 env/44 concrete import/19 MCP candidate files)
 Security regressions:
 Integration/adapters:
 Failure injection:
@@ -251,7 +254,7 @@ Protocol compatibility doc generated:
 ```text
 Code/security: HIGH-03 git diff --no-index currently auto-allowed (intentionally RED test); HIGH-10 Dockerfile falls back to non-frozen install (intentionally RED test).
 Testing: G0 needs remaining HIGH direct-entrypoint/fixture regressions; actual multi-process lease and high-load verification remain unperformed. No finding is marked deferred or closed.
-Architecture: full R1/R2 boundary and MCP SDK v2 remain unimplemented; protected new-tree tests are a scaffold only.
+Architecture: R1 skeleton and new-tree boundary PASS; global G1 pending migration of legacy SQL/config/concrete imports/MCP paths; MCP SDK v2 remains for planned R5.
 Operational: public HTTP and R10 blocked. No push, merge, tag, deployment or live DB migration authorized by R0.
 ```
 
@@ -310,3 +313,20 @@ Do not mark public production approved automatically.
 - REAL two-OS-process SQLite race fixture verifies one atomic disposable row winner; production fenced Task lease HIGH-13 remains RED/unimplemented.
 - Finding state: HIGH 13 TEST_ENCODED, MEDIUM 10 TEST_ENCODED and 19 OPEN, LOW 12 OPEN. **No finding VERIFIED_CLOSED or deferred.** G1–G10 NOT PASSED; R1 NOT_STARTED.
 - Change scope: test fixtures + evidence docs on isolated `audit/r0-baseline-2026-09-19` branch. No push, merge, release tag, service restart or primary DB alteration.
+
+## R1 implementation record — 2026-09-19
+
+Task IDs: R1.01–R1.06. Baseline: R0 G0 commit `24f09e0`.
+Branch: `feature/r1-hexagonal-foundation-2026-09-19`.
+Finding IDs: architectural G1; no HIGH/MED/LOW finding independently closed.
+
+- R1.01 directories created; empty future adapter/handler directories tracked by .gitkeep; no legacy source moved.
+- R1.02 pure Domain primitives, Task dependency-cycle/terminal policy, copy-on-create workspace, typed identifiers and receipt/outcome.
+- R1.03 Application-owned ports covering Task/Approval/Lease/Workspace/Filesystem/Process/Git/Package/Clock/IDs/Tokens/OAuth/Telemetry.
+- R1.04 runnable read-only ExecuteTool/CreateTask/GetTask/GetWorkspace use cases plus typed contracts for remaining cases; no live MCP/Task dispatch rewiring.
+- R1.05 test-only in-memory adapters and explicit Composition Root; inbound mapper calls application use case, not outbound adapter.
+- R1.06 independent Domain/Application compilation and new-target-tree boundary tests PASS. G1 *global* NOT PASSED because unchanged legacy modules retain forbidden SQL/config/concrete imports. Static candidate counts: 20 SQL, nine env, 44 concrete imports, 19 MCP SDK source files; categories overlap. See `R1_FOUNDATION_AND_G1_ASSESSMENT_2026-09-19.md` for paths/removal ownership.
+- Validation before final script wiring: `pnpm exec tsc -p tsconfig.r1.json` PASS; focused 14 PASS; full `pnpm exec vitest run` PASS: 105 files, 502 successful plus 18 expected pre-fix failures. Whole-source typecheck and production build PASS.
+- Schema/config: no new DB migration, no production deployment; `package.json` updates `typecheck` to always include standalone R1 compile and adds `typecheck:r1`. SDK v1 remains in legacy transport; SDK v2 selection/migration not claimed.
+- Risk: test-only R1 dispatcher does not implement production approval, canonical OS path security, task lease or end-to-end shared gateway; continue to R2/R3/R5/R9 only under the official phase/gate rules.
+- Git safety: isolated feature branch; no main/release reset, push, merge, tag, service restart or primary DB modification.
