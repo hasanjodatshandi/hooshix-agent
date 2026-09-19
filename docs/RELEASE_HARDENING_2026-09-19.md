@@ -144,7 +144,7 @@ Execution performed on 2026-09-19 (local Windows repository):
   `/database/` and those files were included in the candidate changeset.
   A dedicated `release/hardening-2026-09-19` branch was created without
   pushing, merging, restarting the service, or migrating the live DB.
-- Runtime: Node `24.18.0`; installed pnpm `12.4.2` equals
+- Runtime: Node `24.18.0`; installed pnpm `11.24.0` equals
   `packageManager`. Hashes for package/lockfile/migration source and
   built entrypoints were present in the preflight output. These hashes are
   informational until reviewed against an immutable source commit.

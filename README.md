@@ -9,7 +9,7 @@ HooshiX یک MCP server محلی و یک runtime قطعی برای اجرای wo
 ## نیازمندی‌ها و اجرا
 
 - Node.js 24 یا جدیدتر
-- pnpm 12.4.2 (مطابق فیلد `packageManager` در `package.json`؛ نسخه نصب‌شده را با آن تطبیق دهید)
+- pnpm 11.24.0 (مطابق فیلد `packageManager` در `package.json`؛ نسخه نصب‌شده را با آن تطبیق دهید)
 - Git برای ابزارهای Git
 - ابزارهای اختیاری مربوط به package manager انتخابی: Python/pip، winget یا Chocolatey
 
