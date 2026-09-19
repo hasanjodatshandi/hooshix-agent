@@ -120,10 +120,10 @@ this test does **not** exercise a restoration of the primary live database.
 | Live crash recovery and path-active flag | Verified in prior controlled tests |
 | Compiled MCP and tool reconciliation | Verified in prior controlled tests |
 | Build / TypeScript / full unit suite | **PASS — 92 files / 470 tests, typecheck and build PASS** |
-| Fresh installation with frozen lockfile | Not established |
+| Fresh installation with frozen lockfile | **PASS on isolated Windows x64 checkout with selective native-build policy; final committed-source preflight still required** |
 | Representative SQLite copy/migration integrity | **PASS — schema 8, integrity ok, zero FK violations** |
 | Actual backup **restoration** drill | **PASS locally on an independent restored rehearsal copy; live DB was never replaced** |
-| Clean Git source and provenance | Candidate branch assembled; clean commit and checkout verification are separate subsequent gates |
+| Clean Git source and provenance | **PASS locally on dedicated release-candidate branch; remote provenance and public-release approval remain separate** |
 | Watchdog/process ownership for deployment | **PASS safety gate — only watchdog-owned Process objects are terminated; unowned unhealthy servers fail closed for operator review** |
 | R10 architecture/security/OAuth/modern MCP gates | Not verified; consult official ledger |
 | Public production cutover | **NOT PERFORMED** |
@@ -148,8 +148,17 @@ Execution performed on 2026-09-19 (local Windows repository):
   `packageManager`. Hashes for package/lockfile/migration source and
   built entrypoints were present in the preflight output. These hashes are
   informational until reviewed against an immutable source commit.
+- A first frozen install in a fresh isolated checkout failed because the old
+  `pnpm-workspace.yaml` explicitly allowed a redundant `better-sqlite3`
+  native rebuild and Visual Studio C++ Build Tools were unavailable. The pinned
+  `better-sqlite3@13.0.3` package contains a compatible `win32-x64.node`
+  prebuild. Changing only `allowBuilds.better-sqlite3` to `false` while retaining
+  `allowBuilds.esbuild: true` allowed a **fresh** frozen offline install of all
+  185 packages. Native SQLite query and `esbuild` load passed on Windows x64,
+  Node 24.18.0. Other platforms require independent verification.
 - `pnpm run typecheck` => PASS.
-- `pnpm exec vitest run` => PASS, 92 files / 470 tests.
+- `pnpm exec vitest run` => PASS, 92 files / 470 tests, including rerun
+  after the selective native-build policy validation in isolated checkout.
 - `pnpm run build` => PASS.
 - PowerShell parser validation for `scripts/hooshix_nodejs_mcp_watchdog.ps1` => PASS (`WATCHDOG_PARSE_OK`).
 - `pnpm audit --prod` => PASS (`No known vulnerabilities found`).
@@ -162,7 +171,7 @@ Execution performed on 2026-09-19 (local Windows repository):
   reopened as a restore drill with integrity `ok`, zero FK violations, schema 8
   and 446 tasks. All rehearsal DB/WAL/SHM artifacts were deleted afterward;
   the live DB was never replaced.
-- The candidate changeset includes the workspace/recovery/runtime fixes,
+- The dedicated local release branch contains committed workspace/recovery/runtime fixes,
   regression tests, the five previously ignored database source files,
   release scripts, documentation, and `.gitignore` correction. Only explicit
   reviewed paths were staged; ignored local runtime data and pnpm backup

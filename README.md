@@ -13,6 +13,8 @@ HooshiX یک MCP server محلی و یک runtime قطعی برای اجرای wo
 - Git برای ابزارهای Git
 - ابزارهای اختیاری مربوط به package manager انتخابی: Python/pip، winget یا Chocolatey
 
+در `pnpm-workspace.yaml` ساخت مجدد بومی `better-sqlite3` غیرفعال است؛ نسخهٔ قفل‌شده باینری آمادهٔ `win32-x64` دارد و بارگذاری آن با Node.js 24 روی ویندوز آزمایش شده است. اسکریپت ساخت `esbuild` همچنان مجاز است. نصب استاندارد از Checkout تمیز را با `pnpm install --frozen-lockfile` انجام دهید؛ اگر روی پلتفرمی باینری سازگار موجود نبود، روش ساخت بومی آن پلتفرم باید جداگانه بررسی و تأیید شود.
+
 ```sh
 pnpm install
 pnpm run build
