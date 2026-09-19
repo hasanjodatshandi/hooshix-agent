@@ -177,6 +177,7 @@ No new violation may be added after R1.
 | `MCP_API_KEY` | rejected with migration error | R7 | immediate | TBD |
 | `package_restore` alias | `package_manifest_restore` truthful semantics | R4/R9 | bounded | TBD |
 | MCP SDK v1 | SDK v2 | R1/R5 | R5/R9 | TBD |
+| Legacy `src/core/runtime/template-resolver.ts` import facade | `src/application/services/template-resolver.ts` | R1 | R9 (after all legacy callers migrated) | ACTIVE: same exported implementations; regression tested |
 | 2025 MCP legacy era | 2026 modern primary | R5 | per ADR-009 compatibility decision | TBD |
 
 No compatibility shim is indefinite without an ADR.
@@ -215,7 +216,7 @@ Record machine/runtime fixture metadata for comparisons.
 ```text
 Current build: PASS after R1 skeleton, legacy live runtime unchanged
 Current typecheck: PASS after R1 foundation; standalone Domain/Application compilation PASS
-Unit/domain/application: 105 files / 502 passing + 18 expected failures after R1 foundation; 14 focused architecture/use-case tests PASS
+Unit/domain/application: 106 files / 504 passing + 18 expected failures after pure Template Resolver migration; 59 focused resolver/loop/architecture tests PASS
 Architecture: R1 NEW_TREE PASS; GLOBAL G1 NOT PASSED due to scoped legacy migration baseline (20 SQL/9 env/44 concrete import/19 MCP candidate files)
 Security regressions:
 Integration/adapters:
@@ -330,3 +331,23 @@ Finding IDs: architectural G1; no HIGH/MED/LOW finding independently closed.
 - Schema/config: no new DB migration, no production deployment; `package.json` updates `typecheck` to always include standalone R1 compile and adds `typecheck:r1`. SDK v1 remains in legacy transport; SDK v2 selection/migration not claimed.
 - Risk: test-only R1 dispatcher does not implement production approval, canonical OS path security, task lease or end-to-end shared gateway; continue to R2/R3/R5/R9 only under the official phase/gate rules.
 - Git safety: isolated feature branch; no main/release reset, push, merge, tag, service restart or primary DB modification.
+
+## R1 pure Template Resolver migration — 2026-09-19
+
+- **Status:** VERIFIED as a bounded R1 vertical slice. Overall R1 remains
+  `IN_PROGRESS`; G1 global remains `NOT PASSED` due to legacy SQL,
+  configuration, and adapter/transport dependencies.
+- **Source migration:** `src/core/runtime/template-resolver.ts` pure
+  implementation -> `src/application/services/template-resolver.ts`.
+  Original path is an exact re-export facade only; removal owner R9.
+- **Application boundary:** structural `TemplateStep`, no import of legacy
+  planner, Node filesystem, SQL, MCP SDK, or production process.
+- **Tests:** `tests/core/r1-template-migration.test.ts` verifies old/new
+  symbol identity and legacy TaskStep input compatibility; focused 59 PASS;
+  full suite 106 files / 504 PASS + 18 expected RED; independent/full
+  TypeScript compilation and Build PASS.
+- **Data/config/security:** no new DB migrations, production workspace
+  change, tool authorization rewiring, service restart or release actions.
+  All 54 original audit findings retain existing statuses.
+- **Residual:** existing live loop still calls the old facade; removal of that
+  import belongs to R9 after migrating all callers. No G1/global gate waiver.

@@ -73,3 +73,25 @@ crossing into the mass-migration work assigned to R2–R9.
   tests and do not mark any HIGH finding `VERIFIED_CLOSED`.
 - This R1 branch provides independently compilable, fake-adapter-runnable
   foundation; it does not claim production Hexagonal migration is complete.
+## Follow-up vertical migration — pure Template Resolver (2026-09-19)
+
+- Actual production source `src/core/runtime/template-resolver.ts` (246 legacy-source lines)
+  was relocated to `src/application/services/template-resolver.ts`.
+  The original path now only re-exports the exact same function/class objects
+  as a compatibility facade, slated for removal with legacy imports in R9.
+  No template resolution algorithm or public legacy API was intentionally changed.
+- New Application module uses a structural `TemplateStep` contract instead of
+  importing the concrete legacy `TaskStep` type from the planner. It remains
+  independently typecheckable via `tsconfig.r1.json`.
+- `tests/core/r1-template-migration.test.ts` verifies object identity of all
+  five legacy exports and structural compatibility with the existing legacy
+  `TaskStep` type.
+- Focused tests: 59 PASS across legacy resolver, agent-runtime features, loop,
+  and new-tree architecture. Full suite: **106 files, 504 PASS + 18 expected
+  pre-fix failures** (522 cases); Typecheck (including standalone new tree)
+  and Build PASS.
+- This moves real pure behavior into the intended Application layer, but
+  does not claim R2's unified live tool gateway, eliminate old SQL/config/MCP
+  dependencies, resolve the 18 pre-fix HIGH/MED contracts or pass global G1.
+- Files changed only within this migration: new application resolver; original
+  legacy compatibility facade; dedicated migration tests; R1 report and ledger.
