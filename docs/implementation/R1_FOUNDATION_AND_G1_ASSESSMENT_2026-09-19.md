@@ -95,3 +95,12 @@ crossing into the mass-migration work assigned to R2–R9.
   dependencies, resolve the 18 pre-fix HIGH/MED contracts or pass global G1.
 - Files changed only within this migration: new application resolver; original
   legacy compatibility facade; dedicated migration tests; R1 report and ledger.
+
+## Follow-up vertical migration — Execution Context and permission/config split (2026-09-19)
+
+- `ExecutionContext` DTO moved inward to `src/application/dto/execution-context.ts`; Node UUID/time creation moved outward to `src/infrastructure/composition/execution-context-factory.ts`. The old `src/core/runtime/execution-context.ts` path is now a compatibility facade.
+- Legacy permission ranking/tool requirements moved to `src/application/services/legacy-permission-policy.ts`. Reads of `HOOSHIX_PERMISSION_LEVEL` and `HOOSHIX_DIRECT_AUTO_APPROVE` now live under `src/infrastructure/config/**`; `src/security/permission.ts` and the policy decision point delegate instead of reading environment variables directly.
+- Compatibility semantics are preserved: existing tests that mutate `process.env` still observe the same legacy behavior because the config readers read the supplied/current environment at call time.
+- Focused regression: 7 files / 40 tests PASS across adversarial approval, permission level, governance, package service and execution-context/correlation behavior. Combined standalone R1 + project Typecheck PASS; Build PASS.
+- Literal source inventory now reports `process.env` in nine source paths total; only two are under the new target config directory. Remaining legacy reads are `src/index.ts`, `src/index-http.ts`, `src/core/memory/database/connection.ts`, `src/mcp/http-server.ts`, `src/memory/command-audit.ts`, `src/memory/file-audit.ts`, and `src/security/workspace-guard.ts`. These remain migration debt for R2/R5/R6/R7/R9.
+- No production DB migration, tool gateway cutover, server restart, merge, push or deployment occurred.

@@ -7,6 +7,7 @@ import { assertToolPermission } from "../../security/permission.js";
 // inside function bodies, never at module-evaluation time.
 import { classifyCommandCwd } from "../../security/workspace-guard.js";
 import { AsyncLocalStorage } from "node:async_hooks";
+import { isDirectApprovalBypassConfigured } from "../../infrastructure/config/direct-approval-config.js";
 
 export interface PolicyRequest {
   tool: string;
@@ -36,7 +37,7 @@ export function runWithPolicyApproval<T>(tool: string, operation: () => Promise<
 
 /** Whether approval gates are enforced for direct MCP calls. */
 export function isDirectApprovalBypassEnabled(): boolean {
-  return process.env.HOOSHIX_DIRECT_AUTO_APPROVE === "1";
+  return isDirectApprovalBypassConfigured();
 }
 
 export class PolicyDecisionPoint {

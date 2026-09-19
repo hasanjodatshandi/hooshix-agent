@@ -1,21 +1,9 @@
-import { randomUUID } from "node:crypto";
+/** R1 compatibility facade; remove after legacy core imports migrate. */
+import type { ExecutionContext } from "../../application/dto/execution-context.js";
+import { processExecutionContextFactory } from "../../infrastructure/composition/execution-context-factory.js";
 
-export interface ExecutionContext {
-  correlationId: string;
-  taskId?: string;
-  sessionId?: string;
-  createdAt: string;
-  instanceId?: string;
-}
-
-export const serviceInstanceId = randomUUID();
-
+export type { ExecutionContext };
+export const serviceInstanceId = processExecutionContextFactory.serviceInstanceId;
 export function createExecutionContext(input?: Partial<ExecutionContext>): ExecutionContext {
-  return {
-    correlationId: input?.correlationId ?? randomUUID(),
-    taskId: input?.taskId,
-    sessionId: input?.sessionId,
-    createdAt: input?.createdAt ?? new Date().toISOString(),
-    instanceId: input?.instanceId ?? serviceInstanceId
-  };
+  return processExecutionContextFactory.create(input);
 }

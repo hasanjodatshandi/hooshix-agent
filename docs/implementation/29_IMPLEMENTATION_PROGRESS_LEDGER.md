@@ -351,3 +351,12 @@ Finding IDs: architectural G1; no HIGH/MED/LOW finding independently closed.
   All 54 original audit findings retain existing statuses.
 - **Residual:** existing live loop still calls the old facade; removal of that
   import belongs to R9 after migrating all callers. No G1/global gate waiver.
+
+## R1 execution-context/config boundary migration — 2026-09-19
+
+- **Status:** VERIFIED bounded migration; overall R1 remains `IN_PROGRESS`, G1 global remains `NOT PASSED`.
+- Execution context DTO now belongs to Application; UUID/system time creation belongs to Infrastructure composition. Legacy core path is compatibility-only.
+- Permission ranking/policy is application-owned; legacy env reads for permission level and direct auto-approval are isolated in `src/infrastructure/config/**`.
+- Focused regressions: 40 PASS; combined standalone/full Typecheck PASS; production Build PASS.
+- Current literal `process.env` path inventory: nine source paths total, two correctly under target config; seven legacy paths remain and are explicitly owned by later R2/R5/R6/R7/R9 migrations.
+- No original finding marked VERIFIED_CLOSED by this refactor; no live DB/service/deployment mutation.
