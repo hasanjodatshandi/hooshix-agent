@@ -112,3 +112,12 @@ crossing into the mass-migration work assigned to R2–R9.
 - Dedicated migration tests verify exact function identity through the old facade and preservation of representative allowed/blocked transitions.
 - Focused regression: 21 PASS. Full regression: **107 files / 506 PASS + 18 expected pre-fix failures** (524 cases); combined Typecheck PASS; Build PASS.
 - No production DB migration, service restart, tool-gateway cutover, push/merge/tag or deployment.
+
+## Follow-up vertical migration — pure command and action-governance policies (2026-09-19)
+
+- Pure command allowlist/argument validation and the existing command-risk decision table moved to `src/application/services/legacy-command-policy.ts`; `src/security/command-validator.ts` and `src/security/permissions/command-permission.ts` are compatibility facades.
+- Pure action-text governance moved from `src/core/governance/governance-engine.ts` to `src/application/services/legacy-action-governance.ts`; the old path is a compatibility facade.
+- `policy-decision-point.ts` and `step-governance.ts` now import these application services directly rather than routing through the legacy security/core implementation paths.
+- R1 intentionally preserves the current command-decision semantics. The dedicated migration test explicitly proves that `git diff --no-index` is still classified as low-risk/allow, so HIGH-03 remains a visible R2 blocker rather than being silently changed during architecture movement.
+- Compatibility test verifies exact old/new function identity. Focused command/governance suite: 28 PASS + 5 expected RED; migration-alias subset: 8 PASS; combined Typecheck PASS.
+- No production effect, DB migration, service restart, push/merge/tag or deployment.

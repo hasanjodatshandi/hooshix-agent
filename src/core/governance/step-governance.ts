@@ -1,7 +1,7 @@
 import type { TaskStep } from "../planner/task-planner.js";
 import { policyDecisionPoint } from "./policy-decision-point.js";
 import { selectTool, type ToolName } from "../orchestrator/tool-orchestrator.js";
-import { evaluateAction } from "./governance-engine.js";
+import { evaluateAction } from "../../application/services/legacy-action-governance.js";
 import { validateWorkspace, classifyCommandCwd, getWorkspaceRoot } from "../../security/workspace-guard.js";
 
 /** File tools whose `path` argument is hard-scoped to the active workspace. */
