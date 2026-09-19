@@ -216,7 +216,7 @@ Record machine/runtime fixture metadata for comparisons.
 ```text
 Current build: PASS after R1 skeleton, legacy live runtime unchanged
 Current typecheck: PASS after R1 foundation; standalone Domain/Application compilation PASS
-Unit/domain/application: 106 files / 504 passing + 18 expected failures after pure Template Resolver migration; 59 focused resolver/loop/architecture tests PASS
+Unit/domain/application: 112 files / 521 passing + 18 expected failures after R1 runtime/workspace config isolation; earlier phase evidence remains below
 Architecture: R1 NEW_TREE PASS; GLOBAL G1 NOT PASSED due to scoped legacy migration baseline (20 SQL/9 env/44 concrete import/19 MCP candidate files)
 Security regressions:
 Integration/adapters:
@@ -377,3 +377,34 @@ Finding IDs: architectural G1; no HIGH/MED/LOW finding independently closed.
 - Evidence: independent Domain/Application compile PASS; focused migration/boundary 8 PASS; full Typecheck and Build PASS; full regression 110 test files, 515 PASS + 18 expected pre-fix failures; `git diff --check` PASS.
 - Paths/tests: `tests/core/r1-task-planner-migration.test.ts`, `tests/core/r1-tool-orchestrator-migration.test.ts`, complete changed-path inventory from the isolated R1 commit, `R1_FOUNDATION_AND_G1_ASSESSMENT_2026-09-19.md`.
 - No HIGH/MED/LOW finding marked closed; no live DB migration, process restart, push, merge or deployment. Removal of old import facades remains R9; global SQL/config/MCP boundary debt remains with mapped later phases.
+
+## R1 bounded migration — runtime path + Workspace bootstrap configuration (2026-09-19)
+
+- Task: R1.06 legacy environment-boundary reduction. R1 remains IN_PROGRESS;
+  new tree remains clean, **global G1 NOT PASSED**. No finding closure.
+- `src/infrastructure/config/legacy-runtime-paths.ts`: lazy read of
+  `HOOSHIX_DB_PATH` and `HOOSHIX_LOG_DIR`, keeping the original defaults.
+  `src/core/memory/database/connection.ts`, `src/memory/command-audit.ts`
+  and `src/memory/file-audit.ts` now receive those values through the config
+  boundary without changing persistence, redaction or audit output semantics.
+- `src/infrastructure/config/legacy-workspace-bootstrap.ts`: lazy read of
+  `HOOSHIX_WORKSPACE` and the exact existing unrestricted opt-in values.
+  `src/security/workspace-guard.ts` no longer reads `process.env`
+  directly; principal-scoped privilege redesign remains R2.
+- Tests first: `tests/core/r1-runtime-path-config-migration.test.ts`
+  and `tests/core/r1-workspace-bootstrap-config-migration.test.ts`,
+  covering dynamic test env overrides, no live database creation, disposable
+  audit log destinations, and existing strict bootstrap flag behavior.
+- Focused config/DB/audit regression: 5 files / 18 PASS; focused
+  Workspace+MCP/Task regressions: 6 files / 16 PASS + one expected
+  pre-remediation RED. Combined independent and project Typecheck PASS.
+- Complete post-migration regression:
+  `pnpm exec vitest run` -> 112 files / **521 PASS + 18 expected RED**
+  (539 total); `pnpm run typecheck` PASS; `pnpm run build` PASS;
+  `git diff --check` PASS.
+- Residuals: legacy SQL, concrete imports, MCP/HTTP and entrypoint settings
+  remain for assigned R2–R9 migration phases. Merely relocating the Workspace
+  bootstrap environment read does **not** repair HIGH-01 or permit unrestricted
+  privilege expansion. R1/G1 not complete; dependent R2 not started.
+- Change isolation: source/test/docs only in the isolated R1 branch.
+  No server restart, primary DB migration, push, merge, tag, or deployment.

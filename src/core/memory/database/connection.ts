@@ -1,12 +1,13 @@
 import fs from "node:fs";
 import path from "node:path";
 import Database from "better-sqlite3";
+import { readLegacyRuntimePaths } from "../../../infrastructure/config/legacy-runtime-paths.js";
 
 let sharedDatabase: Database.Database | null = null;
 let shutdownRegistered = false;
 
 export function getAgentDatabasePath(): string {
-  return path.resolve(process.env.HOOSHIX_DB_PATH ?? "./data/agent-memory.db");
+  return path.resolve(readLegacyRuntimePaths().databasePath);
 }
 
 export function openAgentDatabase(): Database.Database {

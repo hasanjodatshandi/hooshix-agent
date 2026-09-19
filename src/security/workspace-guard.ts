@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { AsyncLocalStorage } from "node:async_hooks";
+import { readLegacyWorkspaceBootstrapSettings } from "../infrastructure/config/legacy-workspace-bootstrap.js";
 import { policyDecisionPoint } from "../core/governance/policy-decision-point.js";
 import {
   canonicalizeWorkspacePath,
@@ -50,7 +51,8 @@ function initWorkspaceRoots(): string[] {
   // Persistent storage is authoritative. The environment variable is retained
   // as a bootstrap/compatibility seed, but it must not select active state.
   workspaceRoots = listPersistedWorkspaceRoots().map((root) => root.path);
-  const envValue = process.env.HOOSHIX_WORKSPACE?.trim();
+  const bootstrap = readLegacyWorkspaceBootstrapSettings();
+  const envValue = bootstrap.rootsCsv;
   const envRoots = (envValue ?? "")
     .split(",")
     .map((p) => p.trim())
@@ -74,7 +76,7 @@ function initWorkspaceRoots(): string[] {
     activeWorkspace = workspaceRoots[0];
   }
   // Auto-enable unrestricted mode from env
-  if (process.env.HOOSHIX_UNRESTRICTED === "1" || process.env.HOOSHIX_UNRESTRICTED === "true") {
+  if (bootstrap.unrestrictedBootOptIn) {
     unrestrictedMode = true;
   }
   return workspaceRoots;

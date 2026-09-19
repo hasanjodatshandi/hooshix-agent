@@ -1,8 +1,9 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import { readLegacyRuntimePaths } from "../infrastructure/config/legacy-runtime-paths.js";
 
 function logPath(): string {
-  return path.resolve(process.env.HOOSHIX_LOG_DIR ?? "./logs", "command-actions.log");
+  return path.resolve(readLegacyRuntimePaths().logDirectory, "command-actions.log");
 }
 
 const SENSITIVE_PATTERN = /token|secret|password|api[-_]?key|credential|auth[-_]?key|access[-_]?key|private[-_]?key|sign[-_]?key/i;

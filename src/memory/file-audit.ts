@@ -1,8 +1,9 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import { readLegacyRuntimePaths } from "../infrastructure/config/legacy-runtime-paths.js";
 
 function logPath(): string {
-  return path.resolve(process.env.HOOSHIX_LOG_DIR ?? "./logs", "file-actions.log");
+  return path.resolve(readLegacyRuntimePaths().logDirectory, "file-actions.log");
 }
 
 export async function logFileAction(

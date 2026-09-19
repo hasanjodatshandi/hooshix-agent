@@ -131,3 +131,43 @@ crossing into the mass-migration work assigned to R2–R9.
 - Full regression: **110 files / 515 PASS + 18 expected RED (533 total)**; no unexpected failures. `git diff --check` PASS.
 - Scope: application/Infrastructure migration plus import re-pointing, with legacy APIs preserved. No production DB schema mutation, OAuth/Task lease/approval redesign, service restart, deployment, push or merge. All audit finding states unchanged.
 - Residual: existing callers and MCP transport still use legacy execution semantics; R2/R3/R5/R6/R7/R9 own the final gateway, durable execution, transport, persistence, configuration and deletion of compatibility facades.
+
+## Follow-up vertical migration — lazy legacy runtime path configuration (2026-09-19)
+
+- `src/infrastructure/config/legacy-runtime-paths.ts` now reads the two existing
+  path variables (`HOOSHIX_DB_PATH`, `HOOSHIX_LOG_DIR`) at invocation time.
+  Defaults and environment changes during test/bootstrap are preserved.
+- `src/core/memory/database/connection.ts`, `src/memory/command-audit.ts`,
+  and `src/memory/file-audit.ts` consume this infrastructure configuration
+  provider. Direct environment reads were removed from these three modules;
+  database initialization, audit log format, and the redaction algorithm were
+  not otherwise changed.
+- `tests/core/r1-runtime-path-config-migration.test.ts` tests explicit config
+  injection, lazy DB-path changes without opening the primary DB, and actual
+  command/file audit output in separate disposable log directories.
+  Focused validation (5 files / 18 tests) PASS, combined independent/core
+  Typecheck PASS. Full-suite and Build evidence belongs to the execution
+  record in the progress ledger after revalidation.
+- Remaining global G1 blockers still include legacy Workspace env/unrestricted
+  bootstrap, HTTP/OAuth/session configuration, entrypoint retention settings,
+  SQL in legacy non-adapter modules and concrete service/transport imports.
+  These require the assigned R2–R9 changes and are not marked resolved by
+  this path-only refactor. No live DB/HTTP/Task gateway mutation, process
+  restart, push, merge or deployment is performed.
+
+## Follow-up vertical migration — Workspace bootstrap environment isolation (2026-09-19)
+
+- `src/security/workspace-guard.ts` no longer reads `process.env` directly.
+  `src/infrastructure/config/legacy-workspace-bootstrap.ts` reads the same
+  `HOOSHIX_WORKSPACE` CSV and `HOOSHIX_UNRESTRICTED` literal "1"/"true"
+  values **at the existing lazy bootstrap point**, preserving current behavior.
+- `tests/core/r1-workspace-bootstrap-config-migration.test.ts` verifies the
+  old trim/opt-in semantics and source isolation. Focused Workspace/Task
+  regression: six files, 16 PASS + one expected RED (existing HIGH-01);
+  combined standalone and whole-project Typecheck PASS.
+- **Security caveat:** relocating environment access does not implement
+  principal-scoped authorization, revocation or the R2 unrestricted triple
+  authorization. The original operator/bootstrap trust behavior is unchanged.
+- No production database migration, Task mutation, service restart or deployment
+  was performed. Legacy MCP/HTTP/entrypoint environment/config and SQL/concrete
+  dependencies still prevent global G1 PASS.
