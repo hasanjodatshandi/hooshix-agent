@@ -1,5 +1,7 @@
 import { execa } from "execa";
 import { randomUUID } from "node:crypto";
+import fs from "node:fs";
+import path from "node:path";
 import type { ToolHandler, ToolHandlerContext } from "./tool-handler.js";
 import type { ToolName } from "../../orchestrator/tool-orchestrator.js";
 import { validateWorkspace } from "../../../security/workspace-guard.js";
@@ -17,12 +19,31 @@ interface GitSnapshot {
   clean: boolean;
   status: string;
   cwd: string;
+  errorType?: "GIT_NO_INITIAL_COMMIT";
+}
+
+interface TaskSnapshotCaptureResult {
+  snapshotId: string;
+  head: string;
+  branch: string;
+  clean: boolean;
+  cwd: string;
+  error?: "GIT_NO_INITIAL_COMMIT" | "NOT_A_GIT_REPOSITORY";
+  errorType?: "GIT_NO_INITIAL_COMMIT";
+  message?: string;
 }
 
 async function runGitSnapshot(cwd: string): Promise<GitSnapshot> {
   const opts = { cwd, reject: false, encoding: "utf8" as const, timeout: 10000 };
   let head = ""; let branch = ""; let clean = true; let status = "";
-  try { head = (await execa("git", ["rev-parse", "HEAD"], opts)).stdout.trim(); } catch { /* no git repo */ }
+  // Check if .git exists to distinguish "no repo" from "repo with no commits"
+  const hasGitDir = fs.existsSync(cwd) && fs.existsSync(path.join(cwd, ".git"));
+  const headResult = await execa("git", ["rev-parse", "HEAD"], opts);
+  head = headResult.stdout.trim();
+  // Detect empty repo: .git exists but HEAD is empty or non-SHA → no initial commit
+  if (hasGitDir && (!head || !GIT_SHA.test(head))) {
+    return { head: "", branch: "", clean: true, status: "", cwd, errorType: "GIT_NO_INITIAL_COMMIT" };
+  }
   try { branch = (await execa("git", ["rev-parse", "--abbrev-ref", "HEAD"], opts)).stdout.trim(); } catch { /* detached */ }
   try { status = (await execa("git", ["status", "--porcelain"], opts)).stdout.trim(); clean = status.length === 0; } catch { /* no git */ }
   if (head && !GIT_SHA.test(head)) throw new Error("git rev-parse HEAD returned an invalid commit id");
@@ -30,9 +51,17 @@ async function runGitSnapshot(cwd: string): Promise<GitSnapshot> {
 }
 
 /** Shared task snapshot/rollback logic — used by both the executor handler and the MCP tools. */
-export async function captureTaskSnapshot(cwd: string, correlationId: string): Promise<{ snapshotId: string; head: string; branch: string; clean: boolean; cwd: string }> {
+export async function captureTaskSnapshot(cwd: string, correlationId: string): Promise<TaskSnapshotCaptureResult> {
   const safeCwd = validateWorkspace(cwd);
   const snap = await runGitSnapshot(safeCwd);
+  // Detect GIT_NO_INITIAL_COMMIT: .git exists but no commits yet (BUG-03)
+  if (snap.errorType === "GIT_NO_INITIAL_COMMIT") {
+    return { snapshotId: "", head: "", branch: "", clean: false, cwd: safeCwd, error: "GIT_NO_INITIAL_COMMIT", errorType: "GIT_NO_INITIAL_COMMIT", message: "Cannot create snapshot because repository has no commits" };
+  }
+  // Reject non-Git directories at snapshot creation (TR-11/TR-12)
+  if (!snap.head) {
+    return { snapshotId: "", head: "", branch: "", clean: false, cwd: safeCwd, error: "NOT_A_GIT_REPOSITORY" };
+  }
   const snapshotId = randomUUID();
   withAgentDatabase((db) => db.prepare(
     "INSERT INTO file_backups(id, correlation_id, path, content, created_at) VALUES (?, ?, ?, ?, ?)"

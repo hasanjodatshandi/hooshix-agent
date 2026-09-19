@@ -4,6 +4,7 @@ import path from "node:path";
 import { resetAgentDatabase, resetMigrationsFlag } from "../../src/core/memory/database.js";
 import { resetColumnsFlag } from "../../src/core/memory/task-repository.js";
 import { resetRecoveryTaskIdFlag } from "../../src/core/trace/recovery-repository.js";
+import { replaceWorkspaceRoots } from "../../src/security/workspace-guard.js";
 
 const databasePath = path.resolve(process.env.HOOSHIX_DB_PATH ?? "./data/test-agent-memory.db");
 const logDirectory = path.resolve(process.env.HOOSHIX_LOG_DIR ?? "./data/test-logs");
@@ -31,4 +32,5 @@ beforeEach(() => {
   for (const suffix of ["", "-wal", "-shm"]) rmSyncWithRetry(databasePath + suffix, { force: true });
   fs.rmSync(logDirectory, { recursive: true, force: true });
   fs.rmSync(memoryFile, { force: true });
+  replaceWorkspaceRoots(process.cwd());
 });

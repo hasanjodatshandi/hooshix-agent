@@ -14,7 +14,10 @@ export function checkpointStep(input: {
     stepId: input.stepId,
     stepIndex: input.stepIndex,
     state: {
-      status: input.status
+      status: input.status,
+      instanceId: input.context?.instanceId,
+      startedAt: input.context?.createdAt,
+      heartbeatAt: new Date().toISOString()
     },
     correlationId: input.context?.correlationId ?? input.correlationId
   });

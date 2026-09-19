@@ -14,7 +14,7 @@ describe("real mcp process integration", () => {
         "package_restore",
         "project_archive", "project_delete", "project_get", "project_list", "project_save",        "read_file", "remove_package", "remove_workspace_root", "restore_file", "search_files",
         "set_workspace",
-        "task_append_steps", "task_approve", "task_cancel", "task_create", "task_get", "task_link", "task_links", "task_list", "task_replay", "task_report", "task_resume", "task_rollback", "task_run", "task_snapshot", "task_step_risks",
+        "task_append_steps", "task_approve", "task_cancel", "task_create", "task_get", "task_link", "task_links", "task_list", "task_reconcile", "task_replay", "task_report", "task_resume", "task_rollback", "task_run", "task_snapshot", "task_step_risks",
         "update_package", "write_file"
       ]);
       const byName = new Map(tools.tools.map((tool) => [tool.name, tool]));

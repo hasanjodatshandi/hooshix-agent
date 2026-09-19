@@ -2,6 +2,8 @@ import type { TaskStep } from "../planner/task-planner.js";
 import { validateToolName, type ToolName } from "../orchestrator/tool-orchestrator.js";
 import { auditToolCall } from "../memory/tool-audit.js";
 import { dispatchToHandler } from "./handlers/index.js";
+import { resolveTaskWorkspace } from "../../security/task-workspace.js";
+import { runWithWorkspaceScope } from "../../security/workspace-guard.js";
 
 /**
  * Tools whose handler returns a subset of fields that need enrichment
@@ -48,10 +50,13 @@ export function createLocalToolExecutor(correlationId: string, taskId?: string, 
     // task_approve/task_resume). A blanket wrap here would auto-satisfy every
     // policy gate invoked inside handlers (e.g. the execute_command cwd
     // escalation) — that was the task_run workspace-isolation bypass.
-    const raw = await
-      auditToolCall(tool, correlationId, taskId, () =>
-        dispatchToHandler(validatedTool, input, correlationId, executionContext, signal)
-      );
+    const execute = () => auditToolCall(tool, correlationId, taskId, () =>
+      dispatchToHandler(validatedTool, input, correlationId, executionContext, signal)
+    );
+    const resolvedWorkspace = resolveTaskWorkspace(executionContext);
+    const raw = await (resolvedWorkspace.workspace
+      ? runWithWorkspaceScope(resolvedWorkspace.workspace, execute)
+      : execute());
     return enrichResult(validatedTool, input, raw);
   };
 }

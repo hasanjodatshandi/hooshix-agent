@@ -1,9 +1,11 @@
-import { describe, expect, it } from "vitest";
-import { validateWorkspace } from "../src/security/workspace-guard.js";
+import { beforeEach, describe, expect, it } from "vitest";
+import { replaceWorkspaceRoots, validateWorkspace } from "../src/security/workspace-guard.js";
 import fs from "node:fs";
 import os from "node:os";
 
 describe("workspace guard", () => {
+  beforeEach(() => replaceWorkspaceRoots(process.cwd()));
+
   it("allows workspace files", () => {
     expect(validateWorkspace("package.json")).toContain("package.json");
   });

@@ -31,6 +31,40 @@ export interface ReplayBlockedResult {
   requiresAllowMutations: true;
 }
 
+/** Volatile fields that are execution metadata, not semantic output. */
+const VOLATILE_FIELDS = new Set([
+  "backupId", "correlationId", "taskId", "stepId",
+  "attemptId", "revisionId", "executionId", "sessionId",
+  "startedAt", "completedAt", "createdAt", "updatedAt",
+  "durationMs", "retryCount"
+]);
+
+/**
+ * Normalize a tool output for semantic comparison (TR-05).
+ * Strips volatile execution metadata so deterministic tool outputs
+ * compare equal across original and replay runs.
+ */
+function normalizeReplayOutput(tool: string | undefined, output: unknown): unknown {
+  if (output === null || output === undefined || typeof output !== "object") {
+    return output;
+  }
+  if (Array.isArray(output)) {
+    return output.map((item) => normalizeReplayOutput(tool, item));
+  }
+  const normalized: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(output)) {
+    if (VOLATILE_FIELDS.has(key)) {
+      // Keep a sentinel so structure is preserved but value is ignored
+      normalized[key] = "__volatile__";
+    } else if (typeof value === "object" && value !== null) {
+      normalized[key] = normalizeReplayOutput(tool, value);
+    } else {
+      normalized[key] = value;
+    }
+  }
+  return normalized;
+}
+
 export class ReplayExecutor {
   constructor(private readonly runtime: TaskRuntimeService) {}
 
@@ -65,7 +99,8 @@ export class ReplayExecutor {
     });
     const result = await this.runtime.run(replay.id, 0);
     // A step that consumes another step's output but has no persisted
-    // templateArguments replays with stale resolved values.
+    // templateArguments replays with stale resolved values. The replay
+    // reused the source run's resolved values for them.
     const staleProne = new Set(
       source.steps
         .filter((step) => !step.templateArguments && (step.dependsOn ?? []).length > 0)
@@ -83,7 +118,10 @@ export class ReplayExecutor {
           const replayStep = result.plan.steps[index];
           if (!replayStep) return false;
           if (staleProne.has(step.id)) return false; // stale-prone — equivalence unprovable
-          return JSON.stringify(step.output) === JSON.stringify(replayStep.output);
+          // Normalize outputs to strip volatile execution metadata (TR-05)
+          const normalizedOriginal = normalizeReplayOutput(step.tool, step.output);
+          const normalizedReplay = normalizeReplayOutput(replayStep.tool, replayStep.output);
+          return JSON.stringify(normalizedOriginal) === JSON.stringify(normalizedReplay);
         }),
         equivalentLifecycle: source.steps.every((step, index) => {
           const replayStep = result.plan.steps[index];

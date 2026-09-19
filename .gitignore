@@ -1,9 +1,11 @@
 node_modules/
+.pnpm-store/
 dist/
 coverage/
 data/*.db*
+data/release-validation/
 data/test-logs/
-database/
+/database/
 logs/
 tests/runtime-files/
 tests/runtime-*/

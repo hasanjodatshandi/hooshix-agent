@@ -114,7 +114,22 @@ async function atomicWrite(filePath: string, content: string | Buffer, options?:
     } finally {
       await handle.close();
     }
-    await fs.rename(temporary, filePath);
+    // On Windows, rename can fail with EPERM if the target was recently
+    // written (kernel lock delay). Retry a few times with a short delay.
+    let lastError: unknown;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        await fs.rename(temporary, filePath);
+        lastError = undefined;
+        break;
+      } catch (err) {
+        lastError = err;
+        const code = err instanceof Error && "code" in err ? (err as NodeJS.ErrnoException).code : undefined;
+        if (code !== "EPERM" || attempt === 2) throw err;
+        await new Promise((resolve) => setTimeout(resolve, 50 * (attempt + 1)));
+      }
+    }
+    if (lastError) throw lastError;
   } finally {
     await fs.rm(temporary, { force: true });
   }

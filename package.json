@@ -14,7 +14,9 @@
     "lint": "tsc -p tsconfig.test.json --noEmit",
     "typecheck": "tsc -p tsconfig.test.json --noEmit",
     "test": "vitest",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "release:preflight": "node scripts/release-preflight.mjs",
+    "release:db-rehearsal": "node scripts/release-db-rehearsal.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.30.0",

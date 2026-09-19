@@ -18,13 +18,14 @@ const transitions: Record<TaskState, TaskState[]> = {
   executing: ["checkpointing", "waiting_approval", "recovering", "verifying", "failed", "cancelled"],
   checkpointing: ["executing", "waiting_approval", "recovering", "verifying", "failed", "cancelled"],
   recovering: ["executing", "waiting_approval", "failed", "cancelled"],
-  resuming: ["executing", "recovering", "failed", "cancelled"],
+  resuming: ["executing", "recovering", "failed", "cancelled", "planning"],
   // "executing" is a valid exit: if the process died between move(verifying)
   // and the final save, the task must be resumable instead of stuck forever.
   verifying: ["executing", "completed", "recovering", "failed", "cancelled"],
-  completed: [],
-  failed: ["resuming", "cancelled"],
-  cancelled: []
+  // Terminal states can be reopened via task_append_steps → planning
+  completed: ["planning"],
+  failed: ["resuming", "cancelled", "planning"],
+  cancelled: ["planning"]
 };
 
 export function canTransition(from: TaskState, to: TaskState) {

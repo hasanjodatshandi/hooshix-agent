@@ -15,6 +15,8 @@ export type ErrorCode =
   | "INVALID_ARGUMENT"
   | "UNKNOWN_TOOL"
   | "GOVERNANCE_BLOCKED"
+  | "WORKSPACE_CONTEXT_INVALID"
+  | "MEMORY_CONTENT_REQUIRED"
   | "EXECUTION";
 
 export class AgentError extends Error {
@@ -50,6 +52,18 @@ export class NetworkError extends AgentError {
   }
 }
 
+export class WorkspaceContextInvalidError extends AgentError {
+  readonly reason: string;
+  readonly workspace: string | null;
+
+  constructor(reason: string, workspace: string | null, message?: string) {
+    super("WORKSPACE_CONTEXT_INVALID", message ?? `Workspace context invalid: ${reason}`);
+    this.name = "WorkspaceContextInvalidError";
+    this.reason = reason;
+    this.workspace = workspace;
+  }
+}
+
 /** Map an arbitrary thrown value (or raw message string) to a stable error code. */
 export function classifyError(error: unknown): ErrorCode {
   if (error instanceof AgentError) return error.code;
@@ -63,6 +77,7 @@ export function classifyError(error: unknown): ErrorCode {
   if (/approval required|Approval required|permission denied/i.test(message)) return "APPROVAL_REQUIRED";
   if (/ENOENT|no such file|file not found/i.test(message)) return "FILE_NOT_FOUND";
   if (/unknown tool|unsupported task tool/i.test(message)) return "UNKNOWN_TOOL";
+  if (/WORKSPACE_CONTEXT_INVALID|ROOT_NO_LONGER_ALLOWED|PATH_NO_LONGER_EXISTS|WORKSPACE_NOT_CONFIGURED/i.test(message)) return "WORKSPACE_CONTEXT_INVALID";
   if (/invalid|schema|argument/i.test(message)) return "INVALID_ARGUMENT";
   return "EXECUTION";
 }

@@ -78,11 +78,11 @@ describe("architecture hardening", () => {
     expect(canTransition("failed", "resuming")).toBe(true);
     expect(canTransition("failed", "cancelled")).toBe(true);
 
-    // Terminal states have no transitions
+    // Terminal states have no transitions (except cancelled→planning for task_append_steps)
     expect(canTransition("completed", "executing")).toBe(false);
     expect(canTransition("completed", "failed")).toBe(false);
     expect(canTransition("cancelled", "executing")).toBe(false);
-    expect(canTransition("cancelled", "planning")).toBe(false);
+    expect(canTransition("cancelled", "planning")).toBe(true);
 
     // Invalid cross-transitions
     expect(canTransition("created", "executing")).toBe(false);

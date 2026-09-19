@@ -23,6 +23,12 @@ interface StepRow {
   output: string | null;
   error: string | null;
   error_type: string | null;
+  run_when?: TaskStep["runWhen"] | null;
+  step_timeout_ms?: number | null;
+  attempts?: number | null;
+  failed_attempts?: number | null;
+  attempt_history?: string | null;
+  template_arguments?: string | null;
 }
 
 function parseJson(value: string | null, fallback: unknown): unknown {
@@ -30,72 +36,34 @@ function parseJson(value: string | null, fallback: unknown): unknown {
   try { return JSON.parse(value) as unknown; } catch { return fallback; }
 }
 
-let columnsEnsured = false;
-/** Call after resetAgentDatabase() to re-run column checks. */
-export function resetColumnsFlag(): void { columnsEnsured = false; }
-function ensureExtraColumns(): void {
-  if (columnsEnsured) return;
-  withAgentDatabase((db) => {
-    const stepCols = new Set(
-      (db.prepare("PRAGMA table_info(task_steps)").all() as Array<{ name: string }>).map((c) => c.name)
-    );
-    const taskCols = new Set(
-      (db.prepare("PRAGMA table_info(tasks)").all() as Array<{ name: string }>).map((c) => c.name)
-    );
-    if (!stepCols.has("error_type")) {
-      try { db.prepare("ALTER TABLE task_steps ADD COLUMN error_type TEXT").run(); } catch { /* ignore */ }
-    }
-    if (!stepCols.has("run_when")) {
-      try { db.prepare("ALTER TABLE task_steps ADD COLUMN run_when TEXT DEFAULT 'success'").run(); } catch { /* ignore */ }
-    }
-    if (!taskCols.has("last_heartbeat")) {
-      try { db.prepare("ALTER TABLE tasks ADD COLUMN last_heartbeat TEXT").run(); } catch { /* ignore */ }
-    }
-    if (!taskCols.has("execution_context")) {
-      try { db.prepare("ALTER TABLE tasks ADD COLUMN execution_context TEXT").run(); } catch { /* ignore */ }
-    }
-    if (!taskCols.has("max_recovery")) {
-      try { db.prepare("ALTER TABLE tasks ADD COLUMN max_recovery INTEGER").run(); } catch { /* ignore */ }
-    }
-    if (!taskCols.has("retry_policy")) {
-      try { db.prepare("ALTER TABLE tasks ADD COLUMN retry_policy TEXT").run(); } catch { /* ignore */ }
-    }
-    if (!taskCols.has("total_run_count")) {
-      try { db.prepare("ALTER TABLE tasks ADD COLUMN total_run_count INTEGER DEFAULT 0").run(); } catch { /* ignore */ }
-    }
-    if (!taskCols.has("idempotency_key")) {
-      try { db.prepare("ALTER TABLE tasks ADD COLUMN idempotency_key TEXT").run(); } catch { /* ignore */ }
-    }
-    // Unique index for idempotency deduplication
-    try { db.prepare("CREATE UNIQUE INDEX IF NOT EXISTS idx_tasks_idempotency_key ON tasks(idempotency_key) WHERE idempotency_key IS NOT NULL").run(); } catch { /* ignore */ }
-    if (!taskCols.has("file_revision")) {
-      try { db.prepare("ALTER TABLE file_backups ADD COLUMN file_revision TEXT").run(); } catch { /* ignore */ }
-    }
-    if (!stepCols.has("attempts")) {
-      try { db.prepare("ALTER TABLE task_steps ADD COLUMN attempts INTEGER DEFAULT 0").run(); } catch { /* ignore */ }
-    }
-    if (!stepCols.has("failed_attempts")) {
-      try { db.prepare("ALTER TABLE task_steps ADD COLUMN failed_attempts INTEGER DEFAULT 0").run(); } catch { /* ignore */ }
-    }
-    if (!stepCols.has("attempt_history")) {
-      try { db.prepare("ALTER TABLE task_steps ADD COLUMN attempt_history TEXT").run(); } catch { /* ignore */ }
-    }
-    if (!stepCols.has("template_arguments")) {
-      try { db.prepare("ALTER TABLE task_steps ADD COLUMN template_arguments TEXT").run(); } catch { /* ignore */ }
-    }
-    if (!stepCols.has("step_timeout_ms")) {
-      try { db.prepare("ALTER TABLE task_steps ADD COLUMN step_timeout_ms INTEGER").run(); } catch { /* ignore */ }
-    }
-    // Projects: add status column if missing
-    const projectCols = new Set(
-      (db.prepare("PRAGMA table_info(projects)").all() as Array<{ name: string }>).map((c) => c.name)
-    );
-    if (!projectCols.has("status")) {
-      try { db.prepare("ALTER TABLE projects ADD COLUMN status TEXT DEFAULT 'active'").run(); } catch { /* ignore */ }
-    }
-  });
-  columnsEnsured = true;
+/** Canonical DB-row → TaskStep mapper used by normal reads and crash recovery. */
+function hydrateTaskStep(row: StepRow): TaskStep {
+  const step: TaskStep = {
+    id: row.step_id,
+    action: row.action,
+    arguments: parseJson(row.input, {}) as Record<string, unknown>,
+    dependsOn: parseJson(row.dependencies, []) as number[],
+    runWhen: row.run_when ?? undefined,
+    status: row.status,
+  };
+  if (row.step_timeout_ms != null) step.timeout = row.step_timeout_ms;
+  if (row.tool !== null) step.tool = row.tool;
+  if (row.output !== null) step.output = parseJson(row.output, undefined);
+  if (row.error !== null) step.error = row.error;
+  if (row.error_type !== null) step.errorType = row.error_type;
+  if (row.attempts != null) step.attempts = row.attempts;
+  if (row.failed_attempts != null) step.failedAttempts = row.failed_attempts;
+  if (row.attempt_history != null) step.attemptHistory = parseJson(row.attempt_history, undefined) as StepAttempt[];
+  if (row.template_arguments != null) step.templateArguments = parseJson(row.template_arguments, undefined) as Record<string, unknown>;
+  return step;
 }
+
+/**
+ * Backward-compatible test hook. Schema evolution is owned exclusively by
+ * versioned database migrations; repository calls never mutate schema.
+ */
+export function resetColumnsFlag(): void { /* no-op */ }
+function ensureExtraColumns(): void { /* migrations are authoritative */ }
 
 /**
  * Look up an existing task by its idempotency key.
@@ -132,16 +100,16 @@ export function saveTaskPlan(plan: TaskPlan, status: TaskState = plan.state ?? "
         plan.totalRunCount ?? 0, now, now);
 
       const statement = db.prepare(`
-        INSERT INTO task_steps(task_id, step_id, step_order, action, tool, input, dependencies, status, output, error, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO task_steps(task_id, step_id, step_order, action, tool, input, dependencies, status, output, error, error_type, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(task_id, step_id) DO UPDATE SET step_order=excluded.step_order, action=excluded.action,
           tool=excluded.tool, input=excluded.input, dependencies=excluded.dependencies, status=excluded.status,
-          output=excluded.output, error=excluded.error, updated_at=excluded.updated_at
+          output=excluded.output, error=excluded.error, error_type=excluded.error_type, updated_at=excluded.updated_at
       `);
       plan.steps.forEach((step, index) => statement.run(
         plan.id, step.id, index, step.action, step.tool ?? null, JSON.stringify(step.arguments ?? {}),
         JSON.stringify(step.dependsOn ?? []), step.status, step.output === undefined ? null : JSON.stringify(step.output),
-        step.error ?? null, now, now
+        step.error ?? null, step.errorType ?? null, now, now
       ));
       // Save run_when, timeout, template provenance, and attempt counters
       const stepUpdateStmt = db.prepare("UPDATE task_steps SET run_when = ?, step_timeout_ms = ?, template_arguments = COALESCE(?, template_arguments), attempts = ?, failed_attempts = ?, attempt_history = ? WHERE task_id = ? AND step_id = ?");
@@ -225,27 +193,7 @@ export function getTaskPlan(taskId: string): TaskPlan | null {
       retryPolicy: parseJson(task.retry_policy, undefined) as { maxTotalAttempts?: number; maxConsecutiveFailures?: number } | undefined,
       totalRunCount: task.total_run_count ?? undefined,
       pendingApproval,
-      steps: rows.map((row) => {
-        const step: TaskStep = {
-          id: row.step_id,
-          action: row.action,
-          arguments: parseJson(row.input, {}) as Record<string, unknown>,
-          dependsOn: parseJson(row.dependencies, []) as number[],
-          runWhen: (row as any).run_when && (row as any).run_when !== "success" ? (row as any).run_when : undefined,
-          status: row.status
-        };
-        if ((row as any).step_timeout_ms != null) step.timeout = (row as any).step_timeout_ms;
-        if (row.tool !== null) step.tool = row.tool;
-        if (row.output !== null) step.output = parseJson(row.output, undefined);
-        if (row.error !== null) step.error = row.error;
-        if (row.error_type !== null) step.errorType = row.error_type;
-        const r = row as any;
-        if ("attempts" in r && r.attempts != null) step.attempts = r.attempts;
-        if ("failed_attempts" in r && r.failed_attempts != null) step.failedAttempts = r.failed_attempts;
-        if ("attempt_history" in r && r.attempt_history != null) step.attemptHistory = parseJson(r.attempt_history, undefined) as StepAttempt[];
-        if ("template_arguments" in r && r.template_arguments != null) step.templateArguments = parseJson(r.template_arguments, undefined) as Record<string, unknown>;
-        return step;
-      })
+      steps: rows.map(hydrateTaskStep)
     };
   });
 }
@@ -306,6 +254,10 @@ export function canonicalizePath(p: string): string {
   if (resolved.length > 1 && (resolved.endsWith("/") || resolved.endsWith("\\"))) {
     resolved = resolved.slice(0, -1);
   }
+  // Windows: case-insensitive
+  if (process.platform === "win32") {
+    resolved = resolved.toLowerCase();
+  }
   return resolved;
 }
 
@@ -314,10 +266,12 @@ export function saveProject(input: { id?: string; name: string; path: string; de
   return withAgentDatabase((db) => {
     const now = new Date().toISOString();
     const canonical = canonicalizePath(input.path);
+    // Case-insensitive name check on Windows
+    const nameKey = process.platform === "win32" ? input.name.toLowerCase() : input.name;
 
     if (input.id) {
       // UPDATE by ID — reject if not found
-      const existing = db.prepare("SELECT id, path FROM projects WHERE id = ?").get(input.id) as { id: string; path: string } | undefined;
+      const existing = db.prepare("SELECT id, path, name FROM projects WHERE id = ?").get(input.id) as { id: string; path: string; name: string } | undefined;
       if (!existing) throw new Error(`Project not found: ${input.id}`);
       // If path changed, check no other project owns the new canonical path
       const existingCanonical = canonicalizePath(existing.path);
@@ -325,10 +279,16 @@ export function saveProject(input: { id?: string; name: string; path: string; de
         const conflict = db.prepare("SELECT id FROM projects WHERE path = ? AND id != ?").get(canonical, input.id) as { id: string } | undefined;
         if (conflict) throw new Error(`Path already registered to project ${conflict.id}`);
       }
+      // If name changed (case-insensitive on Windows), check for duplicate name
+      const existingNameKey = process.platform === "win32" ? existing.name.toLowerCase() : existing.name;
+      if (nameKey !== existingNameKey) {
+        const nameConflict = db.prepare("SELECT id FROM projects WHERE " + (process.platform === "win32" ? "LOWER(name) = ?" : "name = ?") + " AND id != ?").get(nameKey, input.id) as { id: string } | undefined;
+        if (nameConflict) throw new Error(`Project name already registered to project ${nameConflict.id}`);
+      }
       db.prepare(`
         UPDATE projects SET name=?, path=?, description=?, last_action=?, next_action=?, updated_at=?
         WHERE id=?
-      `).run(input.name, input.path, input.description ?? null, input.lastAction ?? null, input.nextAction ?? null, now, input.id);
+      `).run(input.name, canonical, input.description ?? null, input.lastAction ?? null, input.nextAction ?? null, now, input.id);
       return input.id;
     }
 
@@ -337,12 +297,15 @@ export function saveProject(input: { id?: string; name: string; path: string; de
     if (existingByPath) {
       throw new Error(`Path already registered to project ${existingByPath.id}`);
     }
+    // Check for duplicate name (case-insensitive on Windows)
+    const nameConflict = db.prepare("SELECT id FROM projects WHERE " + (process.platform === "win32" ? "LOWER(name) = ?" : "name = ?")).get(nameKey) as { id: string } | undefined;
+    if (nameConflict) throw new Error(`Project name already registered to project ${nameConflict.id}`);
 
     const id = crypto.randomUUID();
     db.prepare(`
       INSERT INTO projects(id, name, path, description, last_action, next_action, created_at, updated_at, status)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active')
-    `).run(id, input.name, input.path, input.description ?? null, input.lastAction ?? null, input.nextAction ?? null, now, now);
+    `).run(id, input.name, canonical, input.description ?? null, input.lastAction ?? null, input.nextAction ?? null, now, now);
     return id;
   });
 }
@@ -390,7 +353,7 @@ export function updateTaskHeartbeat(taskId: string): void {
 
 // ─── Crash Recovery ─────────────────────────────────────────────────
 
-const INTERRUPTED_STATES = ["executing", "checkpointing", "recovering", "resuming", "verifying"];
+const INTERRUPTED_STATES = ["executing", "checkpointing", "recovering", "resuming", "verifying", "waiting_approval"];
 
 export function findInterruptedTasks(): TaskPlan[] {
   ensureExtraColumns();
@@ -411,21 +374,7 @@ export function findInterruptedTasks(): TaskPlan[] {
         correlationId: task.correlation_id ?? undefined,
         state: task.status,
         executionContext: parseJson(task.execution_context ?? null, undefined) as TaskExecutionContext | undefined,
-        steps: stepRows.map((row) => {
-          const step: TaskStep = {
-            id: row.step_id,
-            action: row.action,
-            arguments: parseJson(row.input, {}) as Record<string, unknown>,
-            dependsOn: parseJson(row.dependencies, []) as number[],
-            status: row.status
-          };
-          if ((row as any).step_timeout_ms != null) step.timeout = (row as any).step_timeout_ms;
-          if (row.tool !== null) step.tool = row.tool as TaskStep["tool"];
-          if (row.output !== null) step.output = parseJson(row.output, undefined);
-          if (row.error !== null) step.error = row.error;
-          if (row.error_type !== null) step.errorType = row.error_type;
-          return step;
-        })
+        steps: stepRows.map(hydrateTaskStep)
       };
     });
   });

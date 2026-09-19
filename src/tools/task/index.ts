@@ -8,8 +8,10 @@ import { listMemoryItems, listProjects, saveMemoryItem, saveProject, getMemoryIt
 import { getApprovalRequest } from "../../core/governance/approval-memory.js";
 import { policyDecisionPoint } from "../../core/governance/policy-decision-point.js";
 import { captureTaskSnapshot, rollbackTaskSnapshot } from "../../core/executor/handlers/task-snapshot-handler.js";
-import { TOOL_NAMES } from "../../core/orchestrator/tool-orchestrator.js";
+import { TOOL_NAMES, validateToolName } from "../../core/orchestrator/tool-orchestrator.js";
 import { ReplayExecutor } from "../../core/trace/replay-executor.js";
+import { recordTaskReconciliation } from "../../core/recovery/task-reconciliation.js";
+import { AgentError } from "../../core/errors.js";
 
 const runtime = createTaskRuntimeService();
 const traceSchema = { correlationId: z.string().min(1).optional() };
@@ -80,6 +82,24 @@ export function registerTaskTools(server: McpServer) {
     const resolvedTaskId = req?.task_id;
     return auditToolCall("task_resume", traceId, resolvedTaskId, async () => response(await runtime.resume(approvalId), traceId));
   });
+  server.registerTool("task_reconcile", {
+    title: "Record Outcome Reconciliation",
+    description: "🗂️ TASK — Record evidence for an outcome_unknown step without replaying the operation or declaring the entire step completed. For effect_observed, verificationTaskId must refer to a completed read-only task. The original step remains outcome_unknown and the task remains failed.",
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false },
+    inputSchema: z.object({
+      taskId: z.string().uuid(),
+      stepId: z.number().int().positive(),
+      finding: z.enum(["effect_observed", "effect_not_observed", "undetermined"]),
+      evidence: z.string().min(12).max(4000),
+      verificationTaskId: z.string().uuid().optional(),
+      ...traceSchema
+    })
+  }, async ({ taskId, stepId, finding, evidence, verificationTaskId, correlationId }) => {
+    assertToolPermission("task_run");
+    const traceId = resolveCorrelationId(correlationId);
+    return auditToolCall("task_reconcile", traceId, taskId, () =>
+      response(recordTaskReconciliation({ taskId, stepId, finding, evidence, verificationTaskId }), traceId));
+  });
   server.registerTool("task_report", { title: "Task Report", description: "🗂️ TASK (read) — Full report: step statuses, unified execution/recovery timeline, reflection (problem/cause/solution), metrics.\n\nExample: { \"taskId\": \"550e8400-...\" }", annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true }, inputSchema: z.object({ taskId: z.string().uuid(), ...traceSchema }) }, async ({ taskId, correlationId }) => {
     assertToolPermission("task_report"); const traceId = resolveCorrelationId(correlationId);
     return auditToolCall("task_report", traceId, taskId, () => response(runtime.report(taskId), traceId));
@@ -112,9 +132,17 @@ export function registerTaskTools(server: McpServer) {
     assertToolPermission("project_list"); const traceId = resolveCorrelationId(correlationId);
     return auditToolCall("project_list", traceId, undefined, () => response(listProjects(limit, offset, status), traceId));
   });
-  server.registerTool("memory_add", { title: "Add Memory", description: "🧠 MEMORY — Store a categorized note for a project or task (kind: decision, note, bug, architecture…). Content ≤64KB.\n\nExample: { \"kind\": \"decision\", \"content\": \"Using PostgreSQL\", \"projectId\": \"uuid\" }", annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false }, inputSchema: z.object({ taskId: z.string().uuid().optional(), projectId: z.string().uuid().optional(), kind: z.string().min(1).max(64), content: z.string().max(65536), ...traceSchema }) }, async ({ correlationId, ...input }) => {
+  server.registerTool("memory_add", { title: "Add Memory", description: "🧠 MEMORY — Store a categorized note for a project or task (kind: decision, note, bug, architecture…). Content ≤512KB.\n\nEmpty Content: Returns MEMORY_CONTENT_REQUIRED error.\n\nDuplicate Detection: If content is identical to existing memory for same task/project, allows save but returns { duplicateOf: existingId } in response.\n\nExample: { \"kind\": \"decision\", \"content\": \"Using PostgreSQL\", \"projectId\": \"uuid\" }", annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false }, inputSchema: z.object({ taskId: z.string().uuid().optional(), projectId: z.string().uuid().optional(), kind: z.string().min(1).max(64), content: z.string().max(524288), ...traceSchema }) }, async ({ correlationId, ...input }) => {
     assertToolPermission("memory_add"); const traceId = resolveCorrelationId(correlationId);
-    return auditToolCall("memory_add", traceId, input.taskId, () => response({ id: saveMemoryItem(input) }, traceId));
+    // Empty content check
+    if (!input.content || input.content.trim().length === 0) {
+      throw new AgentError("MEMORY_CONTENT_REQUIRED", "Memory content is required");
+    }
+    // Duplicate detection: check for identical content in same task/project.
+    const existing = listMemoryItems({ taskId: input.taskId, projectId: input.projectId, limit: 100 });
+    const duplicate = existing.items.find((item) => JSON.stringify(item.content) === JSON.stringify(input.content));
+    const id = saveMemoryItem(input);
+    return auditToolCall("memory_add", traceId, input.taskId, () => response({ id, duplicateOf: duplicate?.id ?? null }, traceId));
   });
   server.registerTool("memory_list", { title: "List Memory", description: "🧠 MEMORY (read) — List stored memory notes; filter by taskId, projectId, or kind; paginated (limit/offset).\n\nExamples: { \"taskId\": \"uuid\" } · { \"kind\": \"decision\" } · { \"limit\": 20, \"offset\": 20 }", annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true }, inputSchema: z.object({ taskId: z.string().uuid().optional(), projectId: z.string().uuid().optional(), kind: z.string().optional(), limit: z.number().int().min(1).max(100).default(50), offset: z.number().int().min(0).default(0), ...traceSchema }) }, async ({ correlationId, ...input }) => {
     assertToolPermission("memory_list"); const traceId = resolveCorrelationId(correlationId);
@@ -138,6 +166,7 @@ export function registerTaskTools(server: McpServer) {
       if (plan.state !== "failed" && plan.state !== "completed" && plan.state !== "cancelled") {
         throw new Error(`Cannot append steps to task with state: ${plan.state}. Task must be failed, completed, or cancelled.`);
       }
+      const previousState = plan.state;
       // Find the max existing step ID
       const maxId = Math.max(0, ...plan.steps.map((s: { id: number }) => s.id));
       // Assign new IDs and set dependsOn to the last existing step if not specified
@@ -152,17 +181,26 @@ export function registerTaskTools(server: McpServer) {
       const { withAgentDatabase } = await import("../../core/memory/database.js");
       withAgentDatabase((db) => {
         const stmt = db.prepare(
-          `INSERT INTO task_steps(task_id, step_id, step_order, action, tool, input, dependencies, status, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+          `INSERT INTO task_steps(task_id, step_id, step_order, action, tool, input, dependencies, status, run_when, step_timeout_ms, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
         );
         const now = new Date().toISOString();
         newSteps.forEach((s, i) => {
-          stmt.run(taskId, s.id, plan.steps.length + i, s.action, s.tool ?? null, JSON.stringify(s.arguments ?? {}), JSON.stringify(s.dependsOn ?? []), s.status, now, now);
+          stmt.run(taskId, s.id, plan.steps.length + i, s.action, s.tool ?? null, JSON.stringify(s.arguments ?? {}), JSON.stringify(s.dependsOn ?? []), s.status, s.runWhen ?? "success", s.timeout ?? null, now, now);
         });
       });
+      // Transition the task from terminal state to planning (runnable)
+      const { saveTaskPlan } = await import("../../core/memory/task-repository.js");
+      plan.state = "planning";
+      // Do NOT reset failedAttempts — historical failure counters must be
+      // preserved for auditability (TR-13). The retry gate is bypassed by
+      // resetting totalRunCount instead (TR-04).
+      plan.totalRunCount = 0;
+      saveTaskPlan(plan, "planning", plan.correlationId);
       // Reload plan to reflect new steps
       const updated = runtime.get(taskId);
-      return response({ taskId, appended: newSteps.length, totalSteps: updated?.steps?.length ?? plan.steps.length + newSteps.length, revision: (plan.revision ?? 1) + 1 }, traceId);
+      const newRevision = (plan.revision ?? 1) + 1;
+      return response({ taskId, appended: newSteps.length, totalSteps: updated?.steps?.length ?? plan.steps.length + newSteps.length, revision: newRevision, previousState, newState: "planning" }, traceId);
     });
   });
 
@@ -171,16 +209,6 @@ export function registerTaskTools(server: McpServer) {
     assertToolPermission("task_run"); const traceId = resolveCorrelationId(correlationId);
     return auditToolCall("task_link", traceId, sourceTaskId, async () => {
       const { withAgentDatabase } = await import("../../core/memory/database.js");
-      // Ensure task_links table exists
-      withAgentDatabase((db) => db.prepare(`
-        CREATE TABLE IF NOT EXISTS task_links (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          source_task_id TEXT NOT NULL,
-          target_task_id TEXT NOT NULL,
-          relation TEXT NOT NULL,
-          created_at TEXT NOT NULL
-        )
-      `).run());
       withAgentDatabase((db) => db.prepare(
         "INSERT INTO task_links(source_task_id, target_task_id, relation, created_at) VALUES (?, ?, ?, ?)"
       ).run(sourceTaskId, targetTaskId, relation, new Date().toISOString()));
@@ -192,16 +220,6 @@ export function registerTaskTools(server: McpServer) {
     assertToolPermission("task_list"); const traceId = resolveCorrelationId(correlationId);
     return auditToolCall("task_links", traceId, taskId, async () => {
       const { withAgentDatabase } = await import("../../core/memory/database.js");
-      // Ensure table exists
-      withAgentDatabase((db) => db.prepare(`
-        CREATE TABLE IF NOT EXISTS task_links (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          source_task_id TEXT NOT NULL,
-          target_task_id TEXT NOT NULL,
-          relation TEXT NOT NULL,
-          created_at TEXT NOT NULL
-        )
-      `).run());
       const upstream = withAgentDatabase((db) => db.prepare(
         "SELECT source_task_id, relation, created_at FROM task_links WHERE target_task_id = ?"
       ).all(taskId)) as Array<{ source_task_id: string; relation: string; created_at: string }>;
@@ -218,8 +236,9 @@ export function registerTaskTools(server: McpServer) {
     return auditToolCall("task_step_risks", traceId, undefined, async () => {
       const { checkStepGovernance } = await import("../../core/governance/step-governance.js");
       const results = steps.map((s, i) => {
-        const gov = checkStepGovernance({ id: i + 1, action: s.tool, tool: s.tool as any, arguments: s.arguments, status: "pending" });
-        return { stepId: i + 1, tool: s.tool, risk: gov.risk, decision: gov.decision, blocked: gov.decision === "blocked", approvalRequired: gov.decision === "approval_required", reason: gov.reason };
+        const tool = validateToolName(s.tool);
+        const gov = checkStepGovernance({ id: i + 1, action: tool, tool, arguments: s.arguments, status: "pending" });
+        return { stepId: i + 1, tool, risk: gov.risk, decision: gov.decision, blocked: gov.decision === "blocked", approvalRequired: gov.decision === "approval_required", reason: gov.reason };
       });
       return response(results, traceId);
     });

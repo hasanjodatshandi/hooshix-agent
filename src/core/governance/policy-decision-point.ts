@@ -30,8 +30,8 @@ const APPROVAL_TOOLS = new Set<ToolName>([
 ]);
 const approvedTool = new AsyncLocalStorage<ToolName>();
 
-export function runWithPolicyApproval<T>(tool: string, operation: () => Promise<T>): Promise<T> {
-  return approvedTool.run(validateToolName(tool), operation);
+export function runWithPolicyApproval<T>(tool: string, operation: () => Promise<T> | T): Promise<T> {
+  return Promise.resolve(approvedTool.run(validateToolName(tool), operation));
 }
 
 /** Whether approval gates are enforced for direct MCP calls. */

@@ -46,4 +46,22 @@ describe("reflection engine", () => {
     expect(report.confidence).toBe(1);
     expect(report.futureRecommendation).toContain("Reuse");
   });
+
+  it("does not claim success when a crashed task has outcome_unknown without an execution row", async () => {
+    const { createTaskPlan } = await import("../../src/core/planner/task-planner.js");
+    const { saveTaskPlan } = await import("../../src/core/memory/task-repository.js");
+    const plan = createTaskPlan("crash-reflection-regression", [
+      { action: "write marker and wait", tool: "execute_command", arguments: { command: "node", args: ["-e", "setTimeout(()=>{},90000)"] }, status: "outcome_unknown" },
+    ]);
+    plan.state = "failed";
+    plan.steps[0].status = "outcome_unknown";
+    saveTaskPlan(plan, "failed", plan.correlationId);
+
+    const report = analyzeTaskHistory(plan.id);
+    expect(report.problem).toContain("Outcome unknown");
+    expect(report.solution).toContain("do not automatically replay");
+    expect(report.confidence).toBe(0);
+    expect(report.solution).not.toContain("Existing execution path succeeded");
+    expect(report.futureRecommendation).toContain("reconciliation");
+  });
 });

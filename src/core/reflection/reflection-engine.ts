@@ -1,5 +1,6 @@
 import { withAgentDatabase } from "../memory/database.js";
 import { getTaskPlan } from "../memory/task-repository.js";
+import { getTaskReconciliations } from "../recovery/task-reconciliation.js";
 
 export interface ReflectionReport {
   problem: string;
@@ -48,6 +49,26 @@ export function analyzeTaskHistory(taskId: string): ReflectionReport {
         actions: [`Cancelled with ${completedSteps} completed and ${plan.steps.length - completedSteps} remaining`],
         toolsUsed: [],
       },
+    };
+  }
+
+  // A crash can leave an in-flight step outcome_unknown without creating an
+  // execution row. Task state is authoritative here: never report success just
+  // because no failed execution was recorded before the process died.
+  const unknownSteps = plan?.steps.filter((step) => step.status === "outcome_unknown") ?? [];
+  if (unknownSteps.length > 0) {
+    const actions = unknownSteps.map((step) => `${step.id}: ${step.action}`).join(", ");
+    const recordedFindings = getTaskReconciliations(taskId).map((row) => row.content as { stepId?: number; finding?: string } | undefined);
+    const observedSideEffect = recordedFindings.some((record) =>
+      unknownSteps.some((step) => record?.stepId === step.id && record?.finding === "effect_observed"));
+    return {
+      problem: `Outcome unknown for ${unknownSteps.length} interrupted step(s): ${actions}`,
+      cause: "The service stopped before the in-flight operation's final result was durably recorded; its side effects may already have occurred.",
+      solution: observedSideEffect
+        ? "A side effect was recorded as observed by a separate verification task; the interrupted operation's final result remains unknown. Do not replay it or mark the entire step completed."
+        : "Execution outcome is unresolved. Inspect durable evidence and reconcile the specific side effects; do not automatically replay the interrupted operation or mark it completed.",
+      confidence: 0,
+      futureRecommendation: "Record verification evidence and a recovery decision linked to this task. Retain outcome_unknown until a supported reconciliation establishes the result.",
     };
   }
 

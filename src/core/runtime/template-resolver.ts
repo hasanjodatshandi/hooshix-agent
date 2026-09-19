@@ -122,7 +122,10 @@ function resolveReference(refPath: string, stepContext: Map<string, StepContext>
 
   const field = parts[1]; // "output", "status", or "error"
   if (field === "status") return ctx.status;
-  if (field === "error") return ctx.error;
+  // For error: return the error value if present, null if step exists but has
+  // no error (e.g. successful step). This lets {{stepN.error}} resolve to null
+  // on success instead of throwing MISSING_CONTEXT_VARIABLE (BUG-01).
+  if (field === "error") return ctx.error ?? null;
 
   // field === "output" — navigate deeper
   let current: unknown = ctx.output;

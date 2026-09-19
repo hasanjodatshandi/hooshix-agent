@@ -12,6 +12,8 @@ import { runClosedAgentLoop } from "../loop/closed-agent-loop.js";
 import { createExecutionContext } from "../runtime/execution-context.js";
 import { saveTaskPlan } from "../memory/task-repository.js";
 import type { TaskState } from "../state/task-state-machine.js";
+import { resolveTaskWorkspace } from "../../security/task-workspace.js";
+import { runWithWorkspaceScope } from "../../security/workspace-guard.js";
 
 export interface CrashRecoveryResult {
   taskId: string;
@@ -21,6 +23,11 @@ export interface CrashRecoveryResult {
   status: "recovered" | "skipped" | "failed";
   reason?: string;
 }
+
+const READ_ONLY_TOOLS = new Set([
+  "get_system_info", "agent_metrics", "list_directory", "read_file", "search_files",
+  "git_status", "git_diff", "git_log", "get_workspace",
+]);
 
 /**
  * Scan for interrupted tasks and attempt to resume them.
@@ -57,9 +64,26 @@ export async function recoverInterruptedTasks(): Promise<CrashRecoveryResult[]> 
 
       const step = plan.steps[startIndex];
 
-      // If step was "running" at crash time, reset it to "pending" for retry
+      // Read-only stale calls are safe to retry. Mutating calls become
+      // outcome_unknown because their side effect may already have happened.
       if (step.status === "running") {
-        step.status = "pending";
+        if (step.tool && READ_ONLY_TOOLS.has(step.tool)) {
+          step.status = "pending";
+        } else {
+          step.status = "outcome_unknown";
+          step.error = "Step was running in a previous service instance; mutation outcome requires reconciliation";
+          step.errorType = "OUTCOME_UNKNOWN";
+          saveTaskPlan(plan, "failed", plan.correlationId);
+          results.push({
+            taskId: plan.id,
+            title: plan.task,
+            resumedFrom: startIndex,
+            totalSteps: plan.steps.length,
+            status: "failed",
+            reason: "Mutating step outcome is unknown and requires reconciliation",
+          });
+          continue;
+        }
       }
 
       // Skip tasks with pending approval — they need human intervention
@@ -81,11 +105,12 @@ export async function recoverInterruptedTasks(): Promise<CrashRecoveryResult[]> 
       // created with, not the process's current global workspace.
       const context = createExecutionContext({ taskId: plan.id, correlationId: plan.correlationId });
       const executor = createLocalToolExecutor(context.correlationId, plan.id, plan.executionContext);
+      const resolvedWorkspace = resolveTaskWorkspace(plan.executionContext);
 
       // Mark as resuming
       markTaskRecovered(plan.id);
 
-      const result = await runClosedAgentLoop(
+      const execute = () => runClosedAgentLoop(
         plan,
         executor,
         1, // maxRecovery
@@ -95,6 +120,9 @@ export async function recoverInterruptedTasks(): Promise<CrashRecoveryResult[]> 
         undefined, // use default sink
         undefined  // no approvedStepId
       );
+      const result = await (resolvedWorkspace.workspace
+        ? runWithWorkspaceScope(resolvedWorkspace.workspace, execute)
+        : execute());
 
       saveTaskPlan(plan, (result.status as TaskState) ?? "completed", context.correlationId);
       updateTaskHeartbeat(plan.id);
@@ -114,6 +142,7 @@ export async function recoverInterruptedTasks(): Promise<CrashRecoveryResult[]> 
       );
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error);
+      saveTaskPlan(plan, "failed", plan.correlationId);
       results.push({
         taskId: plan.id,
         title: plan.task,

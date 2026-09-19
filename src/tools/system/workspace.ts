@@ -61,8 +61,8 @@ export function registerWorkspaceTools(server: McpServer): void {
               effectiveDescription: "File tools: active workspace only. Subprocesses: active workspace; cwd outside requires approval.",
             },
             hint: getWorkspaceRoot() === null
-              ? "No active workspace — file tools are DENIED until you add a root with add_workspace_roots and select it with set_workspace. The pool starts empty by design."
-              : "File tools touch the ACTIVE workspace only. Use add_workspace_roots to extend the allowed pool, set_workspace to select the active root, remove_workspace_root to drop one.",
+              ? "No active workspace — file tools are DENIED until you select a persisted root with set_workspace. Allowed roots survive service restarts."
+              : "File tools touch the ACTIVE workspace only. Use add_workspace_roots to extend the persistent pool, set_workspace to select the active root, remove_workspace_root to drop one.",
           }, null, 2),
         }],
         _meta: { correlationId: traceId },
@@ -74,7 +74,7 @@ export function registerWorkspaceTools(server: McpServer): void {
     "add_workspace_roots",
     {
       title: "Add Workspace Roots",
-      description: "📂 WORKSPACE — Add one or more directories to the allowed workspace roots pool (idempotent). Roots must exist on disk. The pool starts EMPTY — this is how it gets its first roots; the first root ever added also becomes the active workspace. Does NOT switch the active workspace — use set_workspace for that.\n\nExample: { \"paths\": [\"D:/Projects/app-a\", \"D:/Projects/app-b\"] }",
+      description: "📂 WORKSPACE — Add one or more directories to the persistent allowed workspace roots pool (idempotent). Roots must exist on disk. Allowed roots survive service restarts; the active workspace is session state and may reset to null after restart. Does NOT switch the active workspace — use set_workspace for that.\n\nExample: { \"paths\": [\"D:/Projects/app-a\", \"D:/Projects/app-b\"] }",
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
       inputSchema: z.object({
         paths: z.array(z.string().min(1)).min(1).max(50).describe("Absolute directory paths to allow."),
@@ -92,7 +92,7 @@ export function registerWorkspaceTools(server: McpServer): void {
             text: JSON.stringify({
               results,
               active,
-              firstRootBecameActive: active !== null && results.some((r) => r.added),
+              firstRootAdded: results.some((r) => r.added),
               roots: listWorkspaceRoots(),
             }, null, 2),
           }],

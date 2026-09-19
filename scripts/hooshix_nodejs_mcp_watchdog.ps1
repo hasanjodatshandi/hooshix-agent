@@ -78,18 +78,25 @@ function Write-Log {
     Add-Content -LiteralPath $LogPath -Value $json -Encoding utf8
 }
 
+# Only a child process started by THIS watchdog instance can be terminated.
+# Do not discover/kill other node.exe instances by port or command line.
+$script:OwnedNodeProcess = $null
+
 function Stop-NodeProcesses {
-    # NOTE: the server command line is "node dist/index-http.js" and does NOT contain
-    # the port number, so matching on $McpPort never matched anything (frozen servers
-    # survived every cleanup). Match on the entrypoint script instead.
-    Get-CimInstance Win32_Process -Filter "Name = 'node.exe'" -ErrorAction SilentlyContinue |
-        Where-Object {
-            $cmd = [string]$_.CommandLine
-            $cmd -and $cmd.Contains("index-http.js")
-        } | ForEach-Object {
-            Write-Log -Event "node_server_stop" -State "stopping" -Extra @{ pid = $_.ProcessId }
-            Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue
+    $owned = $script:OwnedNodeProcess
+    if ($null -eq $owned) {
+        Write-Log -Event "node_server_not_owned" -State "skipped"
+        return
+    }
+    try {
+        if (-not $owned.HasExited) {
+            Write-Log -Event "node_server_stop" -State "stopping" -Extra @{ pid = $owned.Id }
+            Stop-Process -InputObject $owned -Force -ErrorAction SilentlyContinue
         }
+    } finally {
+        $owned.Dispose()
+        $script:OwnedNodeProcess = $null
+    }
 }
 
 function Test-LocalNodeHealth {
@@ -114,7 +121,8 @@ function Start-NodeMcpServer {
     $psi.UseShellExecute = $false
     $psi.CreateNoWindow = $true
     $psi.WindowStyle = [System.Diagnostics.ProcessWindowStyle]::Hidden
-    $psi.RedirectStandardError = $true
+    # Do not redirect without an async reader: a full stderr pipe can block the child.
+    $psi.RedirectStandardError = $false
     $psi.EnvironmentVariables["MCP_PORT"] = "$McpPort"
     $psi.EnvironmentVariables["MCP_ACCESS_TOKEN"] = $McpAccessToken
     # OAuth discovery/issuer base URL — REQUIRED so discovery documents
@@ -129,6 +137,8 @@ function Start-NodeMcpServer {
     if (-not $proc.Start()) {
         throw "Failed to start Node.js MCP server"
     }
+    # Hold the Process object created by this watchdog, not a discovered PID.
+    $script:OwnedNodeProcess = $proc
     return $proc
 }
 
@@ -147,19 +157,23 @@ try {
     # Validate prerequisites
     if (-not (Test-Path -LiteralPath "$NodeJsDir\dist\index-http.js")) { throw "Node.js MCP build missing: $NodeJsDir\dist\index-http.js" }
 
-    # Clean up orphans
-    $orphanNodes = @(Get-CimInstance Win32_Process -Filter "Name = 'node.exe'" -ErrorAction SilentlyContinue |
+    # Existing Node.js processes are not owned by this watchdog instance.
+    # Never kill a discovered process on startup, even if its command line
+    # resembles HooshiX. An unhealthy unowned server requires operator review.
+    $existingNodes = @(Get-CimInstance Win32_Process -Filter "Name = 'node.exe'" -ErrorAction SilentlyContinue |
         Where-Object { [string]$_.CommandLine -match "index-http.js" -and [string]$_.CommandLine -match "dist" })
-    if ($orphanNodes.Count -gt 0) {
-        Write-Log -Event "orphan_node_detected" -State "cleanup" -Extra @{ orphan_count = $orphanNodes.Count }
-        Stop-NodeProcesses
-        Start-Sleep -Milliseconds 500
+    if ($existingNodes.Count -gt 0) {
+        Write-Log -Event "unowned_node_detected" -State "left_intact" -Extra @{ count = $existingNodes.Count }
     }
 
     Write-Log -Event "watchdog_start" -State "running" -Extra @{ pid = $PID; mode = "node_only" }
 
     # --- Phase 1: Ensure Node.js MCP server is running ---
     $nodeUp = Test-LocalNodeHealth
+    if (-not $nodeUp -and $existingNodes.Count -gt 0) {
+        Write-Log -Event "unowned_node_unhealthy" -State "operator_required" -Extra @{ count = $existingNodes.Count }
+        throw "An unowned index-http.js process exists but is unhealthy. Refusing to start or terminate any server until ownership is verified."
+    }
     if (-not $nodeUp) {
         Write-Log -Event "node_server_starting" -State "starting"
         try {
@@ -205,7 +219,11 @@ try {
                 $nodeHealthFailures++
                 Write-Log -Event "node_health_failed" -State "degraded" -Extra @{ failures = $nodeHealthFailures }
                 if ($nodeHealthFailures -ge $NodeProbeFailureThreshold) {
-                    Write-Log -Event "node_health_critical" -State "restarting_node"
+                    if ($null -eq $script:OwnedNodeProcess) {
+                        Write-Log -Event "node_health_critical_unowned" -State "operator_required" -Extra @{ failures = $nodeHealthFailures }
+                        throw "Node health failed repeatedly, but the listening process is not owned by this watchdog. Refusing to kill or replace it."
+                    }
+                    Write-Log -Event "node_health_critical" -State "restarting_owned_node"
                     Stop-NodeProcesses
                     Start-Sleep -Seconds 2
                     try {

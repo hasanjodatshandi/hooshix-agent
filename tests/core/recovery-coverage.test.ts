@@ -66,6 +66,45 @@ describe("crash recovery", () => {
     expect(after?.state).toBe("completed");
   });
 
+  it("hydrates every persisted step semantic field during crash recovery discovery", async () => {
+    await fs.mkdir(root, { recursive: true });
+    const runtime = createTaskRuntimeService();
+    const plan = runtime.create({
+      title: "semantic hydration",
+      steps: [
+        { action: "source", tool: "read_file", arguments: { path: "README.md" } },
+        {
+          action: "read conditional",
+          tool: "read_file",
+          arguments: { path: "{{step1.output.path}}" },
+          dependsOn: [1],
+          runWhen: "always",
+          timeout: 4321,
+        },
+      ]
+    });
+    plan.steps[0].status = "completed";
+    plan.steps[0].output = { path: "README.md" };
+    plan.steps[1].status = "running";
+    plan.steps[1].attempts = 3;
+    plan.steps[1].failedAttempts = 2;
+    plan.steps[1].attemptHistory = [{ attempt: 1, status: "failed", error: "x", timestamp: new Date().toISOString() }];
+    plan.steps[1].templateArguments = { path: "{{step1.output.path}}" };
+    plan.state = "executing";
+    saveTaskPlan(plan, "executing");
+
+    const recovered = findInterruptedTasks().find((task) => task.id === plan.id);
+    expect(recovered).toBeTruthy();
+    expect(recovered?.steps[1]).toMatchObject({
+      runWhen: "always",
+      timeout: 4321,
+      attempts: 3,
+      failedAttempts: 2,
+      templateArguments: { path: "{{step1.output.path}}" },
+    });
+    expect(recovered?.steps[1].attemptHistory).toHaveLength(1);
+  });
+
   it("marks all-completed interrupted tasks as completed", async () => {
     await fs.mkdir(root, { recursive: true });
     const runtime = createTaskRuntimeService();

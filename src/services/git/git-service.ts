@@ -69,7 +69,9 @@ export function gitAdd(cwd: string, paths: string[], correlationId?: string) {
 
 export function gitInit(targetPath: string, initialBranch = "main", correlationId?: string) {
   const resolved = validateWorkspace(targetPath);
-  return runGit("git_init", ["init", "-b", validateRef(initialBranch), resolved], path.dirname(resolved), correlationId);
+  // Use the resolved target path as cwd (not dirname) so the workspace
+  // validation in runGit accepts the exact active workspace root (TR-06).
+  return runGit("git_init", ["init", "-b", validateRef(initialBranch), resolved], resolved, correlationId);
 }
 
 export function gitLog(cwd: string, limit = 20, correlationId?: string) {

@@ -73,6 +73,7 @@ export interface ClosedLoopResult {
   completedSteps: TaskStep[];
   correlationId: string;
   approvalId?: number;
+  reason?: string;
 }
 
 /**
@@ -112,13 +113,23 @@ export async function runClosedAgentLoop(
   if (!plan.state) plan.state = "planning";
   if (plan.state === "created") move(plan, "planning");
   if (plan.state === "waiting_approval" || plan.state === "failed") move(plan, "resuming");
+  // planning → executing is valid after task_append_steps reopened the task (TR-01)
+  if (plan.state === "planning" || plan.state === "resuming") move(plan, "executing");
+  // Ensure we're in executing (handles any remaining non-executing state)
   if (plan.state !== "executing") move(plan, "executing");
   const recovery = recoveryService ?? new UnifiedRecoveryService({ getTrace: () => getExecutionTrace(runtimeContext.correlationId) }, recoverySink);
 
   while (index < plan.steps.length) {
     const step = plan.steps[index];
 
-    // Evaluate runWhen: skip step if its dependencies don't meet the condition
+    // Skip already-completed or cancelled steps — they are immutable (TR-02).
+    // Only pending, failed, outcome_unknown, or blocked steps should be executed.
+    if (step.status === "completed" || step.status === "cancelled") {
+      index++;
+      continue;
+    }
+
+    // Evaluate runWhen: skip step if its dependencies don't meet the condition.
     if (step.dependsOn && step.dependsOn.length > 0) {
       const runWhen = step.runWhen ?? "success";
       const depSteps = step.dependsOn.map((depId) => plan.steps.find((s) => s.id === depId)).filter(Boolean) as TaskStep[];

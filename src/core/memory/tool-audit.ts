@@ -1,8 +1,13 @@
 import { withAgentDatabase } from "./database.js";
 
 /** Classify tool calls into categories for metric separation. */
-const OBSERVABILITY_TOOLS = new Set(["agent_metrics", "task_report", "task_get", "task_list"]);
-const ORCHESTRATION_TOOLS = new Set(["task_create", "task_run", "task_resume", "task_approve", "task_cancel", "task_replay"]);
+const OBSERVABILITY_TOOLS = new Set([
+  "agent_metrics", "task_report", "task_get", "task_list", "task_links", "task_step_risks"
+]);
+const ORCHESTRATION_TOOLS = new Set([
+  "task_create", "task_run", "task_resume", "task_approve", "task_cancel", "task_replay",
+  "task_append_steps", "task_link", "task_reconcile"
+]);
 
 type CallCategory = "workflow" | "observability" | "orchestration" | "governance";
 
@@ -15,11 +20,6 @@ function classifyCall(tool: string): CallCategory {
 function record(tool: string, correlationId: string, taskId: string | undefined, status: "success" | "failed", startedAt: string, durationMs: number, error?: unknown): void {
   const category = classifyCall(tool);
   withAgentDatabase((db) => {
-    // Ensure category column exists (migration)
-    const cols = new Set((db.prepare("PRAGMA table_info(tool_calls)").all() as Array<{ name: string }>).map((c) => c.name));
-    if (!cols.has("category")) {
-      try { db.prepare("ALTER TABLE tool_calls ADD COLUMN category TEXT DEFAULT 'workflow'").run(); } catch { /* ignore */ }
-    }
     db.prepare(`
       INSERT INTO tool_calls(correlation_id, task_id, tool, status, created_at, completed_at, duration_ms, error, category)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)

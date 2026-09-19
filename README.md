@@ -2,10 +2,14 @@
 
 HooshiX یک MCP server محلی و یک runtime قطعی برای اجرای workflow است. لایهٔ reasoning و تولید plan در نسخهٔ فعلی **ChatGPT** است؛ خود HooshiX مدل زبانی، provider هوش مصنوعی یا natural-language planner داخلی ندارد. ChatGPT یک plan ساختاریافته می‌فرستد و HooshiX آن را validate، اجرا، audit و در SQLite ذخیره می‌کند.
 
+## کنترل پیش از انتشار
+
+برای بررسی غیرمخرب وضعیت Source/Build از `pnpm run release:preflight` و برای تمرین مهاجرت پایگاه داده **فقط روی نسخهٔ پشتیبان** از `pnpm run release:db-rehearsal` استفاده کنید. گزارش معیارهای پذیرش، موانع انتشار و روش Rollback در `docs/RELEASE_HARDENING_2026-09-19.md` است. قبولی این بررسی‌های محلی به معنای تأیید انتشار عمومی یا مجوز Restart خودکار سرویس نیست.
+
 ## نیازمندی‌ها و اجرا
 
 - Node.js 24 یا جدیدتر
-- pnpm 11.24.0 (نسخه در `packageManager` قفل شده است)
+- pnpm 12.4.2 (مطابق فیلد `packageManager` در `package.json`؛ نسخه نصب‌شده را با آن تطبیق دهید)
 - Git برای ابزارهای Git
 - ابزارهای اختیاری مربوط به package manager انتخابی: Python/pip، winget یا Chocolatey
 
@@ -27,7 +31,7 @@ pnpm run dev
 - Shell: `execute_command`
 - Git: `git_status`, `git_diff`, `git_clone`, `git_commit`, `git_branch`, `git_checkout`, `git_add`, `git_init`, `git_log`
 - Packages: `install_package`, `remove_package`, `update_package`, `package_restore`
-- Tasks: `task_create`, `task_get`, `task_list`, `task_run`, `task_approve`, `task_resume`, `task_report`, `task_replay`, `task_cancel`, `task_append_steps`, `task_link`, `task_links`, `task_step_risks`, `task_snapshot`, `task_rollback`
+- Tasks: `task_create`, `task_get`, `task_list`, `task_run`, `task_approve`, `task_resume`, `task_report`, `task_replay`, `task_cancel`, `task_append_steps`, `task_link`, `task_links`, `task_step_risks`, `task_snapshot`, `task_rollback`, `task_reconcile`
 - Context: `project_save`, `project_list`, `memory_add`, `memory_list`
 
 **فرمان‌های مجاز `execute_command`:** `node`, `npm`, `pnpm`, `git`, `python`, `py`, `gh`. دستورهای فقط-خواندنی (مثل `git status`، `gh pr list`، `node --version`) مستقیم اجرا می‌شوند؛ اجرای کد (اسکریپت node/python، `npm run/test`، git mutating، gh mutating) نیازمند step تاییدشده است.
@@ -65,7 +69,7 @@ pnpm run dev
 
 ## پیکربندی
 
-- `HOOSHIX_WORKSPACE`: مرز filesystem و working directory؛ پیش‌فرض current directory. می‌توانید چند مسیر جدا شده با کاما بدهید.
+- `HOOSHIX_WORKSPACE`: مقداردهی اولیهٔ Allowed Roots (مسیرها جداشده با کاما)؛ ریشه‌ها در SQLite پایدارند. بدون پیکربندی اولیه، مجوز پیش‌فرضی برای current directory داده نمی‌شود.
 - `HOOSHIX_DB_PATH`: فایل SQLite؛ پیش‌فرض `data/agent-memory.db`.
 - `HOOSHIX_LOG_DIR`: محل JSONL audit logها؛ پیش‌فرض `logs`.
 - `HOOSHIX_PERMISSION_LEVEL`: یکی از `READ_ONLY`, `PROJECT_ACCESS`, `DEVELOPER_MODE`, `ADMIN_MODE`؛ پیش‌فرض `DEVELOPER_MODE`.
@@ -84,12 +88,13 @@ HOOSHIX_WORKSPACE=D:/Projects/my-app node dist/index-http.js
 # Multiple workspaces
 HOOSHIX_WORKSPACE=D:/Projects/my-app,D:/Projects/other,E:/Work node dist/index-http.js
 
-# Omitting HOOSHIX_WORKSPACE starts with an EMPTY pool — no file access
-# until a workspace is configured (via add_workspace_roots in a client).
+# Omitting HOOSHIX_WORKSPACE does not erase persisted roots. If no roots have
+# ever been configured, the pool starts empty. The active workspace is session
+# state and may reset to null after restart.
 node dist/index-http.js
 ```
 
-All file operations are restricted to the configured roots. File tools always operate in the **active workspace only** — use `add_workspace_roots` at runtime to extend the allowed pool and `set_workspace` to select the active root. There is deliberately **no unrestricted mode on `set_workspace`**: file tools can never be widened to arbitrary system paths through that tool (the operator-level `HOOSHIX_UNRESTRICTED=1` env var remains the only machine-wide opt-in at boot).
+All file operations are restricted to the configured roots. Allowed roots are persisted in SQLite across restarts. Direct file tools operate in the **active workspace only**; task execution uses its persisted, revalidated workspace context first and never auto-authorizes a new root. Use `add_workspace_roots` to extend the allowed pool and `set_workspace` to select the active root. There is deliberately **no unrestricted mode on `set_workspace`**: file tools can never be widened to arbitrary system paths through that tool (the operator-level `HOOSHIX_UNRESTRICTED=1` env var remains the only machine-wide opt-in at boot).
 
 **Empty by default:** the allowed-roots pool starts **empty** and no workspace is active until you configure one — via `HOOSHIX_WORKSPACE` at boot or `add_workspace_roots` + `set_workspace` at runtime. There is no implicit fallback to the server's working directory: until a workspace is configured, every file tool and command execution is denied (fail-closed).
 

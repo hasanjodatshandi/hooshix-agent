@@ -1,24 +1,15 @@
 import { withAgentDatabase } from "../memory/database.js";
 import { parseTimestamp } from "../executor/handlers/metrics-arguments.js";
 
-function ensureExtraColumns(db: any): void {
-  // tool_calls: add category column if missing
-  const toolCols = new Set((db.prepare("PRAGMA table_info(tool_calls)").all() as Array<{ name: string }>).map((c) => c.name));
-  if (!toolCols.has("category")) {
-    try { db.prepare("ALTER TABLE tool_calls ADD COLUMN category TEXT DEFAULT 'workflow'").run(); } catch { /* ignore */ }
-  }
-  // recovery_events: add task_id column if missing
-  try {
-    const recCols = new Set((db.prepare("PRAGMA table_info(recovery_events)").all() as Array<{ name: string }>).map((c) => c.name));
-    if (!recCols.has("task_id")) {
-      try { db.prepare("ALTER TABLE recovery_events ADD COLUMN task_id TEXT").run(); } catch { /* ignore */ }
-    }
-  } catch { /* table may not exist */ }
-}
-
 export interface AgentMetrics {
   // Workflow-scoped (only workflow actions, excludes observability/orchestration)
   workflowActionFailureRate: number;
+  /**
+   * Failed workflow tool_calls — counts tool_calls where category IS NULL OR
+   * category = 'workflow' and status = 'failed'. This is a TOOL-CALL metric:
+   * it counts individual tool invocations that returned errors.
+   * Scoped by taskId, from/to, tool, status, category filters.
+   */
   workflowFailedActions: number;
   workflowTotalActions: number;
   // Legacy fields (kept for backward compat, same as workflow-scoped)
@@ -26,16 +17,25 @@ export interface AgentMetrics {
   toolFailureRate: number;
   averageRecoveryTimeMs: number | null;
   /**
-   * Failed task-step executions (from the executions table). Affected by the
-   * taskId and from/to filters; tool/status/category filters do NOT apply
-   * here because executions are step records, not tool calls.
+   * Failed task-step executions — counts rows in the executions table where
+   * status = 'failed'. This is a STEP-EXECUTION metric: it counts how many
+   * times a task step (closed-agent-loop iteration) finished with failure.
+   *
+   * Semantics differ from workflowFailedActions:
+   * - workflowFailedActions = failed tool invocations (finer grain)
+   * - failedActions = failed step executions (coarser grain, one step may
+   *   involve multiple tool calls)
+   *
+   * Scoped by taskId and from/to only (executions have no tool/category columns).
    */
   failedActions: number;
   /** Top 10 tools by failed tool_calls matching the current filters. */
   mostFailedTools: Array<{ tool: string; failures: number }>;
-  // Recovery explicit counters
+  // Recovery counters — computed from persisted recovery_attempt executions
+  // joined to the final persisted state of their target task step.
   recoveryAttempts: number;
   successfulRecoveries: number;
+  failedRecoveries: number;
   // Snapshot pagination
   recentCalls: Array<{
     tool: string;
@@ -99,24 +99,37 @@ export function getAgentMetrics(opts: AgentMetricsOptions = {}): AgentMetrics {
   const snapshotAt = new Date().toISOString();
   
   return withAgentDatabase((db) => {
-    ensureExtraColumns(db);
-    // Recovery events — scoped by task_id
-    const recoveryTaskFilter = taskId ? "AND task_id = ?" : "";
-    const recoveryArgs = taskId ? [taskId] : [];
-    const recovery = db.prepare(`
-      SELECT
-        COUNT(DISTINCT recovery_id) AS total,
-        COUNT(DISTINCT CASE WHEN status = 'completed' THEN recovery_id END) AS completed,
-        AVG(CASE 
-          WHEN completed_at IS NOT NULL 
-            AND started_at IS NOT NULL
-            AND julianday(completed_at) > julianday(started_at)
-            AND (julianday(completed_at) - julianday(started_at)) * 86400000 < 300000
-          THEN (julianday(completed_at) - julianday(started_at)) * 86400000 
-        END) AS average_ms
+    // Recovery duration is derived from recovery_events; success/failure is
+    // derived from persisted recovery_attempt executions + final step state.
+    const recoveryEventConds: string[] = [];
+    const recoveryEventArgs: unknown[] = [];
+    if (taskId) { recoveryEventConds.push("task_id = ?"); recoveryEventArgs.push(taskId); }
+    if (from) { recoveryEventConds.push("started_at >= ?"); recoveryEventArgs.push(from); }
+    if (to) { recoveryEventConds.push("started_at <= ?"); recoveryEventArgs.push(to); }
+    if (!from && !to) recoveryEventConds.push("started_at > datetime('now', '-7 days')");
+    const recoveryDuration = db.prepare(`
+      SELECT AVG(CASE
+        WHEN completed_at IS NOT NULL
+          AND started_at IS NOT NULL
+          AND julianday(completed_at) > julianday(started_at)
+          AND (julianday(completed_at) - julianday(started_at)) * 86400000 < 300000
+        THEN (julianday(completed_at) - julianday(started_at)) * 86400000
+      END) AS average_ms
       FROM recovery_events
-      WHERE started_at > datetime('now', '-7 days') ${recoveryTaskFilter}
-    `).get(...recoveryArgs) as { total: number; completed: number; average_ms: number | null };
+      WHERE ${recoveryEventConds.length > 0 ? recoveryEventConds.join(" AND ") : "1=1"}
+    `).get(...recoveryEventArgs) as { average_ms: number | null };
+
+    const recoveryAttemptConds: string[] = ["e.action LIKE 'recovery_attempt_%'"];
+    const recoveryAttemptArgs: unknown[] = [];
+    if (taskId) { recoveryAttemptConds.push("e.task_id = ?"); recoveryAttemptArgs.push(taskId); }
+    if (from) { recoveryAttemptConds.push("e.created_at >= ?"); recoveryAttemptArgs.push(from); }
+    if (to) { recoveryAttemptConds.push("e.created_at <= ?"); recoveryAttemptArgs.push(to); }
+    const recoveryAttemptsRows = db.prepare(`
+      SELECT e.task_id, e.step_id, s.status AS step_status
+      FROM executions e
+      LEFT JOIN task_steps s ON s.task_id = e.task_id AND s.step_id = e.step_id
+      WHERE ${recoveryAttemptConds.join(" AND ")}
+    `).all(...recoveryAttemptArgs) as Array<{ task_id: string | null; step_id: number; step_status: string | null }>;
     
     // Workflow-only stats (excludes observability/orchestration calls)
     const workflowStats = db.prepare(`
@@ -140,7 +153,9 @@ export function getAgentMetrics(opts: AgentMetricsOptions = {}): AgentMetrics {
     
     // Failed task-step executions. Executions are step records (no tool/
     // category columns), so only taskId and date bounds apply here.
-    const executionConds: string[] = ["status = 'failed'"];
+    // Exclude recovery bookkeeping events (action starts with "recovery_")
+    // because they are not actual task-step executions (BUG: failedActions overcount).
+    const executionConds: string[] = ["status = 'failed'", "action NOT LIKE 'recovery_%'"];
     const executionArgs: unknown[] = [];
     if (taskId) { executionConds.push("task_id = ?"); executionArgs.push(taskId); }
     if (from) { executionConds.push("created_at >= ?"); executionArgs.push(from); }
@@ -159,11 +174,14 @@ export function getAgentMetrics(opts: AgentMetricsOptions = {}): AgentMetrics {
     
     const totalCalls = db.prepare(`SELECT COUNT(*) AS count FROM tool_calls WHERE created_at <= ? ${whereClause}`).get(snapshotAt, ...args) as { count: number };
     
-    // Recovery counters
-    const recoveryAttempts = recovery.total;
-    const successfulRecoveries = recovery.completed;
-    const recoverySuccessRate = recoveryAttempts === 0 ? null : recovery.completed / recovery.total;
-    const rawAvg = recovery.average_ms ?? 0;
+    // Recovery counters are valid both globally and task-scoped. Each persisted
+    // recovery_attempt is successful only when its target step eventually
+    // reached completed; scheduling a retry by itself is not success.
+    const recoveryAttempts = recoveryAttemptsRows.length;
+    const successfulRecoveries = recoveryAttemptsRows.filter((row) => row.step_status === "completed").length;
+    const failedRecoveries = recoveryAttempts - successfulRecoveries;
+    const recoverySuccessRate = recoveryAttempts === 0 ? null : successfulRecoveries / recoveryAttempts;
+    const rawAvg = recoveryDuration.average_ms ?? 0;
     const averageRecoveryTimeMs = recoveryAttempts === 0 ? null : Math.max(0, Math.min(300000, Math.round(rawAvg)));
     
     const workflowFailed = workflowStats.failed ?? 0;
@@ -179,6 +197,7 @@ export function getAgentMetrics(opts: AgentMetricsOptions = {}): AgentMetrics {
       averageRecoveryTimeMs,
       recoveryAttempts,
       successfulRecoveries,
+      failedRecoveries,
       // Legacy (all-call)
       toolFailureRate: allStats.total === 0 ? 0 : (allStats.failed ?? 0) / allStats.total,
       failedActions: failedExecutions.count,

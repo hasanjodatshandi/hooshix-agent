@@ -40,8 +40,12 @@ export interface TaskStep {
 export interface TaskExecutionContext {
   /** Active workspace at task-creation time — null when no workspace was configured (empty-by-default pool). */
   workspace: string | null;
+  /** Historical snapshot only; current policy remains authoritative. */
+  allowedRootsSnapshot?: string[];
+  /** Backward-compatible alias retained for existing persisted plans. */
   roots: string[];
   unrestricted: boolean;
+  createdAt?: string;
 }
 
 export interface RetryPolicy {

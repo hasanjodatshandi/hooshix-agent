@@ -136,12 +136,12 @@ const TOOL_SET = new Set<string>(TOOL_NAMES);
  * step-executable, so they are listed here explicitly.
  *
  * Single source of truth for /tools and /docs inventories, registry
- * completeness audits, and any consumer that needs "all 52 tools".
+ * completeness audits, and any consumer that needs the complete tool inventory.
  */
 export const ALL_REGISTERED_TOOLS = [
   ...TOOL_NAMES,
   "task_create", "task_get", "task_list", "task_run", "task_approve", "task_resume",
-  "task_report", "task_replay", "task_cancel", "task_append_steps", "task_link", "task_links", "task_step_risks",
+  "task_report", "task_reconcile", "task_replay", "task_cancel", "task_append_steps", "task_link", "task_links", "task_step_risks",
   "project_save", "project_get", "project_delete", "project_archive", "project_list",
   "memory_add", "memory_list", "memory_get", "memory_delete",
   "add_workspace_roots", "remove_workspace_root",
