@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { ToolHandler, ToolHandlerContext } from "./tool-handler.js";
-import type { ToolName } from "../../orchestrator/tool-orchestrator.js";
+import type { ToolName } from "../../../application/services/legacy-tool-orchestrator.js";
 import { gitStatus, gitDiff, gitClone, gitCommit, gitBranch, gitCheckout, gitAdd, gitInit, gitLog } from "../../../services/git/git-service.js";
 
 const GIT_TOOLS: ReadonlySet<ToolName> = new Set([

@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { ToolHandler, ToolHandlerContext } from "./tool-handler.js";
-import type { ToolName } from "../../orchestrator/tool-orchestrator.js";
+import type { ToolName } from "../../../application/services/legacy-tool-orchestrator.js";
 import { executeShellCommand } from "../../../services/shell/shell-service.js";
 import { describeExecaFailure } from "../../../services/execa-result.js";
 

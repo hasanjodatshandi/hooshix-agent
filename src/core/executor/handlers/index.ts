@@ -1,5 +1,5 @@
 import type { ToolHandler } from "./tool-handler.js";
-import type { ToolName } from "../../orchestrator/tool-orchestrator.js";
+import type { ToolName } from "../../../application/services/legacy-tool-orchestrator.js";
 import { FileToolHandler } from "./file-handler.js";
 import { GitToolHandler } from "./git-handler.js";
 import { PackageToolHandler } from "./package-handler.js";
@@ -27,7 +27,7 @@ function findHandler(tool: ToolName): ToolHandler {
   return handler;
 }
 
-import type { TaskExecutionContext } from "../../planner/task-planner.js";
+import type { TaskExecutionContext } from "../../../application/dto/legacy-task-plan.js";
 
 export function dispatchToHandler(tool: ToolName, input: Record<string, unknown>, correlationId: string, executionContext?: TaskExecutionContext, signal?: AbortSignal): Promise<unknown> {
   const handler = findHandler(tool);

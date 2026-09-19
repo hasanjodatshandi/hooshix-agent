@@ -1,5 +1,5 @@
 import type { TaskRuntimeService } from "../runtime/task-runtime-service.js";
-import { TOOL_CAPABILITIES, selectTool } from "../orchestrator/tool-orchestrator.js";
+import { TOOL_CAPABILITIES, selectTool } from "../../application/services/legacy-tool-orchestrator.js";
 
 export type ReplayMode = "readonly" | "sandbox" | "live";
 

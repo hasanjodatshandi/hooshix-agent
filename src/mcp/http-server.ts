@@ -1,7 +1,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { registerTools } from "./registry.js";
-import { TOOL_CAPABILITIES, TOOL_CATEGORIES, TOOL_CATEGORY_MAP, ALL_REGISTERED_TOOLS, type ToolName } from "../core/orchestrator/tool-orchestrator.js";
+import { TOOL_CAPABILITIES, TOOL_CATEGORIES, TOOL_CATEGORY_MAP, ALL_REGISTERED_TOOLS, type ToolName } from "../application/services/legacy-tool-orchestrator.js";
 import { OAuthProvider } from "./oauth.js";
 import { mcpMetrics } from "./metrics.js";
 import { createMetricsServer } from "./metrics-server.js";

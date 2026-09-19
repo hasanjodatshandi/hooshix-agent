@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { ToolHandler, ToolHandlerContext } from "./tool-handler.js";
-import type { ToolName } from "../../orchestrator/tool-orchestrator.js";
+import type { ToolName } from "../../../application/services/legacy-tool-orchestrator.js";
 import { PACKAGE_MANAGERS, managePackage, restorePackage } from "../../../services/package/package-service.js";
 
 const PACKAGE_TOOLS: ReadonlySet<ToolName> = new Set([

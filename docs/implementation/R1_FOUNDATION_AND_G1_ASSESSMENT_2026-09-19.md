@@ -121,3 +121,13 @@ crossing into the mass-migration work assigned to R2–R9.
 - R1 intentionally preserves the current command-decision semantics. The dedicated migration test explicitly proves that `git diff --no-index` is still classified as low-risk/allow, so HIGH-03 remains a visible R2 blocker rather than being silently changed during architecture movement.
 - Compatibility test verifies exact old/new function identity. Focused command/governance suite: 28 PASS + 5 expected RED; migration-alias subset: 8 PASS; combined Typecheck PASS.
 - No production effect, DB migration, service restart, push/merge/tag or deployment.
+
+## Follow-up vertical migration — Task Planner and Tool Orchestrator (2026-09-19)
+
+- **Status:** VERIFIED bounded R1 migration; global G1 remains `NOT PASSED` while legacy SQL/config/concrete-service/MCP dependencies remain.
+- `src/core/planner/task-planner.ts` is now a backward-compatible export facade for `src/application/dto/legacy-task-plan.ts`, `src/application/services/legacy-task-plan-validator.ts`, and `src/infrastructure/composition/legacy-task-plan-factory.ts`. UUID generation is isolated in Infrastructure. The validator retains legacy dependency/template validation and persisted DTO field shapes.
+- `src/core/orchestrator/tool-orchestrator.ts` now re-exports `src/application/services/legacy-tool-orchestrator.ts`; direct legacy import sites were redirected where appropriate. This pure legacy selection/metadata migration does **not** substitute for the exhaustive, authorization-enforcing R2 Tool Catalog/Gateway; legacy `executeToolStep` still delegates to its passed executor.
+- Tests: `tests/core/r1-task-planner-migration.test.ts` and `tests/core/r1-tool-orchestrator-migration.test.ts` assert exact facade export identities and representative legacy behavior. Focused suite: 3 files / 8 PASS including strict new-tree boundary test; independent Domain/Application compile PASS; combined Typecheck PASS; Build PASS.
+- Full regression: **110 files / 515 PASS + 18 expected RED (533 total)**; no unexpected failures. `git diff --check` PASS.
+- Scope: application/Infrastructure migration plus import re-pointing, with legacy APIs preserved. No production DB schema mutation, OAuth/Task lease/approval redesign, service restart, deployment, push or merge. All audit finding states unchanged.
+- Residual: existing callers and MCP transport still use legacy execution semantics; R2/R3/R5/R6/R7/R9 own the final gateway, durable execution, transport, persistence, configuration and deletion of compatibility facades.

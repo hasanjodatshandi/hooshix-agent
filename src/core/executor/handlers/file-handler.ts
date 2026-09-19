@@ -1,7 +1,7 @@
 import { z } from "zod";
 import path from "node:path";
 import type { ToolHandler, ToolHandlerContext } from "./tool-handler.js";
-import type { ToolName } from "../../orchestrator/tool-orchestrator.js";
+import type { ToolName } from "../../../application/services/legacy-tool-orchestrator.js";
 import {
   readWorkspaceFile,
   writeWorkspaceFile,

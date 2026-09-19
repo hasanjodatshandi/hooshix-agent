@@ -8,7 +8,7 @@ import { listMemoryItems, listProjects, saveMemoryItem, saveProject, getMemoryIt
 import { getApprovalRequest } from "../../core/governance/approval-memory.js";
 import { policyDecisionPoint } from "../../core/governance/policy-decision-point.js";
 import { captureTaskSnapshot, rollbackTaskSnapshot } from "../../core/executor/handlers/task-snapshot-handler.js";
-import { TOOL_NAMES, validateToolName } from "../../core/orchestrator/tool-orchestrator.js";
+import { TOOL_NAMES, validateToolName } from "../../application/services/legacy-tool-orchestrator.js";
 import { ReplayExecutor } from "../../core/trace/replay-executor.js";
 import { recordTaskReconciliation } from "../../core/recovery/task-reconciliation.js";
 import { AgentError } from "../../core/errors.js";

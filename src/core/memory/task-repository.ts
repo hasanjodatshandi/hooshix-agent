@@ -1,4 +1,4 @@
-import type { TaskPlan, TaskStep, TaskStepStatus, TaskExecutionContext, StepAttempt } from "../planner/task-planner.js";
+import type { TaskPlan, TaskStep, TaskStepStatus, TaskExecutionContext, StepAttempt } from "../../application/dto/legacy-task-plan.js";
 import type { TaskState } from "../state/task-state-machine.js";
 import { withAgentDatabase } from "./database.js";
 import path from "node:path";

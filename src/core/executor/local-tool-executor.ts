@@ -1,5 +1,5 @@
-import type { TaskStep } from "../planner/task-planner.js";
-import { validateToolName, type ToolName } from "../orchestrator/tool-orchestrator.js";
+import type { TaskStep } from "../../application/dto/legacy-task-plan.js";
+import { validateToolName, type ToolName } from "../../application/services/legacy-tool-orchestrator.js";
 import { auditToolCall } from "../memory/tool-audit.js";
 import { dispatchToHandler } from "./handlers/index.js";
 import { resolveTaskWorkspace } from "../../security/task-workspace.js";
@@ -38,7 +38,7 @@ function enrichResult(tool: ToolName, args: Record<string, unknown>, raw: unknow
   return raw;
 }
 
-import type { TaskExecutionContext } from "../planner/task-planner.js";
+import type { TaskExecutionContext } from "../../application/dto/legacy-task-plan.js";
 
 export function createLocalToolExecutor(correlationId: string, taskId?: string, executionContext?: TaskExecutionContext) {
   return async (tool: string, step: TaskStep, signal?: AbortSignal): Promise<unknown> => {

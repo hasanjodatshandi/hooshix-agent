@@ -1,6 +1,6 @@
-import type { TaskStep } from "../planner/task-planner.js";
+import type { TaskStep } from "../../application/dto/legacy-task-plan.js";
 import { policyDecisionPoint } from "./policy-decision-point.js";
-import { selectTool, type ToolName } from "../orchestrator/tool-orchestrator.js";
+import { selectTool, type ToolName } from "../../application/services/legacy-tool-orchestrator.js";
 import { evaluateAction } from "../../application/services/legacy-action-governance.js";
 import { validateWorkspace, classifyCommandCwd, getWorkspaceRoot } from "../../security/workspace-guard.js";
 

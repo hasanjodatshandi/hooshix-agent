@@ -1,4 +1,4 @@
-import type { TaskPlan } from "../planner/task-planner.js";
+import type { TaskPlan } from "../../application/dto/legacy-task-plan.js";
 
 export interface RecoveryMetricsResult {
   recoveryAttempts: number;

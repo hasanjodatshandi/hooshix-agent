@@ -1,5 +1,5 @@
-import type { ToolName } from "../../orchestrator/tool-orchestrator.js";
-import type { TaskExecutionContext } from "../../planner/task-planner.js";
+import type { ToolName } from "../../../application/services/legacy-tool-orchestrator.js";
+import type { TaskExecutionContext } from "../../../application/dto/legacy-task-plan.js";
 
 export interface ToolHandlerContext {
   tool: ToolName;

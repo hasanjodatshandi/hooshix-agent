@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import type { ToolHandler, ToolHandlerContext } from "./tool-handler.js";
-import type { ToolName } from "../../orchestrator/tool-orchestrator.js";
+import type { ToolName } from "../../../application/services/legacy-tool-orchestrator.js";
 import { validateWorkspace } from "../../../security/workspace-guard.js";
 import { canonicalizePath } from "../../memory/task-repository.js";
 import { withAgentDatabase } from "../../memory/database.js";

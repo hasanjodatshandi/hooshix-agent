@@ -1,6 +1,6 @@
 import os from "node:os";
 import type { ToolHandler, ToolHandlerContext } from "./tool-handler.js";
-import type { ToolName } from "../../orchestrator/tool-orchestrator.js";
+import type { ToolName } from "../../../application/services/legacy-tool-orchestrator.js";
 import { getAgentMetrics } from "../../trace/metrics-service.js";
 import { agentMetricsArguments } from "./metrics-arguments.js";
 import { getWorkspaceRoot, listWorkspaceRoots, setActiveWorkspace } from "../../../security/workspace-guard.js";

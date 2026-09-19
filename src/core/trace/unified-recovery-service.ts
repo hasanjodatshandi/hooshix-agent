@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { RecoveryAction, RecoveryExecutionContext } from "../recovery/recovery-engine.js";
-import type { TaskPlan } from "../planner/task-planner.js";
+import type { TaskPlan } from "../../application/dto/legacy-task-plan.js";
 import type { ExecutionTraceEvent } from "../memory/execution-trace.js";
 import { analyzeTraceFailure, type DebugFinding } from "./failure-analyzer.js";
 import { createRecoveryDecision } from "./recovery-decision.js";

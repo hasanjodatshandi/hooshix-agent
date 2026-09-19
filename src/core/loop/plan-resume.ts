@@ -1,4 +1,4 @@
-import type { TaskPlan } from "../planner/task-planner.js";
+import type { TaskPlan } from "../../application/dto/legacy-task-plan.js";
 import type { ResumeContext } from "./resume-engine.js";
 
 /**

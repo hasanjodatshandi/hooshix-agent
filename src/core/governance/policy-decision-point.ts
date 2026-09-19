@@ -1,5 +1,5 @@
 import type { ExecutionContext } from "../runtime/execution-context.js";
-import { TOOL_CAPABILITIES, validateToolName, type ToolName, type ToolRisk } from "../orchestrator/tool-orchestrator.js";
+import { TOOL_CAPABILITIES, validateToolName, type ToolName, type ToolRisk } from "../../application/services/legacy-tool-orchestrator.js";
 import { evaluateCommandPermission } from "../../application/services/legacy-command-policy.js";
 import { assertToolPermission } from "../../security/permission.js";
 // Circular with workspace-guard (which imports policyDecisionPoint from here)

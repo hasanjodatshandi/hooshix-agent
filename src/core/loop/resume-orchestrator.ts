@@ -1,4 +1,4 @@
-import type { TaskPlan, TaskStep } from "../planner/task-planner.js";
+import type { TaskPlan, TaskStep } from "../../application/dto/legacy-task-plan.js";
 import { runClosedAgentLoop, type ClosedLoopResult } from "./closed-agent-loop.js";
 import { restorePlanPosition } from "./plan-resume.js";
 import { canResumeApprovedTask } from "./resume-engine.js";

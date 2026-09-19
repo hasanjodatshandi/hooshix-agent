@@ -1,4 +1,4 @@
-import type { TaskStep } from "../planner/task-planner.js";
+import type { TaskStep } from "../../application/dto/legacy-task-plan.js";
 import type { RecoveryObservabilitySink } from "../trace/recovery-observability.js";
 
 export interface RecoveryAction {

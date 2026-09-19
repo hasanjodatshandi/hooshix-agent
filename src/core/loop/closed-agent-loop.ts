@@ -1,7 +1,7 @@
 import type { ExecutionContext } from "../runtime/execution-context.js";
 import { createExecutionContext } from "../runtime/execution-context.js";
-import type { TaskPlan, TaskStep } from "../planner/task-planner.js";
-import { executeToolStep } from "../orchestrator/tool-orchestrator.js";
+import type { TaskPlan, TaskStep } from "../../application/dto/legacy-task-plan.js";
+import { executeToolStep } from "../../application/services/legacy-tool-orchestrator.js";
 import { UnifiedRecoveryService, type RecoveryProvider } from "../trace/unified-recovery-service.js";
 import { getExecutionTrace } from "../memory/execution-trace.js";
 import { saveDecisionWithContext, saveExecutionWithContext, saveTaskWithContext } from "../memory/context-memory.js";
@@ -13,7 +13,7 @@ import type { RecoveryObservabilitySink } from "../trace/recovery-observability.
 import { saveTaskPlan, saveTaskStep, saveTaskStatus, updateTaskHeartbeat } from "../memory/task-repository.js";
 import { transitionTask, type TaskState } from "../state/task-state-machine.js";
 import { runWithPolicyApproval } from "../governance/policy-decision-point.js";
-import { selectTool } from "../orchestrator/tool-orchestrator.js";
+import { selectTool } from "../../application/services/legacy-tool-orchestrator.js";
 import { buildStepContext, resolveTemplates, hasTemplates, validateTemplates, MissingVariableError } from "../runtime/template-resolver.js";
 import { classifyError, isTransientError } from "../errors.js";
 

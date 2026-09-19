@@ -1,4 +1,4 @@
-import type { TaskPlan } from "../planner/task-planner.js";
+import type { TaskPlan } from "../../application/dto/legacy-task-plan.js";
 import type { RecoveryAction } from "../recovery/recovery-engine.js";
 
 export function applySelfHealing(plan: TaskPlan, action: RecoveryAction, insertionIndex = plan.steps.length): TaskPlan {
