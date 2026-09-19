@@ -9,21 +9,21 @@ Status values: `OPEN`, `TEST_ENCODED`, `IMPLEMENTING`, `IMPLEMENTED`, `VERIFIED_
 
 ## HIGH findings
 
-| ID | Short title | Primary phase | Primary specs | Mandatory closure evidence | Initial status |
+| ID | Short title | Primary phase | Primary specs | Mandatory closure evidence | Current status |
 |---|---|---|---|---|---|
-| HIGH-01 | Workspace authorization/scope expansion gap | R2 | 02, 08, 09 | actual MCP + Task regression; ADMIN+approval unrestricted; no bypass path | OPEN |
-| HIGH-02 | `search_files` sensitive denylist bypass | R2 | 08, 09, 14, 16 | fake `.env/.token/.ssh` regression; no read occurs | OPEN |
-| HIGH-03 | `git diff --no-index` outside disclosure | R2 | 08, 09, 16 | PoC regression blocked/approval-required; no output disclosure | OPEN |
-| HIGH-04 | OAuth expiry not enforced | R5 | 10, 13, 16, 31 | fake-clock expiry, distinct token, rotated refresh, wrong-resource/scope tests | OPEN |
-| HIGH-05 | Timeout finalizes before termination | R3 | 06, 11, 16 | cancellation race/termination-grace tests; no overlapping retry | OPEN |
-| HIGH-06 | Crash recovery replays uncertain effects | R3 | 11, 13, 16 | crash-after-marker test -> unknown, no duplicate marker | OPEN |
-| HIGH-07 | Crash hydration incomplete | R3 | 11, 13, 16 | all-fields Task round-trip + recovery uses canonical get | OPEN |
-| HIGH-08 | Dirty Git rollback destroys work | R4 | 12, 16 | dirty repo snapshot rejected; clean rollback verified | OPEN |
-| HIGH-09 | Package rollback overstates guarantee | R4 | 12, 16 | manifest-only result wording + environment evidence requirement | OPEN |
-| HIGH-10 | Docker frozen-lock fallback | R7 | 17 | static Docker assertion + real frozen build failure test | OPEN |
-| HIGH-11 | Auth config/env/static secret drift | R7/R5 | 10, 17, 18, 19 | stale var failure, no literal secret, one config contract | OPEN |
-| HIGH-12 | Authenticated health vs unauth probe | R7/R5 | 10, 17, 18 | container live/ready smoke without credential leakage | OPEN |
-| HIGH-13 | Same-task guard process-local | R3 | 06, 11, 13, 16 | two-process lease race exactly one winner | OPEN |
+| HIGH-01 | Workspace authorization/scope expansion gap | R2 | 02, 08, 09 | actual MCP + Task regression; ADMIN+approval unrestricted; no bypass path | TEST_ENCODED |
+| HIGH-02 | `search_files` sensitive denylist bypass | R2 | 08, 09, 14, 16 | fake `.env/.token/.ssh` regression; no read occurs | TEST_ENCODED |
+| HIGH-03 | `git diff --no-index` outside disclosure | R2 | 08, 09, 16 | PoC regression blocked/approval-required; no output disclosure | TEST_ENCODED |
+| HIGH-04 | OAuth expiry not enforced | R5 | 10, 13, 16, 31 | fake-clock expiry, distinct token, rotated refresh, wrong-resource/scope tests | TEST_ENCODED |
+| HIGH-05 | Timeout finalizes before termination | R3 | 06, 11, 16 | cancellation race/termination-grace tests; no overlapping retry | TEST_ENCODED |
+| HIGH-06 | Crash recovery replays uncertain effects | R3 | 11, 13, 16 | crash-after-marker test -> unknown, no duplicate marker | TEST_ENCODED |
+| HIGH-07 | Crash hydration incomplete | R3 | 11, 13, 16 | all-fields Task round-trip + recovery uses canonical get | TEST_ENCODED |
+| HIGH-08 | Dirty Git rollback destroys work | R4 | 12, 16 | dirty repo snapshot rejected; clean rollback verified | TEST_ENCODED |
+| HIGH-09 | Package rollback overstates guarantee | R4 | 12, 16 | manifest-only result wording + environment evidence requirement | TEST_ENCODED |
+| HIGH-10 | Docker frozen-lock fallback | R7 | 17 | static Docker assertion + real frozen build failure test | TEST_ENCODED |
+| HIGH-11 | Auth config/env/static secret drift | R7/R5 | 10, 17, 18, 19 | stale var failure, no literal secret, one config contract | TEST_ENCODED |
+| HIGH-12 | Authenticated health vs unauth probe | R7/R5 | 10, 17, 18 | container live/ready smoke without credential leakage | TEST_ENCODED |
+| HIGH-13 | Same-task guard process-local | R3 | 06, 11, 13, 16 | two-process lease race exactly one winner | TEST_ENCODED |
 
 ---
 
@@ -31,18 +31,18 @@ Status values: `OPEN`, `TEST_ENCODED`, `IMPLEMENTING`, `IMPLEMENTED`, `VERIFIED_
 
 | ID | Short title | Phase | Specs | Mandatory closure evidence | Status |
 |---|---|---|---|---|---|
-| MED-01 | Bearer token in query string | R5 | 10,16 | query token rejected; header token accepted | OPEN |
-| MED-02 | Separate-arg secret redaction leak | R6 | 15,16 | opaque `--token VALUE` regression | OPEN |
+| MED-01 | Bearer token in query string | R5 | 10,16 | query token rejected; header token accepted | TEST_ENCODED |
+| MED-02 | Separate-arg secret redaction leak | R6 | 15,16 | opaque `--token VALUE` regression | TEST_ENCODED |
 | MED-03 | No rate/concurrency limits | R5/R6 | 10,14,16 | 429/budget/concurrency tests | OPEN |
-| MED-04 | Shell cwd not workspace-authorized | R2 | 06,08,09,16 | outside cwd rejected for auto-approved path | OPEN |
-| MED-05 | Audit failure masks successful effect | R3/R6 | 11,15,16 | effect succeeds + sink fails -> success/degraded, no retry | OPEN |
+| MED-04 | Shell cwd not workspace-authorized | R2 | 06,08,09,16 | outside cwd rejected for auto-approved path | TEST_ENCODED |
+| MED-05 | Audit failure masks successful effect | R3/R6 | 11,15,16 | effect succeeds + sink fails -> success/degraded, no retry | TEST_ENCODED |
 | MED-06 | Direct MCP hides CAS/idempotency | R2 | 06,08,12,16 | direct/task parity tests | OPEN |
-| MED-07 | Project identity non-canonical | R4 | 12,13,16 | equivalent path one identity; collision migration test | OPEN |
-| MED-08 | Task idempotency ignores payload | R3 | 11,13,16 | same key/diff hash conflict | OPEN |
-| MED-09 | Append allows terminal tasks | R3 | 05,11,16 | completed/cancelled append rejected or explicit revision behavior | OPEN |
-| MED-10 | Absent backup reuse creates empty file | R4 | 12,13,16 | repeated restore remains absent | OPEN |
-| MED-11 | Restore missing revision guard | R4 | 12,16 | intervening edit -> conflict, no overwrite | OPEN |
-| MED-12 | Restore binds current workspace | R4 | 12,16 | stored absolute target + reauthorization test | OPEN |
+| MED-07 | Project identity non-canonical | R4 | 12,13,16 | equivalent path one identity; collision migration test | TEST_ENCODED |
+| MED-08 | Task idempotency ignores payload | R3 | 11,13,16 | same key/diff hash conflict | TEST_ENCODED |
+| MED-09 | Append allows terminal tasks | R3 | 05,11,16 | completed/cancelled append rejected or explicit revision behavior | TEST_ENCODED |
+| MED-10 | Absent backup reuse creates empty file | R4 | 12,13,16 | repeated restore remains absent | TEST_ENCODED |
+| MED-11 | Restore missing revision guard | R4 | 12,16 | intervening edit -> conflict, no overwrite | TEST_ENCODED |
+| MED-12 | Restore binds current workspace | R4 | 12,16 | stored absolute target + reauthorization test | TEST_ENCODED |
 | MED-13 | Container root/mutable tag | R7 | 17 | runtime non-root; digest/update policy documented | OPEN |
 | MED-14 | No CI gate | R7 | 17,22 | required workflow green from clean checkout | OPEN |
 | MED-15 | Node/NVM PATH not reproducible | R7 | 17,18 | service-like preflight resolves exact supported Node/pnpm | OPEN |
@@ -120,3 +120,7 @@ Reviewer notes:
 ## Final closure gate
 
 R9/R10 cannot complete while any matrix row remains `OPEN`, `IMPLEMENTING`, or merely `IMPLEMENTED`. Every row must be `VERIFIED_CLOSED` unless the owner explicitly marks it `DEFERRED_BY_OWNER` with rationale and release impact.
+
+## R0 pre-remediation test capture (2026-09-19)
+
+Gate G0 PASS is limited to baseline integrity and executable contracts. HIGH-01–HIGH-13 and MED-01/02/04/05/07–12 are marked `TEST_ENCODED`, **not** `IMPLEMENTED` or `VERIFIED_CLOSED`. Permanent contract mapping, safe fixture details, the 18 expected failures and exact validation evidence are in `R0_G0_COMPLETION_2026-09-19.md`. Existing HIGH deficiencies, remaining MED/LOW findings, all later acceptance gates, and public-release approval remain open.

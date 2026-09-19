@@ -22,4 +22,19 @@ describe("R0 intentionally failing pre-remediation contracts", () => {
     const dockerfile = fs.readFileSync(path.resolve("Dockerfile"), "utf8");
     expect(dockerfile).not.toMatch(/\bRUN\s+pnpm\s+install[^\r\n]*\|\|\s*pnpm\s+install/);
   });
+
+  it.fails("HIGH-11: deprecated MCP_ACCESS_TOKEN must no longer be accepted as an unrestricted HTTP bootstrap credential", () => {
+    const http = fs.readFileSync(path.resolve("src/mcp/http-server.ts"), "utf8");
+    expect(http).not.toContain("process.env.MCP_ACCESS_TOKEN");
+  });
+
+  it.fails("HIGH-12: an unauthenticated, non-sensitive liveness endpoint must exist for container health probes", () => {
+    const http = fs.readFileSync(path.resolve("src/mcp/http-server.ts"), "utf8");
+    expect(http).toContain('path === "/health/live"');
+  });
+
+  it.fails("MED-01: HTTP monitoring must reject bearer secrets in query parameters", () => {
+    const http = fs.readFileSync(path.resolve("src/mcp/http-server.ts"), "utf8");
+    expect(http).not.toMatch(/url\.searchParams\.get\(["'](?:token|access_token)["']\)/);
+  });
 });

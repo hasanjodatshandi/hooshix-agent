@@ -3,7 +3,7 @@ import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { afterEach, describe, expect, it } from "vitest";
 import {
-  createDisposableFixture, createFakeClock, createFakeTokenGenerator,
+  createDisposableFixture, createFakeClock, createFakeRandom, createFakeTokenGenerator,
   reserveEphemeralLoopbackPort, spawnDisposableNode,
   type DisposableFixture,
 } from "../helpers/r0-disposable-fixtures.js";
@@ -68,6 +68,10 @@ describe("R0 disposable fixture safety", () => {
     expect(() => clock.advanceBy(-1)).toThrow();
     const token = createFakeTokenGenerator();
     expect([token(), token()]).toEqual(["fixture-token-1", "fixture-token-2"]);
+    const one = createFakeRandom(1234);
+    const two = createFakeRandom(1234);
+    expect([one(), one(), one()]).toEqual([two(), two(), two()]);
+    expect(() => createFakeRandom(0)).toThrow();
   });
 
   it("reserves an ephemeral loopback port and releases it explicitly", async () => {

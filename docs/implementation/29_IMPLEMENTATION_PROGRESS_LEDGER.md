@@ -2,7 +2,7 @@
 
 **Project:** `D:/workspace/hooshix-agent`  
 **Program:** Full Hexagonal/Clean redesign + complete consolidated-audit remediation  
-**Status:** R0 IN_PROGRESS — baseline and initial regression capture recorded; G0 NOT PASSED
+**Status:** R0 GATE_PASSED — G0 PASS (test capture only); R1 NOT_STARTED
 **Owner directive:** all 13 HIGH, 29 MEDIUM, 12 LOW findings must be fixed and verified.
 
 This file is intentionally a live execution ledger. The implementing assistant updates it during implementation. Do not erase previous evidence; append/update status while preserving history.
@@ -35,7 +35,7 @@ Notes on pre-existing dirty changes: none at R0 baseline; source hardening alrea
 
 | Phase | Status | Gate | Started | Completed | Evidence summary |
 |---|---|---|---|---|---|
-| R0 Baseline + regressions | IN_PROGRESS | G0 NOT PASSED | 2026-09-19 | | Baseline captured; disposable fixtures + architecture scaffold; HIGH-03/HIGH-10 intentionally RED; remaining HIGH contracts open |
+| R0 Baseline + regressions | GATE_PASSED | G0 PASS — all HIGH pre-fix contracts encoded; none resolved | 2026-09-19 | 2026-09-19 | 103 files / 492 passing / 18 expected failures; real two-process lease fixture; see R0_G0_COMPLETION_2026-09-19.md |
 | R1 Architecture + MCP v2 foundation | NOT_STARTED | — | | | |
 | R2 Unified tool/auth/workspace | NOT_STARTED | — | | | |
 | R3 Task/recovery/idempotency/lease | NOT_STARTED | — | | | |
@@ -55,10 +55,10 @@ Allowed phase status: `NOT_STARTED`, `IN_PROGRESS`, `BLOCKED`, `GATE_FAILED`, `G
 
 | Severity | Total | OPEN | TEST_ENCODED | IMPLEMENTING | IMPLEMENTED | VERIFIED_CLOSED | DEFERRED_BY_OWNER |
 |---|---:|---:|---:|---:|---:|---:|---:|
-| HIGH | 13 | 13 | 0 | 0 | 0 | 0 | 0 |
-| MEDIUM | 29 | 29 | 0 | 0 | 0 | 0 | 0 |
+| HIGH | 13 | 0 | 13 | 0 | 0 | 0 | 0 |
+| MEDIUM | 29 | 19 | 10 | 0 | 0 | 0 | 0 |
 | LOW | 12 | 12 | 0 | 0 | 0 | 0 | 0 |
-| **TOTAL** | **54** | **54** | **0** | **0** | **0** | **0** | **0** |
+| **TOTAL** | **54** | **31** | **23** | **0** | **0** | **0** | **0** |
 
 The detailed source is `20_FINDINGS_TRACEABILITY_MATRIX.md`; keep totals consistent.
 
@@ -67,16 +67,16 @@ The detailed source is `20_FINDINGS_TRACEABILITY_MATRIX.md`; keep totals consist
 ## 4. Current task
 
 ```text
-Task ID (e.g. R2-07): R0.03/R0.04 regression completion
-Finding IDs: HIGH-01...HIGH-13, MED-21
-Status: IN_PROGRESS — no finding closure claimed
-Goal: finish actual MCP/Task security contracts and safe reliability/failure-injection fixtures for each HIGH
-Files/modules planned: tests/security/**, tests/core/**, tests/helpers/** (see R0 baseline report)
-Architecture layer(s): TESTS ONLY until R0 gate; preserve old runtime for red-before-fix evidence
-Tests to add first: actual MCP + Task workspace/sensitive reads; no-index disclosure; HTTP/OAuth; timeout/crash; Git/package; process lease
+Task ID (e.g. R2-07): R1.01 — architecture foundation (not started)
+Finding IDs: architectural G1; existing HIGH/MED remain TEST_ENCODED or OPEN until fixed
+Status: NOT_STARTED — R0 G0 passed for test capture; no defect closure claimed
+Goal: begin R1 only after reviewing R0 G0 completion evidence; maintain RED contracts until each underlying flaw is fixed
+Files/modules planned: src/domain/**, src/application/**, src/adapters/**, src/bootstrap/** per R1 design; preserve R0 test fixtures
+Architecture layer(s): Domain/Application/Ports/adapters in R1; preserve existing legacy runtime during compatibility
+Tests to add first: G1 independent compilation/fake-adapter use cases, plus existing R0 boundary scanner
 External docs rechecked (if version-sensitive): Not verified; SDK v2/protocol migration belongs to R1/R5
-Start timestamp: 2026-09-19
-Notes: R0 baseline report docs/implementation/R0_BASELINE_2026-09-19.md; 2 it.fails tests are release blockers, not security passes
+Start timestamp: NOT_STARTED
+Notes: R0 complete report docs/implementation/R0_G0_COMPLETION_2026-09-19.md; 18 expected failures are live release blockers, not fixes
 ```
 
 ---
@@ -211,8 +211,8 @@ Record machine/runtime fixture metadata for comparisons.
 
 ```text
 Current build: baseline PASS (pre-R0 clean checkout)
-Current typecheck: baseline PASS; R0 specific new code PASS
-Unit/domain/application: pre-R0 full 92 files/470 passing; R0 targeted 12 PASS + 2 expected RED
+Current typecheck: PASS after full R0 regressions
+Unit/domain/application: full R0 103 files / 492 passing + 18 expected failures; no unexpected failures
 Architecture:
 Security regressions:
 Integration/adapters:
@@ -220,8 +220,8 @@ Failure injection:
 Property/fuzz:
 Stdio E2E:
 HTTP/OAuth modern E2E:
-Coverage global: statements 86.35%, branches 76.93%, functions 87.35%, lines 89.88% (pre-R0)
-Critical branch thresholds: NOT PASSED/NOT ESTABLISHED; 30 source entries below 75% branch coverage
+Coverage global: statements 86.83%, branches 77.44%, functions 87.35%, lines 90.41% (full R0)
+Critical branch thresholds: NOT PASSED/NOT ESTABLISHED; G8 remains OPEN (global coverage is not per-file approval)
 Workers/profile:
 Prometheus validation:
 Container smoke:
@@ -302,3 +302,11 @@ Do not mark public production approved automatically.
 - `pnpm run typecheck` after new fixtures, architecture and RED tests: PASS.
 - New files: `tests/helpers/r0-disposable-fixtures.ts`, `tests/core/r0-disposable-fixtures.test.ts`, `tests/core/r0-architecture-boundary.test.ts`, `tests/core/r0-known-defects.test.ts`, `docs/implementation/R0_BASELINE_2026-09-19.md`.
 - R0 status IN_PROGRESS; Gate G0 NOT PASSED. No edits to the 54-row finding status matrix; no source implementation, server restart or production change.
+
+## R0 G0 sign-off — 2026-09-19
+
+- R0.01–R0.05 complete as **baseline and contract-capture** phase, Gate G0 **PASS**. Detailed 13-HIGH mapping and 10-MED test references: `R0_G0_COMPLETION_2026-09-19.md`.
+- Full suite: 103 files / 492 passing / 18 expected failing pre-fix contracts (510 total), exit 0. Typecheck and build PASS; no production behavior change.
+- REAL two-OS-process SQLite race fixture verifies one atomic disposable row winner; production fenced Task lease HIGH-13 remains RED/unimplemented.
+- Finding state: HIGH 13 TEST_ENCODED, MEDIUM 10 TEST_ENCODED and 19 OPEN, LOW 12 OPEN. **No finding VERIFIED_CLOSED or deferred.** G1–G10 NOT PASSED; R1 NOT_STARTED.
+- Change scope: test fixtures + evidence docs on isolated `audit/r0-baseline-2026-09-19` branch. No push, merge, release tag, service restart or primary DB alteration.

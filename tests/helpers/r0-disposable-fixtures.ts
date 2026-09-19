@@ -80,6 +80,18 @@ export function createFakeClock(initialMs = Date.parse("2026-01-01T00:00:00.000Z
   };
 }
 
+/** Seeded, deterministic, NON-CRYPTOGRAPHIC random fixture. Never use for real credentials. */
+export function createFakeRandom(seed = 0x12345678): () => number {
+  if (!Number.isSafeInteger(seed) || seed === 0) throw new Error("Invalid fake random seed");
+  let state = seed >>> 0;
+  return () => {
+    state ^= state << 13;
+    state ^= state >>> 17;
+    state ^= state << 5;
+    return (state >>> 0) / 0x100000000;
+  };
+}
+
 /** Explicitly NOT cryptographically secure: deterministic token fixture only. */
 export function createFakeTokenGenerator() {
   let n = 0;
