@@ -104,3 +104,11 @@ crossing into the mass-migration work assigned to R2–R9.
 - Focused regression: 7 files / 40 tests PASS across adversarial approval, permission level, governance, package service and execution-context/correlation behavior. Combined standalone R1 + project Typecheck PASS; Build PASS.
 - Literal source inventory now reports `process.env` in nine source paths total; only two are under the new target config directory. Remaining legacy reads are `src/index.ts`, `src/index-http.ts`, `src/core/memory/database/connection.ts`, `src/mcp/http-server.ts`, `src/memory/command-audit.ts`, `src/memory/file-audit.ts`, and `src/security/workspace-guard.ts`. These remain migration debt for R2/R5/R6/R7/R9.
 - No production DB migration, tool gateway cutover, server restart, merge, push or deployment occurred.
+
+## Follow-up vertical migration — legacy Task State Machine into Domain (2026-09-19)
+
+- The existing pure transition implementation moved from `src/core/state/task-state-machine.ts` to `src/domain/task/legacy-task-state-machine.ts`; the legacy path is now a compatibility re-export facade.
+- Runtime semantics were intentionally preserved, including legacy transitional states such as `created`, `checkpointing`, `resuming` and the current reopen transitions. R3 owns convergence to the final canonical Task aggregate/state model; R1 does not silently change execution semantics.
+- Dedicated migration tests verify exact function identity through the old facade and preservation of representative allowed/blocked transitions.
+- Focused regression: 21 PASS. Full regression: **107 files / 506 PASS + 18 expected pre-fix failures** (524 cases); combined Typecheck PASS; Build PASS.
+- No production DB migration, service restart, tool-gateway cutover, push/merge/tag or deployment.

@@ -360,3 +360,11 @@ Finding IDs: architectural G1; no HIGH/MED/LOW finding independently closed.
 - Focused regressions: 40 PASS; combined standalone/full Typecheck PASS; production Build PASS.
 - Current literal `process.env` path inventory: nine source paths total, two correctly under target config; seven legacy paths remain and are explicitly owned by later R2/R5/R6/R7/R9 migrations.
 - No original finding marked VERIFIED_CLOSED by this refactor; no live DB/service/deployment mutation.
+
+## R1 pure Task State Machine migration — 2026-09-19
+
+- **Status:** VERIFIED bounded R1 migration; overall R1 remains `IN_PROGRESS`, global G1 remains `NOT PASSED`.
+- Pure transition behavior moved from legacy Core into Domain; old Core path is compatibility-only.
+- Current shipped transition semantics are frozen during R1; final state-model convergence is assigned to R3 so this refactor does not alter durable Task behavior.
+- Focused tests: 21 PASS. Full suite: 107 files / 506 PASS + 18 expected RED; Typecheck and Build PASS.
+- No finding was closed and no runtime/deployment/database mutation occurred.

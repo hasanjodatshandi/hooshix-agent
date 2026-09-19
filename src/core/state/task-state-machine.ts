@@ -1,41 +1,9 @@
-export type TaskState =
-  | "created"
-  | "planning"
-  | "waiting_approval"
-  | "executing"
-  | "checkpointing"
-  | "recovering"
-  | "resuming"
-  | "verifying"
-  | "completed"
-  | "failed"
-  | "cancelled";
-
-const transitions: Record<TaskState, TaskState[]> = {
-  created: ["planning", "cancelled"],
-  planning: ["waiting_approval", "executing", "failed", "cancelled"],
-  waiting_approval: ["resuming", "failed", "cancelled"],
-  executing: ["checkpointing", "waiting_approval", "recovering", "verifying", "failed", "cancelled"],
-  checkpointing: ["executing", "waiting_approval", "recovering", "verifying", "failed", "cancelled"],
-  recovering: ["executing", "waiting_approval", "failed", "cancelled"],
-  resuming: ["executing", "recovering", "failed", "cancelled", "planning"],
-  // "executing" is a valid exit: if the process died between move(verifying)
-  // and the final save, the task must be resumable instead of stuck forever.
-  verifying: ["executing", "completed", "recovering", "failed", "cancelled"],
-  // Terminal states can be reopened via task_append_steps → planning
-  completed: ["planning"],
-  failed: ["resuming", "cancelled", "planning"],
-  cancelled: ["planning"]
-};
-
-export function canTransition(from: TaskState, to: TaskState) {
-  return transitions[from].includes(to);
-}
-
-export function transitionTask(from: TaskState, to: TaskState) {
-  if (!canTransition(from, to)) {
-    throw new Error(`Invalid transition ${from} -> ${to}`);
-  }
-
-  return to;
-}
+/** R1 compatibility facade; implementation is now pure Domain. */
+export {
+  canTransition,
+  transitionTask,
+} from "../../domain/task/legacy-task-state-machine.js";
+export type {
+  LegacyTaskState,
+  TaskState,
+} from "../../domain/task/legacy-task-state-machine.js";
