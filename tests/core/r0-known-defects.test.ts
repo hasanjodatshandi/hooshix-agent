@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { evaluateCommandPermission } from "../../src/security/permissions/command-permission.js";
+import { readLegacyHttpAccessToken } from "../../src/infrastructure/config/legacy-http-server.js";
 
 /**
  * R0 baseline RED contracts. Each .fails is a KNOWN, LIVE release blocker:
@@ -24,8 +25,10 @@ describe("R0 intentionally failing pre-remediation contracts", () => {
   });
 
   it.fails("HIGH-11: deprecated MCP_ACCESS_TOKEN must no longer be accepted as an unrestricted HTTP bootstrap credential", () => {
-    const http = fs.readFileSync(path.resolve("src/mcp/http-server.ts"), "utf8");
-    expect(http).not.toContain("process.env.MCP_ACCESS_TOKEN");
+    // Test the insecure runtime behavior, not the former location of the env read.
+    // R1 relocated this read into infrastructure/config without fixing HIGH-11.
+    const credential = readLegacyHttpAccessToken({ MCP_ACCESS_TOKEN: "r0-fixture-bootstrap" });
+    expect(credential).toBeUndefined();
   });
 
   it.fails("HIGH-12: an unauthenticated, non-sensitive liveness endpoint must exist for container health probes", () => {

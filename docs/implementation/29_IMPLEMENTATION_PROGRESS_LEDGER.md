@@ -2,7 +2,7 @@
 
 **Project:** `D:/workspace/hooshix-agent`  
 **Program:** Full Hexagonal/Clean redesign + complete consolidated-audit remediation  
-**Status:** R0 GATE_PASSED; R1 foundation implemented on isolated branch — G1 GLOBAL NOT PASSED (legacy migration remaining)
+**Status:** R0 GATE_PASSED; R1 implementation leaves done; G1 GLOBAL NOT PASSED — phase BLOCKED by mapped legacy migration dependencies
 **Owner directive:** all 13 HIGH, 29 MEDIUM, 12 LOW findings must be fixed and verified.
 
 This file is intentionally a live execution ledger. The implementing assistant updates it during implementation. Do not erase previous evidence; append/update status while preserving history.
@@ -36,7 +36,7 @@ Notes on pre-existing dirty changes: none at R0 baseline; source hardening alrea
 | Phase | Status | Gate | Started | Completed | Evidence summary |
 |---|---|---|---|---|---|
 | R0 Baseline + regressions | GATE_PASSED | G0 PASS — all HIGH pre-fix contracts encoded; none resolved | 2026-09-19 | 2026-09-19 | 103 files / 492 passing / 18 expected failures; real two-process lease fixture; see R0_G0_COMPLETION_2026-09-19.md |
-| R1 Architecture + MCP v2 foundation | IN_PROGRESS | G1 NEW_TREE PASS; G1 GLOBAL NOT PASSED (legacy source debt) | 2026-09-19 | | Domain/Application contracts, fake composition and standalone compilation completed; see R1_FOUNDATION_AND_G1_ASSESSMENT_2026-09-19.md |
+| R1 Architecture + MCP v2 foundation | BLOCKED | New-tree PASS; strict global G1 NOT PASSED: 19 SQL and 19 MCP legacy candidate files, zero env outside config/bootstrap | 2026-09-19 | | R1.01–R1.05 and bounded R1.06 completed, but global gate depends on R2/R5/R6/R9; see R1_FOUNDATION_AND_G1_ASSESSMENT_2026-09-19.md |
 | R2 Unified tool/auth/workspace | NOT_STARTED | — | | | |
 | R3 Task/recovery/idempotency/lease | NOT_STARTED | — | | | |
 | R4 Data integrity/compensation | NOT_STARTED | — | | | |
@@ -69,7 +69,7 @@ The detailed source is `20_FINDINGS_TRACEABILITY_MATRIX.md`; keep totals consist
 ```text
 Task ID (e.g. R2-07): R1.06 — complete global G1 by migrating remaining legacy dependencies in assigned phases
 Finding IDs: architectural G1; existing HIGH/MED remain TEST_ENCODED or OPEN until fixed
-Status: IN_PROGRESS — R1 skeleton implemented; G1 global not passed due to remaining legacy dependencies
+Status: BLOCKED — R1 skeleton and bounded new-tree implementation complete; strict global G1 not passed due to legacy SQL/MCP and adapter dependencies assigned to R2–R9
 Goal: maintain R1 target-tree boundary and migrate existing legacy shortcuts through R2–R9 without relaxing global G1
 Files/modules planned: src/domain/**, src/application/**, src/adapters/**, src/infrastructure/** and src/bootstrap/** created; future migration of src/core/**, src/tools/**, src/mcp/** belongs to mapped later phases
 Architecture layer(s): R1 Domain/Application standalone PASS, test-only in-memory adapters/composition PASS; legacy runtime remains live and has outstanding G1 violations
@@ -216,8 +216,8 @@ Record machine/runtime fixture metadata for comparisons.
 ```text
 Current build: PASS after R1 skeleton, legacy live runtime unchanged
 Current typecheck: PASS after R1 foundation; standalone Domain/Application compilation PASS
-Unit/domain/application: 112 files / 521 passing + 18 expected failures after R1 runtime/workspace config isolation; earlier phase evidence remains below
-Architecture: R1 NEW_TREE PASS; GLOBAL G1 NOT PASSED due to scoped legacy migration baseline (20 SQL/9 env/44 concrete import/19 MCP candidate files)
+Unit/domain/application: 113 files / 525 passing + 18 expected failures after R1 entrypoint/HTTP env isolation; historical phase evidence below
+Architecture: R1 NEW_TREE PASS; GLOBAL G1 NOT PASSED — 0 env outside config/bootstrap, 19 SQL legacy candidate files, 19 MCP SDK legacy candidate files; concrete adapter migration remains R2–R9
 Security regressions:
 Integration/adapters:
 Failure injection:
@@ -408,3 +408,12 @@ Finding IDs: architectural G1; no HIGH/MED/LOW finding independently closed.
   privilege expansion. R1/G1 not complete; dependent R2 not started.
 - Change isolation: source/test/docs only in the isolated R1 branch.
   No server restart, primary DB migration, push, merge, tag, or deployment.
+
+## R1 configuration-boundary continuation (2026-09-20)
+
+- Stdio/HTTP retention and HTTP bootstrap environment accesses now reside in `src/infrastructure/config/**`; global source scan reports zero remaining direct `process.env` usage outside configuration/bootstrap.
+- Added entrypoint/HTTP compatibility and global environment-boundary regression tests. Updated HIGH-11 expected-RED test to assert the credential behavior, not a source-code string; HIGH-11 remains unresolved.
+- Full regression: 113 files, 525 PASS plus 18 expected RED; Typecheck, Build and diff whitespace PASS.
+- Strict global G1 inventory script: 145 source files, 19 legacy SQL candidate files and 19 legacy MCP SDK-import candidate files, with paths and failure on `--strict`.
+- R1 skeleton and bounded leaf work complete; formal G1 remains NOT PASSED pending R2/R5/R6/R9 legacy execution/transport/persistence migrations. No finding closure or dependent phase claimed.
+- No service restart, live DB migration, push, merge, release tag or deployment.

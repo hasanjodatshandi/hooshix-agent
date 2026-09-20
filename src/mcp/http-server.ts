@@ -11,9 +11,9 @@ import http from "node:http";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
+import { readLegacyHttpServerSettings, readLegacyHttpAccessToken } from "../infrastructure/config/legacy-http-server.js";
 
-const PORT = parseInt(process.env.MCP_PORT ?? "3001", 10);
-const PUBLIC_BASE_URL = (process.env.MCP_PUBLIC_BASE_URL ?? "").replace(/\/$/, "");
+const { port: PORT, publicBaseUrl: PUBLIC_BASE_URL } = readLegacyHttpServerSettings();
 
 // Current access token (set in startHttpServer)
 let currentAccessToken = "";
@@ -26,7 +26,7 @@ const TOKEN_FILE = path.join(process.cwd(), ".token");
 
 /** Load access token with persistent storage */
 function loadToken(): string {
-  const envToken = process.env.MCP_ACCESS_TOKEN;
+  const envToken = readLegacyHttpAccessToken();
   if (envToken) return envToken;
   try {
     const fileToken = fs.readFileSync(TOKEN_FILE, "utf-8").trim();
@@ -724,7 +724,7 @@ function buildFilterQuery(base: Record<string, string>): string {
 }
 
 function dashboardPage(snapshot: ReturnType<typeof mcpMetrics.getSnapshot>, dbMetrics: ReturnType<typeof getAgentMetrics>, toolNames: string[], page: number, pageSize: number, filters: DashboardFilters = {}): string {
-  const tokenSource = process.env.MCP_ACCESS_TOKEN
+  const tokenSource = readLegacyHttpAccessToken()
     ? "env MCP_ACCESS_TOKEN"
     : fs.existsSync(TOKEN_FILE)
       ? ".token file"
@@ -1122,7 +1122,7 @@ async function handleRegisterPOST(
 export function startHttpServer(): Promise<void> {
   currentAccessToken = loadToken();
   const accessToken = currentAccessToken;
-  const source = process.env.MCP_ACCESS_TOKEN
+  const source = readLegacyHttpAccessToken()
     ? "env MCP_ACCESS_TOKEN"
     : fs.existsSync(TOKEN_FILE)
       ? ".token file"
@@ -1147,7 +1147,7 @@ export function startHttpServer(): Promise<void> {
       console.error(`HooshiX MCP HTTP server running on http://localhost:${PORT}/mcp`);
       console.error(`Token source: ${source}`);
       // Do NOT print the raw token to logs — use the masked form instead.
-      console.error(`Access token: ${maskToken(accessToken)} (full token in ${process.env.MCP_ACCESS_TOKEN ? "env MCP_ACCESS_TOKEN" : TOKEN_FILE})`);
+      console.error(`Access token: ${maskToken(accessToken)} (full token in ${readLegacyHttpAccessToken() ? "env MCP_ACCESS_TOKEN" : TOKEN_FILE})`);
       if (PUBLIC_BASE_URL) {
         console.error(`Public base URL: ${PUBLIC_BASE_URL}`);
       }

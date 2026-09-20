@@ -171,3 +171,41 @@ crossing into the mass-migration work assigned to R2–R9.
 - No production database migration, Task mutation, service restart or deployment
   was performed. Legacy MCP/HTTP/entrypoint environment/config and SQL/concrete
   dependencies still prevent global G1 PASS.
+
+## 2026-09-20 continuation — legacy entrypoint/HTTP configuration isolation
+
+- R1 migration moved the remaining direct `process.env` references from
+  `src/index.ts`, `src/index-http.ts`, and `src/mcp/http-server.ts`
+  into `src/infrastructure/config/legacy-retention.ts` and
+  `src/infrastructure/config/legacy-http-server.ts`. Existing numeric
+  coercion, port/base-URL boot timing, dynamic token-source checks and
+  legacy credential acceptance are deliberately unchanged: R5/R7 own
+  security/config semantic changes.
+- `tests/core/r1-entrypoint-http-config-migration.test.ts` now enforces
+  **zero direct process.env reads outside config/bootstrap in the entire
+  TypeScript source tree**, with supplied-environment compatibility fixtures.
+- HIGH-11's old expected-RED test had checked the source location of an
+  environment read. Moving that read made the test pass spuriously. The
+  pre-fix contract in `tests/core/r0-known-defects.test.ts` now tests
+  actual acceptance of the legacy bootstrap credential via the production
+  config reader: it still fails as expected. **HIGH-11 is not fixed.**
+- Full regression `pnpm exec vitest run`: **113 files / 525 PASS +
+  18 expected pre-fix failures**, exit 0; combined standalone/project
+  Typecheck PASS; Build PASS; whitespace diff check PASS.
+- Added `scripts/verify-g1-global.mjs`, a **strict, non-mutating global G1
+  debt inventory**, not a waiver. The scan of 145 TypeScript files reports
+  `G1_GLOBAL: NOT_PASSED`; environment-access violations: **0**;
+  `sql_outside_sqlite_adapter`: **19 candidate files**, and
+  `sdk_outside_inbound_mcp`: **19 candidate files**. Counts overlap and
+  static matches require manual adjudication. Full paths are emitted by
+  `node scripts/verify-g1-global.mjs`; with `--strict` it exits 2 while
+  violations remain.
+- The SQL persistence modules must be migrated to the canonical SQLite
+  adapter in R6/R9, and legacy SDK imports to the inbound adapter during
+  R5/R9. The direct tool execution/authorization migration belongs to R2.
+  R1.01–R1.05 and the *new-tree* part of R1.06 have executable evidence,
+  but the strict G1 contract spans later migration phases. The phase
+  therefore stays **BLOCKED for formal G1 sign-off**, rather than
+  reclassifying legacy violations as acceptable or starting R2 under a
+  falsely successful prerequisite. No push, merge, live DB change, server
+  restart or deployment occurred.
