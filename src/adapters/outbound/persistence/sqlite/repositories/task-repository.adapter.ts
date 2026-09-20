@@ -2,6 +2,7 @@ import type { TaskPlan, TaskStep, TaskStepStatus, TaskExecutionContext, StepAtte
 import type { TaskState } from "../../../../../core/state/task-state-machine.js";
 import { withAgentDatabase } from "../../../../../core/memory/database.js";
 import path from "node:path";
+import type Database from "better-sqlite3";
 
 interface TaskRow {
   id: string;
@@ -11,6 +12,12 @@ interface TaskRow {
   status: TaskState;
   execution_context?: string | null;
   max_recovery?: number | null;
+  idempotency_key: string | null;
+  retry_policy: string | null;
+  total_run_count: number | null;
+  task_revision: number | null;
+  created_at: string;
+  updated_at: string;
 }
 
 interface StepRow {
@@ -84,20 +91,21 @@ export function saveTaskPlan(plan: TaskPlan, status: TaskState = plan.state ?? "
     const now = new Date().toISOString();
     return db.transaction(() => {
       db.prepare(`
-        INSERT INTO tasks(id, title, description, status, correlation_id, idempotency_key, execution_context, max_recovery, retry_policy, total_run_count, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO tasks(id, title, description, status, correlation_id, idempotency_key, execution_context, max_recovery, retry_policy, total_run_count, task_revision, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(id) DO UPDATE SET title=excluded.title, description=excluded.description,
           status=excluded.status, correlation_id=COALESCE(excluded.correlation_id, tasks.correlation_id),
           idempotency_key=COALESCE(excluded.idempotency_key, tasks.idempotency_key),
           execution_context=COALESCE(excluded.execution_context, tasks.execution_context),
           max_recovery=COALESCE(excluded.max_recovery, tasks.max_recovery),
           retry_policy=COALESCE(excluded.retry_policy, tasks.retry_policy),
-          total_run_count=excluded.total_run_count, updated_at=excluded.updated_at
+          total_run_count=excluded.total_run_count, task_revision=excluded.task_revision,
+          updated_at=excluded.updated_at
       `).run(plan.id, plan.task, plan.description ?? plan.task, status, correlationId ?? null, plan.idempotencyKey ?? null,
         plan.executionContext ? JSON.stringify(plan.executionContext) : null,
         plan.maxRecovery ?? null,
         plan.retryPolicy ? JSON.stringify(plan.retryPolicy) : null,
-        plan.totalRunCount ?? 0, now, now);
+        plan.totalRunCount ?? 0, plan.revision ?? 0, plan.createdAt ?? now, now);
 
       const statement = db.prepare(`
         INSERT INTO task_steps(task_id, step_id, step_order, action, tool, input, dependencies, status, output, error, error_type, created_at, updated_at)
@@ -158,44 +166,59 @@ export function saveTaskStep(taskId: string, step: TaskStep, order: number): voi
     new Date().toISOString(), taskId, step.id));
 }
 
-export function getTaskPlan(taskId: string): TaskPlan | null {
-  ensureExtraColumns();
-  return withAgentDatabase((db) => {
-    const task = db.prepare("SELECT id, title, description, status, correlation_id, execution_context, max_recovery, retry_policy, total_run_count FROM tasks WHERE id=?").get(taskId) as TaskRow & { execution_context: string | null; max_recovery: number | null; retry_policy: string | null; total_run_count: number | null } | undefined;
-    if (!task) return null;
-    const rows = db.prepare("SELECT * FROM task_steps WHERE task_id=? ORDER BY step_order").all(taskId) as StepRow[];
-
-    // Fetch pending approval if task is in waiting_approval state
-    let pendingApproval: { approvalId: number; stepId: number; action: string; risk: string; reason: string } | undefined;
-    if (task.status === "waiting_approval") {
-      const approval = db.prepare(
-        "SELECT id, step_id, action, risk, reason FROM approval_requests WHERE task_id = ? AND consumed_at IS NULL ORDER BY id DESC LIMIT 1"
-      ).get(taskId) as { id: number; step_id: number; action: string; risk: string; reason: string } | undefined;
-      if (approval) {
-        pendingApproval = {
-          approvalId: approval.id,
-          stepId: approval.step_id,
-          action: approval.action,
-          risk: approval.risk,
-          reason: approval.reason,
-        };
-      }
-    }
-
-    return {
-      id: task.id,
-      task: task.title ?? task.description,
-      description: task.description,
-      correlationId: task.correlation_id ?? undefined,
-      state: task.status,
-        executionContext: parseJson(task.execution_context ?? null, undefined) as TaskExecutionContext | undefined,
-      maxRecovery: task.max_recovery ?? undefined,
-      retryPolicy: parseJson(task.retry_policy, undefined) as { maxTotalAttempts?: number; maxConsecutiveFailures?: number } | undefined,
-      totalRunCount: task.total_run_count ?? undefined,
-      pendingApproval,
-      steps: rows.map(hydrateTaskStep)
+/**
+ * The one DB-row -> TaskPlan aggregate mapper. All normal reads, Task reports,
+ * startup resume and interrupted-task discovery invoke this function. The
+ * active approval pointer is a derived view, never independently fabricated.
+ */
+function hydrateTaskById(db:Database.Database,taskId:string):TaskPlan|null {
+  const task=db.prepare(`
+    SELECT id,title,description,status,correlation_id,idempotency_key,
+      execution_context,max_recovery,retry_policy,total_run_count,
+      task_revision,created_at,updated_at
+    FROM tasks WHERE id=?
+  `).get(taskId) as TaskRow|undefined;
+  if(!task)return null;
+  const stepRows=db.prepare("SELECT * FROM task_steps WHERE task_id=? ORDER BY step_order")
+    .all(taskId) as StepRow[];
+  let pendingApproval:TaskPlan["pendingApproval"];
+  if(task.status==="waiting_approval") {
+    const approval=db.prepare(`
+      SELECT id,step_id,action,risk,reason FROM approval_requests
+      WHERE task_id=? AND status IN ('pending','approved')
+        AND dispatched_at IS NULL
+      ORDER BY id DESC LIMIT 1
+    `).get(taskId) as {
+      id:number;step_id:number;action:string|null;risk:string;reason:string;
+    }|undefined;
+    if(approval)pendingApproval={
+      approvalId:approval.id,stepId:approval.step_id,
+      action:approval.action??"",risk:approval.risk,reason:approval.reason,
     };
-  });
+  }
+  return {
+    id:task.id,
+    task:task.title??task.description,
+    description:task.description,
+    correlationId:task.correlation_id??undefined,
+    idempotencyKey:task.idempotency_key??undefined,
+    state:task.status,
+    executionContext:parseJson(task.execution_context??null,undefined) as TaskExecutionContext|undefined,
+    maxRecovery:task.max_recovery??undefined,
+    retryPolicy:parseJson(task.retry_policy??null,undefined) as TaskPlan["retryPolicy"],
+    totalRunCount:task.total_run_count??undefined,
+    revision:task.task_revision??0,
+    createdAt:task.created_at,
+    updatedAt:task.updated_at,
+    pendingApproval,
+    steps:stepRows.map(hydrateTaskStep),
+  };
+}
+
+/** Canonical persisted aggregate entrypoint for direct reads and Task reports. */
+export function getTaskPlan(taskId:string):TaskPlan|null {
+  ensureExtraColumns();
+  return withAgentDatabase(db=>hydrateTaskById(db,taskId));
 }
 
 export function listTasks(limit = 50): Array<Record<string, unknown>> {
@@ -355,28 +378,16 @@ export function updateTaskHeartbeat(taskId: string): void {
 
 const INTERRUPTED_STATES = ["executing", "checkpointing", "recovering", "resuming", "verifying", "waiting_approval"];
 
-export function findInterruptedTasks(): TaskPlan[] {
+export function findInterruptedTasks():TaskPlan[] {
   ensureExtraColumns();
-    return withAgentDatabase((db) => {
-    const rows = db.prepare(
-      `SELECT id, title, description, status, correlation_id, execution_context, max_recovery FROM tasks
-       WHERE status IN (${INTERRUPTED_STATES.map(() => "?").join(",")})`
-    ).all(...INTERRUPTED_STATES) as TaskRow[];
-
-    return rows.map((task) => {
-      const stepRows = db.prepare(
-        "SELECT * FROM task_steps WHERE task_id=? ORDER BY step_order"
-      ).all(task.id) as StepRow[];
-      return {
-        id: task.id,
-        task: task.title ?? task.description,
-        description: task.description,
-        correlationId: task.correlation_id ?? undefined,
-        state: task.status,
-        executionContext: parseJson(task.execution_context ?? null, undefined) as TaskExecutionContext | undefined,
-        steps: stepRows.map(hydrateTaskStep)
-      };
-    });
+  return withAgentDatabase(db=>{
+    // Query only the IDs: never build a partial TaskPlan in the recovery path.
+    const ids=db.prepare(`
+      SELECT id FROM tasks
+      WHERE status IN (${INTERRUPTED_STATES.map(()=>"?").join(",")})
+      ORDER BY updated_at ASC
+    `).all(...INTERRUPTED_STATES) as Array<{id:string}>;
+    return ids.map(row=>hydrateTaskById(db,row.id)).filter((plan):plan is TaskPlan=>plan!==null);
   });
 }
 

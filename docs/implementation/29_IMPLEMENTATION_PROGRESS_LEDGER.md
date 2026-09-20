@@ -2,7 +2,7 @@
 
 **Project:** `D:/workspace/hooshix-agent`  
 **Program:** Full Hexagonal/Clean redesign + complete consolidated-audit remediation  
-**Status:** R0 GATE_PASSED; R1 GATE_PASSED — G1 PASS (architecture boundary); R2 IN_PROGRESS (R2.01 VERIFIED; R2.02/03/05/09 not yet complete; G2 OPEN)
+**Status:** R0 GATE_PASSED; R1 GATE_PASSED (G1 PASS); R2 GATE_PASSED (G2 PASS on isolated feature branch); R3 IN_PROGRESS (R3.01 VERIFIED; G3 OPEN). R4–R10 NOT_STARTED.
 **Owner directive:** all 13 HIGH, 29 MEDIUM, 12 LOW findings must be fixed and verified.
 
 This file is intentionally a live execution ledger. The implementing assistant updates it during implementation. Do not erase previous evidence; append/update status while preserving history.
@@ -37,8 +37,8 @@ Notes on pre-existing dirty changes: none at R0 baseline; source hardening alrea
 |---|---|---|---|---|---|
 | R0 Baseline + regressions | GATE_PASSED | G0 PASS — all HIGH pre-fix contracts encoded; none resolved | 2026-09-19 | 2026-09-19 | 103 files / 492 passing / 18 expected failures; real two-process lease fixture; see R0_G0_COMPLETION_2026-09-19.md |
 | R1 Architecture + MCP v2 foundation | GATE_PASSED | G1 PASS — strict 166-source-file inventory zero candidates; new-tree dependency/in-memory adapter and composition tests pass; SDK v2 upgrade belongs to R5 | 2026-09-19 | 2026-09-20 | Full suite 119 files / 542 PASS + 18 expected RED; standalone/full typecheck and build PASS; see R1_G1_COMPLETION_2026-09-20.md |
-| R2 Unified tool/auth/workspace | IN_PROGRESS | G2 OPEN — R2.01 VERIFIED; R2.04 session isolation tested; R2.06/07/08 security fixes validated; R2.02/03/05/09 runtime cutover outstanding | 2026-09-20 | | 129 files / 573 PASS + 15 expected RED; Typecheck, Build, G1 (168 files/0 candidates) PASS; HIGH-02/03, MED-04/06, LOW-01 VERIFIED_CLOSED; see latest R2 worklog below |
-| R3 Task/recovery/idempotency/lease | NOT_STARTED | — | | | |
+| R2 Unified tool/auth/workspace | GATE_PASSED | G2 PASS — shared Direct MCP/Task gateway, exact approval, scope controls and retired alternate inbound handlers | 2026-09-20 | 2026-09-20 | Commit e641b6d; 133 files / 589 PASS + 15 expected RED, Typecheck, Build, G1 PASS; R2 G2 closure worklog below |
+| R3 Task/recovery/idempotency/lease | IN_PROGRESS | G3 OPEN — R3.01 canonical hydration VERIFIED; R3.02–R3.10 outstanding | 2026-09-20 | | R3.01 final suite 134 files / 593 PASS + 14 expected RED; Typecheck, Build, G1 PASS; see R3.01 leaf record below |
 | R4 Data integrity/compensation | NOT_STARTED | — | | | |
 | R5 HTTP/OAuth/MCP modern | NOT_STARTED | — | | | |
 | R6 Persistence/perf/observability | NOT_STARTED | — | | | |
@@ -55,10 +55,10 @@ Allowed phase status: `NOT_STARTED`, `IN_PROGRESS`, `BLOCKED`, `GATE_FAILED`, `G
 
 | Severity | Total | OPEN | TEST_ENCODED | IMPLEMENTING | IMPLEMENTED | VERIFIED_CLOSED | DEFERRED_BY_OWNER |
 |---|---:|---:|---:|---:|---:|---:|---:|
-| HIGH | 13 | 0 | 11 | 0 | 0 | 2 | 0 |
-| MEDIUM | 29 | 18 | 9 | 0 | 0 | 2 | 0 |
+| HIGH | 13 | 0 | 9 | 1 | 0 | 3 | 0 |
+| MEDIUM | 29 | 17 | 9 | 0 | 0 | 3 | 0 |
 | LOW | 12 | 11 | 0 | 0 | 0 | 1 | 0 |
-| **TOTAL** | **54** | **29** | **20** | **0** | **0** | **5** | **0** |
+| **TOTAL** | **54** | **28** | **18** | **1** | **0** | **7** | **0** |
 
 The detailed source is `20_FINDINGS_TRACEABILITY_MATRIX.md`; keep totals consistent.
 
@@ -67,16 +67,12 @@ The detailed source is `20_FINDINGS_TRACEABILITY_MATRIX.md`; keep totals consist
 ## 4. Current task
 
 ```text
-Task ID (e.g. R2-07): R2.02 — shared ExecuteToolUseCase for direct MCP + Task (IN_PROGRESS)
-Finding IDs: HIGH-01/MED-28 remain dependent on complete common gateway; HIGH-02/03, MED-04/06, LOW-01 separately VERIFIED_CLOSED with direct/Task regressions
-Status: IN_PROGRESS — R2.01 descriptor catalog VERIFIED; isolated R2.02 app-level direct/Task scope resolution and R2.03 pure authorization policy implemented and tested, but production runtime gateway and effective authorization wiring remain unimplemented and separately gated
-Goal: implement and wire R2.02 shared MCP/Task gateway under G2 regression rules without breaking the R2.01 canonical catalog or G1 zero-candidate protection
-Files/modules planned: src/application/use-cases/tools/**, src/domain/tool/**, src/adapters/inbound/mcp/** and legacy src/tools/**/src/core/** call paths; validate complete catalog and retain R1 boundaries
-Architecture layer(s): R1 Domain/Application and global static G1 boundaries PASS; R2/G2 direct legacy tool/service paths remain and are not authorized by G1
-Tests to add first: exhaustive catalog parity, direct MCP/Task shared authorization and R0 HIGH-01/02/03 regression conversion only after actual R2 fixes
-External docs rechecked (if version-sensitive): SDK v2 NOT selected or migrated in R1; existing SDK v1 remains only in legacy inbound paths; verify actual v2 packages/spec before R5 migration
-Start timestamp: 2026-09-20
-Notes: R1 G1 PASSED; latest R2 run 15 expected failures; 5 findings VERIFIED_CLOSED; 49 unresolved. R2/G2 remains OPEN; no live gateway production cutover
+Completed leaf: R3.01 — Canonical Task aggregate mapper (VERIFIED, feature branch)
+Next pending leaf: R3.02 — Execution receipt model (NOT_STARTED)
+Findings: HIGH-07 IMPLEMENTING (current persisted Task fields hydrated identically; future receipt and request-hash fields are R3.02/R3.08 dependencies).
+Gate: G3 OPEN; do not start R4 or represent HooshiX as release-ready.
+Workspace: D:/workspace/hooshix-agent; isolated feature/r2-unified-tool-gateway-2026-09-20 branch.
+No live database migration, deployment, restart, push, merge, reset or removal of unrelated user files.
 ```
 
 ---
@@ -559,3 +555,15 @@ Finding IDs: architectural G1; no HIGH/MED/LOW finding independently closed.
 - **Final complete validation on the current source tree:** `pnpm exec vitest run`: **133 files, 589 PASS + 15 expected pre-existing RED (604 total), zero unexpected failures**; `pnpm run typecheck` PASS (standalone+whole project), `pnpm run build` PASS, `node scripts/verify-g1-global.mjs --strict` PASS (**175 files, 0 candidates**), `git diff --check` PASS (Git's LF/CRLF normalization warnings are not whitespace errors). Task evidence: `a13b62d1-d892-4e66-80bb-4da499f8e92d`. Earlier full-suite failures during remediation were addressed and are not misrepresented as completed tests.
 - **Finding closures on this gate:** HIGH-01 and MED-28 now VERIFIED_CLOSED based on executable evidence and the single gateway. Existing VERIFIED_CLOSED HIGH-02/HIGH-03/MED-04/MED-06/LOW-01 remain closed. **7 of 54 findings closed; 47 remain for their assigned later phases.** This finding count is not an R10 release verdict.
 - **Change isolation:** Changes are local to `feature/r2-unified-tool-gateway-2026-09-20`; no push, main merge, tag, service restart, production database migration, external deployment or destructive cleanup. Migration 9 was checked only in disposable test databases. Future rollout/migration decisions remain separately gated.
+---
+
+## R3.01 — canonical persisted Task aggregate mapper — 2026-09-20
+
+- **Status:** R3.01 VERIFIED within R3 IN_PROGRESS; G3 OPEN. No R3.02–R3.10 work claimed here. The R2 G2 decision remains PASS on feature branch e641b6d.
+- **Findings:** HIGH-07 moved from TEST_ENCODED to IMPLEMENTING. Current Task/Step semantic hydration is repaired and former HIGH-07 expected-failing test is now green; do not mark the finding VERIFIED_CLOSED until future R3.02 receipts and R3.08 creation request hashes also round-trip through this mapper, as required by doc 11 §5. No other finding closure changed: 7 VERIFIED_CLOSED out of 54.
+- **Source changes:** The sole Task aggregate row-to-DTO function `hydrateTaskById` now serves normal `getTaskPlan`, interrupted-task recovery discovery `findInterruptedTasks`, report, and canonical `getResumableTasks` / startup recovery. The recovery code cannot assemble a partial `TaskPlan` from a hand-selected SQL projection. Persisted Task idempotency key, retry policy, max recovery, total run count, execution scope, step template provenance/attempts/errors/outputs, pending approval, timestamps and stored revision are restored uniformly. A waiting Task only shows an unconsumed active approval in its derived pending-approval view.
+- **Migration:** Versioned SQLite migration 10 adds `tasks.task_revision INTEGER NOT NULL DEFAULT 0` without changing existing Task records or applying an online migration to the user's live DB. A marker-protected disposable copy of a simulated version-9 DB is migrated to version 10; Task identity/title/description/status/idempotency key remain unchanged and legacy revision defaults to 0. Timestamp fields are read from existing Task rows. Effect receipts and creation-request payload hashes remain assigned to R3.02 and R3.08, not fabricated here.
+- **Regression RED then GREEN:** `tests/core/r3-canonical-task-hydration.test.ts` originally failed both full-aggregate and pending-approval cross-path tests before implementation; after implementation all 3 tests (including the historical DB-copy migration case) pass. Existing `HIGH-07` contract in `tests/core/r0-reliability-contracts.test.ts` was converted from an expected failure to a normal passing assertion. Existing recovery/startup/resume and persistence fixtures also pass. RED evidence: task `9049dbfd-df54-45cf-b65e-9eca4e20d602`. Focused 20 PASS + 3 other expected RED: `ce83f627-f668-4d95-b8c5-e4b4801e223a`. Disposable legacy-copy verification 3 PASS + typecheck PASS: `a04f4b7f-5e8b-4a31-8f16-144c2320bd7c`.
+- **Full validation before final copy-migration case:** Task `e9a3e873-372b-4d28-8ba3-f59690bcfe0a`: `pnpm exec vitest run` 134 files / 592 PASS + 14 expected RED (606 total), zero unexpected failures; `pnpm run typecheck` PASS; `pnpm run build` PASS; `node scripts/verify-g1-global.mjs --strict` PASS (175 source files, zero candidates); `git diff --check` exit 0 (only Windows LF/CRLF normalization warnings). Migration-copy fixture was added after this full run, verified separately with passing typecheck; final full suite to be recorded separately if run again.
+- **Final complete post-migration validation:** Task `fab11bc4-6220-4660-a6cb-226a200b8da1`: `pnpm exec vitest run` **134 files / 593 PASS + 14 expected pre-existing RED (607 total), zero unexpected failures**; `pnpm run typecheck` PASS (standalone+tests), `pnpm run build` PASS, `node scripts/verify-g1-global.mjs --strict` PASS (175 files, zero candidates), and `git diff --check` exit 0 (Git LF/CRLF warnings only). No source changes after this validation; only ledger evidence recorded.
+- **Safety and scope:** Only R3.01 implementation, documentation and tests modified; pre-existing clean R2 checkpoint preserved, no external effects or production database writes. R3.02 execution receipt storage, R3.03 timeout handshake, R3.04–.06 unknown-outcome/reconciliation/crash policy, R3.07 durable lease, R3.08 idempotency and R3.09/.10 remain unresolved. G3 must not be closed early.

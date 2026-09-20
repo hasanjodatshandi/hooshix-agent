@@ -17,7 +17,7 @@ Status values: `OPEN`, `TEST_ENCODED`, `IMPLEMENTING`, `IMPLEMENTED`, `VERIFIED_
 | HIGH-04 | OAuth expiry not enforced | R5 | 10, 13, 16, 31 | fake-clock expiry, distinct token, rotated refresh, wrong-resource/scope tests | TEST_ENCODED |
 | HIGH-05 | Timeout finalizes before termination | R3 | 06, 11, 16 | cancellation race/termination-grace tests; no overlapping retry | TEST_ENCODED |
 | HIGH-06 | Crash recovery replays uncertain effects | R3 | 11, 13, 16 | crash-after-marker test -> unknown, no duplicate marker | TEST_ENCODED |
-| HIGH-07 | Crash hydration incomplete | R3 | 11, 13, 16 | all-fields Task round-trip + recovery uses canonical get | TEST_ENCODED |
+| HIGH-07 | Crash hydration incomplete | R3 | 11, 13, 16 | all-fields Task round-trip + recovery uses canonical get | IMPLEMENTING |
 | HIGH-08 | Dirty Git rollback destroys work | R4 | 12, 16 | dirty repo snapshot rejected; clean rollback verified | TEST_ENCODED |
 | HIGH-09 | Package rollback overstates guarantee | R4 | 12, 16 | manifest-only result wording + environment evidence requirement | TEST_ENCODED |
 | HIGH-10 | Docker frozen-lock fallback | R7 | 17 | static Docker assertion + real frozen build failure test | TEST_ENCODED |

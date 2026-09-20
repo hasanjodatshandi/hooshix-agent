@@ -80,7 +80,7 @@ describe("R0 execution-reality and compensation safety contracts", () => {
     expect(fs.readFileSync(marker, "utf8")).toBe("FIRST_EFFECT");
   });
 
-  it.fails("HIGH-07: normal hydration and crash discovery must preserve identical Task retry and recovery semantics", () => {
+  it("HIGH-07: normal hydration and crash discovery preserve identical Task retry and recovery semantics", () => {
     const plan = createTaskPlan("R0 complete hydration", [{
       action: "recover rich step", tool: "read_file", arguments: { path: "README.md" },
       runWhen: "always", timeout: 4312,

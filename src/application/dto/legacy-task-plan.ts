@@ -52,7 +52,11 @@ export interface TaskPlan {
   steps: TaskStep[];
   executionContext?: TaskExecutionContext;
   maxRecovery?: number;
+  /** Persisted aggregate revision; concurrency fencing belongs to R3.07. */
   revision?: number;
+  /** Repository-owned timestamps; modified on each durable Task write. */
+  createdAt?: string;
+  updatedAt?: string;
   retryPolicy?: RetryPolicy;
   totalRunCount?: number;
   pendingApproval?: {

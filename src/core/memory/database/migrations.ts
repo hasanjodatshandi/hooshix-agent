@@ -163,4 +163,9 @@ export function runMigrations(db: Database.Database): void {
     ensureColumn(db, "approval_requests", "expires_at", "TEXT");
     ensureColumn(db, "approval_requests", "dispatched_at", "TEXT");
   });
+  // R3.01: persist the pre-existing TaskPlan.revision field; historical
+  // rows start at revision 0 without rewriting user-owned data.
+  migrate(db, 10, "r3-canonical-task-aggregate-revision", () => {
+    ensureColumn(db, "tasks", "task_revision", "INTEGER NOT NULL DEFAULT 0");
+  });
 }

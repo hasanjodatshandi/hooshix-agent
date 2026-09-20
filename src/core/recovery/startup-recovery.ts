@@ -1,10 +1,11 @@
 import { getResumableTasks, getResumePoint, getTaskExecutions } from "../memory/resume-memory.js";
+import type { TaskPlan } from "../../application/dto/legacy-task-plan.js";
 import type { RecoveryAction } from "./recovery-engine.js";
 import type { RecoveryProvider } from "../trace/unified-recovery-service.js";
 import type { PersistentRecoveryRepository } from "../trace/recovery-repository.js";
 
 export interface RecoverySession {
-  task: unknown;
+  task: TaskPlan;
   resumeStep: unknown;
   executions: unknown[];
   recovery?: RecoveryAction;
@@ -16,8 +17,8 @@ export function restoreInterruptedTasks(provider?: RecoveryProvider, recoveryRep
       provider.recordLifecycle({ ...event, status: "failed", completedAt: new Date().toISOString(), reason: `${event.reason}; interrupted before completion` });
     }
   }
-  return getResumableTasks().map((task: any) => {
-    const correlationId = typeof task.correlation_id === "string" ? task.correlation_id : undefined;
+  return getResumableTasks().map((task) => {
+    const correlationId = task.correlationId;
     return {
       task,
       resumeStep: getResumePoint(task.id),
