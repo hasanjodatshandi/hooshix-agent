@@ -29,6 +29,8 @@ export function createSessionWorkspaceContext(): SessionWorkspaceContext {
 export function runWithSessionWorkspace<T>(context: SessionWorkspaceContext, action: () => T): T {
   return sessionWorkspace.run(context, action);
 }
+/** A live HTTP session is never mistaken for the stdio principal if identity context is absent. */
+export function hasSessionWorkspaceContext(): boolean { return sessionWorkspace.getStore() !== undefined; }
 
 /**
  * Canonical identity for a workspace-root/path comparison. On Windows (and
@@ -84,10 +86,8 @@ function initWorkspaceRoots(): string[] {
   if (activeWorkspace === null && workspaceRoots.length === 1) {
     activeWorkspace = workspaceRoots[0];
   }
-  // Auto-enable unrestricted mode from env
-  if (bootstrap.unrestrictedBootOptIn) {
-    unrestrictedMode = true;
-  }
+  // HOOSHIX_UNRESTRICTED is a server ALLOW ceiling, never an implicit grant.
+  // Only a precisely approved Task effect may enter an unrestricted AsyncLocalStorage scope.
   return workspaceRoots;
 }
 
@@ -239,6 +239,12 @@ export function replaceWorkspaceRoots(rootPath: string): string[] {
 }
 
 let unrestrictedMode = false;
+/** Granted only inside the gateway after a persisted exact-action approval is claimed. */
+const authorizedUnrestrictedScope = new AsyncLocalStorage<boolean>();
+export function runWithApprovedUnrestrictedScope<T>(operation:()=>T):T {
+  return authorizedUnrestrictedScope.run(true,operation);
+}
+
 
 /**
  * Test-only: reset the pool to the EMPTY unconfigured state (no roots, no
@@ -262,22 +268,19 @@ export function __reloadWorkspaceStateForTests(): void {
 }
 
 /**
- * Guard for enabling unrestricted mode: file tools immediately gain access to
- * ANY path on the system, so this is a policy-governed elevation, not a plain
- * setting. Only an operator env opt-in (HOOSHIX_UNRESTRICTED) seeds it at boot;
- * no tool can elevate at runtime — the unrestricted capability was removed from
- * set_workspace entirely (security-design regression: a pure selector must not
- * carry privilege expansion). Disabling is always free.
+ * The legacy process-wide elevation API is permanently disabled for runtime
+ * callers. HOOSHIX_UNRESTRICTED is a server allow ceiling, not a grant.
+ * The only supported scope expansion is an exact human-approved ADMIN Task
+ * file operation, dispatched through the shared gateway's scoped handler.
+ * set_workspace remains a pure selector of previously allowed roots.
  */
 export function assertUnrestrictedElevationAllowed(): void {
-  throw new Error("Approval required: unrestricted mode cannot be enabled at runtime — no tool carries that capability. Use HOOSHIX_UNRESTRICTED=1 at server boot instead.");
+  throw new Error("Approval required: unrestricted access needs server opt-in, ADMIN and an exact approved Task operation; process-wide elevation is disabled");
 }
 
-/**
- * Bootstrap/test-only seeding for unrestricted mode (mirrors the
- * HOOSHIX_UNRESTRICTED=1 boot path). NEVER exposed as an MCP tool or reachable
- * from any tool/executor/governance path — the runtime elevation gate above
- * stays hard for everything else.
+/** Test-only compatibility fixture for old global-workspace regressions.
+ * Not invoked by any production entrypoint or tool; the server allow flag
+ * never calls this function and never directly authorizes a file effect.
  */
 export function seedUnrestrictedMode(enabled: boolean): void {
   unrestrictedMode = enabled;
@@ -291,7 +294,7 @@ export function setUnrestrictedMode(enabled: boolean): void {
 
 /** Check if unrestricted mode is active */
 export function isUnrestrictedMode(): boolean {
-  return unrestrictedMode;
+  return authorizedUnrestrictedScope.getStore()===true || unrestrictedMode;
 }
 
 /**
@@ -371,7 +374,7 @@ export function validateWorkspace(targetPath: string): string {
   if (path.isAbsolute(targetPath)) {
     const resolved = path.resolve(targetPath);
     
-    if (unrestrictedMode) {
+    if (isUnrestrictedMode()) {
       // Unrestricted: allow any absolute path, just resolve symlinks for existing files
       try {
         if (fs.existsSync(resolved)) {

@@ -1,5 +1,6 @@
 import { approveRequest, getApprovalRequest, revokeTaskApprovals } from "../governance/approval-memory.js";
 import { createLocalToolExecutor } from "../executor/local-tool-executor.js";
+import { getTrustedInboundIdentity } from "../../infrastructure/composition/r2-trusted-inbound-identity.js";
 import { runClosedAgentLoop, type ClosedLoopResult } from "../loop/closed-agent-loop.js";
 import { resumeApprovedTask } from "../loop/resume-orchestrator.js";
 import { getTaskPlan, listTasks, saveMemoryItem, saveTaskPlan } from "../memory/task-repository.js";
@@ -30,6 +31,26 @@ const runningTasks = new Set<string>();
 export class TaskRuntimeService {
   constructor(private readonly dependencies: TaskRuntimeDependencies) {}
 
+  /** R2: persisted identity/session is authoritative for all Task operations. */
+  private assertTaskActor(plan: import("../../application/dto/legacy-task-plan.js").TaskPlan, effectful: boolean): void {
+    const actor=getTrustedInboundIdentity();
+    const context=plan.executionContext;
+    if(context?.principalId && context.sessionId && context.origin) {
+      if(context.principalId!==actor.principal.id ||
+         context.sessionId!==actor.sessionId ||
+         context.origin!==actor.principal.origin)
+        throw new Error("task_principal_session_mismatch");
+      return;
+    }
+    if(effectful || actor.principal.origin!=="local_stdio")
+      throw new Error("task_principal_unbound");
+  }
+
+  private canReadTask(plan: import("../../application/dto/legacy-task-plan.js").TaskPlan): boolean {
+    try { this.assertTaskActor(plan,false); return true; }
+    catch { return false; }
+  }
+
   create(input: { title: string; description?: string; steps: Array<Omit<TaskStep, "id" | "status"> & Partial<Pick<TaskStep, "id" | "status">>>; correlationId?: string; idempotencyKey?: string; retryPolicy?: { maxTotalAttempts?: number; maxConsecutiveFailures?: number } }) {
     const serialized = JSON.stringify(input);
     if (Buffer.byteLength(serialized, "utf8") > 8 * 1024 * 1024) throw new Error("Task plan exceeds the 8 MiB limit");
@@ -39,7 +60,12 @@ export class TaskRuntimeService {
     plan.state = "planning";
     plan.retryPolicy = input.retryPolicy;
     // Capture current workspace as immutable task execution context
+    const identity=getTrustedInboundIdentity();
     plan.executionContext = {
+      principalId:identity.principal.id,
+      sessionId:identity.sessionId,
+      origin:identity.principal.origin,
+      scopes:[...identity.principal.scopes],
       workspace: getWorkspaceRoot(),
       roots: listWorkspaceRoots().map((r) => r.path),
       allowedRootsSnapshot: listWorkspaceRoots().map((r) => r.path),
@@ -51,8 +77,17 @@ export class TaskRuntimeService {
     return plan;
   }
 
-  get(taskId: string) { return getTaskPlan(taskId); }
-  list(limit?: number) { return listTasks(limit); }
+  get(taskId: string) {
+    const plan=getTaskPlan(taskId);
+    if(plan) this.assertTaskActor(plan,false);
+    return plan;
+  }
+  list(limit?: number) {
+    return listTasks(limit).filter(row=>{
+      const plan=getTaskPlan(String(row.id));
+      return !!plan && this.canReadTask(plan);
+    });
+  }
 
   async run(taskId: string, maxRecovery = 1, options?: { timeoutMs?: number; maxRecovery?: number }): Promise<ClosedLoopResult> {
     if (runningTasks.has(taskId)) throw new Error("Task is already running");
@@ -60,6 +95,7 @@ export class TaskRuntimeService {
     try {
     const plan = getTaskPlan(taskId);
     if (!plan) throw new Error("Task not found");
+    this.assertTaskActor(plan,true);
     validateTaskPlan(plan);
 
     // Terminal state without pending steps: return structured no-op
@@ -154,7 +190,9 @@ export class TaskRuntimeService {
     if (req.status === "revoked") return { approved: false, reason: "approval_revoked" };
     if (req.status === "consumed") return { approved: false, reason: "approval_already_consumed" };
     const plan = getTaskPlan(req.task_id);
-    if (plan?.state === "cancelled") {
+    if (!plan) return {approved:false,reason:"task_not_found"};
+    this.assertTaskActor(plan,true);
+    if (plan.state === "cancelled") {
       // Still revoke the approval for audit consistency
       revokeTaskApprovals(req.task_id);
       return { approved: false, reason: "task_cancelled" };
@@ -166,6 +204,7 @@ export class TaskRuntimeService {
     if (runningTasks.has(taskId)) throw new Error("A running task cannot be cancelled until its current tool call finishes");
     const plan = getTaskPlan(taskId);
     if (!plan) throw new Error("Task not found");
+    this.assertTaskActor(plan,true);
     if (plan.state === "completed" || plan.state === "cancelled") return false;
     plan.state = "cancelled";
     saveTaskPlan(plan, plan.state, plan.correlationId);
@@ -181,6 +220,7 @@ export class TaskRuntimeService {
     if (!approval) throw new Error("Approval not found");
     const plan = getTaskPlan(approval.task_id);
     if (!plan) throw new Error("Task not found");
+    this.assertTaskActor(plan,true);
     // Terminal approval states: don't consume, return structured response
     if (approval.status === "consumed") {
       return { status: "not_resumable", approvalId, reason: "approval_already_consumed", plan, completedSteps: plan.steps.filter((s) => s.status === "completed"), correlationId: plan.correlationId ?? approval.correlation_id ?? "" };
@@ -223,6 +263,7 @@ export class TaskRuntimeService {
   report(taskId: string) {
     const plan = getTaskPlan(taskId);
     if (!plan) throw new Error("Task not found");
+    this.assertTaskActor(plan,false);
     const correlationId = plan.correlationId;
     if (!correlationId) throw new Error("Task has no correlation ID");
     const timeline = this.dependencies.timeline.build(correlationId);

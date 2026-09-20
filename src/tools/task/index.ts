@@ -6,8 +6,8 @@ import { resolveCorrelationId } from "../../core/runtime/correlation-id.js";
 import { assertToolPermission } from "../../security/permission.js";
 import { listMemoryItems, listProjects, saveMemoryItem, saveProject, getMemoryItem, deleteMemoryItem, getProject, deleteProject, archiveProject, findTaskByIdempotencyKey } from "../../core/memory/task-repository.js";
 import { getApprovalRequest } from "../../core/governance/approval-memory.js";
-import { policyDecisionPoint } from "../../core/governance/policy-decision-point.js";
-import { captureTaskSnapshot, rollbackTaskSnapshot } from "../../core/executor/handlers/task-snapshot-handler.js";
+
+
 import { TOOL_NAMES, validateToolName } from "../../application/services/legacy-tool-orchestrator.js";
 import { ReplayExecutor } from "../../core/trace/replay-executor.js";
 import { recordTaskReconciliation } from "../../core/recovery/task-reconciliation.js";
@@ -47,7 +47,13 @@ export function registerTaskTools(server: McpServer) {
       // If idempotencyKey is provided, check for existing task with same key
       if (idempotencyKey) {
         const existingId = findTaskByIdempotencyKey(idempotencyKey);
-        if (existingId) return response({ id: existingId, idempotent: true, message: "Existing task returned for this idempotency key" }, traceId);
+        if (existingId) {
+          // A global idempotency-key hit may belong to another authenticated
+          // session. Do not disclose its id or reuse its plan across principals.
+          // The runtime checks the persisted Task owner/session before returning.
+          runtime.get(existingId);
+          return response({ id: existingId, idempotent: true, message: "Existing task returned for this idempotency key" }, traceId);
+        }
       }
       return response(runtime.create({ title, description, steps: steps.map((step) => ({ ...step, status: "pending" as const })), retryPolicy, idempotencyKey, correlationId: traceId }), traceId);
     });
@@ -226,22 +232,7 @@ export function registerTaskTools(server: McpServer) {
     });
   });
 
-  // ---- Task Snapshot / Rollback ----
-  server.registerTool("task_snapshot", { title: "Task Snapshot", description: "🗂️ TASK — Capture a git snapshot (HEAD, branch, clean/dirty) of a workspace before running a task; snapshotId feeds task_rollback.\n\nExample: { \"cwd\": \"D:/Projects/my-app\" }", annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false }, inputSchema: z.object({ cwd: z.string().min(1), ...traceSchema }) }, async ({ cwd, correlationId }) => {
-    assertToolPermission("task_snapshot"); const traceId = resolveCorrelationId(correlationId);
-    return auditToolCall("task_snapshot", traceId, undefined, async () => {
-      policyDecisionPoint.assertAllowed({ tool: "task_snapshot", arguments: { cwd }, correlationId: traceId });
-      const result = await captureTaskSnapshot(cwd, traceId);
-      return response(result, traceId);
-    });
-  });
-
-  server.registerTool("task_rollback", { title: "Task Rollback", description: "🗂️ TASK — DESTRUCTIVE: git reset --hard + clean to a pre-task snapshot. Wipes uncommitted changes and untracked files. Requires approval; cwd must match the snapshot's.\n\nExample: { \"snapshotId\": \"uuid\", \"cwd\": \"D:/Projects/my-app\" }", annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false }, inputSchema: z.object({ snapshotId: z.string().uuid(), cwd: z.string().min(1), ...traceSchema }) }, async ({ snapshotId, cwd, correlationId }) => {
-    assertToolPermission("task_rollback"); const traceId = resolveCorrelationId(correlationId);
-    return auditToolCall("task_rollback", traceId, undefined, async () => {
-      policyDecisionPoint.assertAllowed({ tool: "task_rollback", arguments: { snapshotId, cwd }, correlationId: traceId });
-      const result = await rollbackTaskSnapshot(snapshotId, cwd);
-      return response(result, traceId);
-    });
-  });
+  // R2 schema-only snapshot/rollback: effects are authorized and dispatched through the common handler.
+  server.registerTool("task_snapshot", { title: "Task Snapshot", description: "🗂️ TASK — Capture a git snapshot (HEAD, branch, clean/dirty) of a workspace before running a task; snapshotId feeds task_rollback.\n\nExample: { \"cwd\": \"D:/Projects/my-app\" }", annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false }, inputSchema: z.object({ cwd: z.string().min(1), ...traceSchema }) }, async () => { throw new Error("r2_legacy_direct_callback_retired"); });
+  server.registerTool("task_rollback", { title: "Task Rollback", description: "🗂️ TASK — DESTRUCTIVE: git reset --hard + clean to a pre-task snapshot. Wipes uncommitted changes and untracked files. Requires approval; cwd must match the snapshot's.\n\nExample: { \"snapshotId\": \"uuid\", \"cwd\": \"D:/Projects/my-app\" }", annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false }, inputSchema: z.object({ snapshotId: z.string().uuid(), cwd: z.string().min(1), ...traceSchema }) }, async () => { throw new Error("r2_legacy_direct_callback_retired"); });
 }

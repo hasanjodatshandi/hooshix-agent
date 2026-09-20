@@ -156,14 +156,18 @@ describe("in-process MCP tool coverage", () => {
     expect(got.id).toBe(mem.id);
     const listed = json(await client.callTool({ name: "memory_list", arguments: { projectId: project.id } }));
     expect(listed.items.length).toBe(1);
-    const del = json(await client.callTool({ name: "memory_delete", arguments: { memoryId: mem.id } }));
-    expect(del.deleted).toBe(true);
+    const deniedMemoryDelete = await client.callTool({ name: "memory_delete", arguments: { memoryId: mem.id } });
+    expect(deniedMemoryDelete).toMatchObject({isError:true});
+    expect(JSON.stringify(deniedMemoryDelete)).toContain("Approval required");
+    expect(json(await client.callTool({name:"memory_get",arguments:{memoryId:mem.id}})).id).toBe(mem.id);
     const archived = json(await client.callTool({ name: "project_archive", arguments: { projectId: project.id } }));
     expect(archived.archived).toBe(true);
     const projects = json(await client.callTool({ name: "project_list", arguments: { status: "archived" } }));
     expect(projects.items.length).toBe(1);
-    const removed = json(await client.callTool({ name: "project_delete", arguments: { projectId: project.id } }));
-    expect(removed.deleted).toBe(true);
+    const deniedProjectDelete = await client.callTool({ name: "project_delete", arguments: { projectId: project.id } });
+    expect(deniedProjectDelete).toMatchObject({isError:true});
+    expect(JSON.stringify(deniedProjectDelete)).toContain("Approval required");
+    expect(json(await client.callTool({name:"project_get",arguments:{projectId:project.id}})).id).toBe(project.id);
   });
 
   it("shell tool: read-only git via execute_command", async () => {

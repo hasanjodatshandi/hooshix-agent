@@ -4,12 +4,26 @@ import { getTaskPlan, saveTaskPlan } from "../../src/core/memory/task-repository
 import { recordTaskReconciliation, getTaskReconciliations } from "../../src/core/recovery/task-reconciliation.js";
 import { analyzeTaskHistory } from "../../src/core/reflection/reflection-engine.js";
 import { createTaskRuntimeService } from "../../src/core/runtime/composition-root.js";
+import { getTrustedInboundIdentity } from "../../src/infrastructure/composition/r2-trusted-inbound-identity.js";
+import { getWorkspaceRoot, listWorkspaceRoots, isUnrestrictedMode } from "../../src/security/workspace-guard.js";
+
+function bindFixtureTaskIdentity(plan:ReturnType<typeof createTaskPlan>):void {
+  const identity=getTrustedInboundIdentity();
+  const roots=listWorkspaceRoots().map(root=>root.path);
+  plan.executionContext={
+    principalId:identity.principal.id,sessionId:identity.sessionId,
+    origin:identity.principal.origin,scopes:[...identity.principal.scopes],
+    workspace:getWorkspaceRoot(),roots,allowedRootsSnapshot:roots,
+    unrestricted:isUnrestrictedMode(),createdAt:new Date().toISOString(),
+  };
+}
 
 function interruptedTask() {
   const plan = createTaskPlan("interrupted task", [
     { action: "write marker and hold", tool: "execute_command", arguments: { command: "node" }, status: "outcome_unknown" },
   ]);
   plan.correlationId = crypto.randomUUID();
+  bindFixtureTaskIdentity(plan);
   plan.steps[0].status = "outcome_unknown";
   saveTaskPlan(plan, "failed", plan.correlationId);
   return plan;
@@ -20,6 +34,7 @@ function completedVerification(tool: "read_file" | "write_file" = "read_file") {
     { action: "inspect marker", tool, arguments: { path: "test-marker", ...(tool === "write_file" ? { content: "proof" } : {}) }, status: "completed" },
   ]);
   plan.correlationId = crypto.randomUUID();
+  bindFixtureTaskIdentity(plan);
   plan.steps[0].status = "completed";
   saveTaskPlan(plan, "completed", plan.correlationId);
   return plan;

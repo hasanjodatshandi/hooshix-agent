@@ -2,7 +2,8 @@ import type { TaskPlan, TaskStep } from "../../application/dto/legacy-task-plan.
 import { runClosedAgentLoop, type ClosedLoopResult } from "./closed-agent-loop.js";
 import { restorePlanPosition } from "./plan-resume.js";
 import { canResumeApprovedTask } from "./resume-engine.js";
-import { consumeApprovedRequest } from "../governance/approval-memory.js";
+import { consumeApprovedRequest, getApprovalRequest } from "../governance/approval-memory.js";
+import { fingerprintTaskEffect, resolveApprovedTaskArgs } from "../../infrastructure/composition/r2-approval-fingerprint.js";
 import { createExecutionContext } from "../runtime/execution-context.js";
 import type { RecoveryProvider } from "../trace/unified-recovery-service.js";
 
@@ -37,9 +38,29 @@ export async function resumeApprovedTask(
     return null;
   }
 
-  if (!consumeApprovedRequest({ id: approvalId, taskId: context.taskId, stepId: context.stepId, action: context.action })) {
-    return null;
-  }
+  // Refuse historical unbound approvals, changed arguments/tool/scope, or expired
+  // requests BEFORE the atomic consume. The caller must request a fresh grant.
+  const stored=getApprovalRequest(approvalId);
+  if(!stored?.tool_id || !stored.request_fingerprint || !stored.principal_id ||
+     !stored.session_id || !stored.expires_at || stored.expires_at<=new Date().toISOString() ||
+     !plan.executionContext || stored.principal_id!==plan.executionContext.principalId ||
+     stored.session_id!==plan.executionContext.sessionId) return null;
+  let actualFingerprint:string;
+  try {
+    const completed=plan.steps.filter((step,index)=>index<context.stepIndex&&step.status==="completed");
+    actualFingerprint=fingerprintTaskEffect({
+      taskId:plan.id,stepId:approvedStep.id,action:approvedStep.action,
+      toolId:approvedStep.tool??stored.tool_id,
+      args:resolveApprovedTaskArgs(approvedStep,completed),
+      context:plan.executionContext,
+    });
+  } catch { return null; }
+  if(stored.tool_id!==(approvedStep.tool??stored.tool_id) ||
+     actualFingerprint!==stored.request_fingerprint) return null;
+  if (!consumeApprovedRequest({
+    id: approvalId,taskId: context.taskId,stepId: context.stepId,
+    action: context.action,requestFingerprint:actualFingerprint,
+  })) return null;
 
   // Mark the approved step pending and keep prior statuses intact (unlike the
   // old restorePlanPosition which force-marked failed/cancelled steps completed).
@@ -54,6 +75,7 @@ export async function resumeApprovedTask(
     createExecutionContext({ taskId: context.taskId, correlationId: context.correlationId }),
     recoveryProvider,
     undefined,
-    context.stepId
+    context.stepId,
+    approvalId
   );
 }

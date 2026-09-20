@@ -12,7 +12,10 @@ import { PersistentRecoveryObservability } from "../trace/persistent-recovery-ob
 import type { RecoveryObservabilitySink } from "../trace/recovery-observability.js";
 import { saveTaskPlan, saveTaskStep, saveTaskStatus, updateTaskHeartbeat } from "../memory/task-repository.js";
 import { transitionTask, type TaskState } from "../state/task-state-machine.js";
-import { runWithPolicyApproval } from "../governance/policy-decision-point.js";
+
+import { fingerprintTaskEffect, resolveApprovedTaskArgs } from "../../infrastructure/composition/r2-approval-fingerprint.js";
+import { runWithTrustedTaskApproval } from "../../infrastructure/composition/r2-trusted-task-approval.js";
+import { requestsUnrestrictedEffect, hasInvalidUnrestrictedArgument } from "../../infrastructure/composition/r2-unrestricted-operation.js";
 import { selectTool } from "../../application/services/legacy-tool-orchestrator.js";
 import { buildStepContext, resolveTemplates, hasTemplates, validateTemplates, MissingVariableError } from "../runtime/template-resolver.js";
 import { classifyError, isTransientError } from "../errors.js";
@@ -100,7 +103,8 @@ export async function runClosedAgentLoop(
   context?: ExecutionContext,
   recoveryService?: RecoveryProvider,
   recoverySink: RecoveryObservabilitySink = new PersistentRecoveryObservability(),
-  approvedStepId?: number
+  approvedStepId?: number,
+  approvedRequestId?: number
 ): Promise<ClosedLoopResult> {
   const runtimeContext = context ?? createExecutionContext({ taskId: plan.id });
   runtimeContext.taskId = plan.id;
@@ -157,7 +161,44 @@ export async function runClosedAgentLoop(
     checkpointStep({ taskId: plan.id, stepId: step.id, stepIndex: index, status: "running", context: runtimeContext });
     move(plan, "executing");
 
-    const governance = checkStepGovernance(step, plan.executionContext?.workspace);
+    // Preview the exact resolved effect before policy and human approval.
+    let approvedArgs:Record<string,unknown> = step.arguments ?? {};
+    let argumentError:string|null=null;
+    try { approvedArgs=resolveApprovedTaskArgs(step,completedSteps); }
+    catch(error) { argumentError=error instanceof Error?error.message:"argument_resolution_failed"; }
+    // Unresolved templates are execution/data-flow failures, not policy-denied
+    // effects. Do not dispatch or create an approval for unknowable arguments.
+    if (argumentError) {
+      step.status = "failed";
+      step.error = argumentError;
+      step.errorType = classifyError(new Error(argumentError));
+      step.failedAttempts = (step.failedAttempts ?? 0) + 1;
+      step.attemptHistory = [...(step.attemptHistory ?? []), {
+        attempt: step.attempts ?? 0, status: "failed" as const,
+        error: argumentError, timestamp: new Date().toISOString(),
+      }];
+      persistStep();
+      checkpointStep({ taskId: plan.id, stepId: step.id, stepIndex: index,
+        status: "failed", context: runtimeContext });
+      saveExecutionWithContext({taskId:plan.id,stepId:step.id,action:step.action,
+        result:{error:argumentError,errorType:step.errorType},
+        status:"failed",context:runtimeContext});
+      failedAt=failedAt===-1?index:failedAt;
+      index++;
+      continue;
+    }
+    const toolId=selectTool(step);
+    const invalidElevation=hasInvalidUnrestrictedArgument(toolId,approvedArgs);
+    const wantsUnrestricted=requestsUnrestrictedEffect(toolId,approvedArgs);
+    const ordinary=checkStepGovernance({...step,arguments:approvedArgs},plan.executionContext?.workspace);
+    // Exact privilege elevation is always human-approved, even for reads.
+    // Malformed or unsupported elevation requests are rejected before effects.
+    const governance=invalidElevation
+      ? {decision:"blocked" as const,risk:"critical" as const,reason:"invalid_unrestricted_operation"}
+      : wantsUnrestricted && ordinary.decision!=="blocked"
+        ? {decision:"approval_required" as const,risk:"critical" as const,
+          reason:"unrestricted_requires_admin_server_flag_and_exact_task_approval"}
+        : ordinary;
     if (governance.decision === "approval_required" && step.id !== approvedStepId) {
       step.status = "pending_approval";
       persistStep();
@@ -169,7 +210,20 @@ export async function runClosedAgentLoop(
         action: step.action,
         risk: governance.risk,
         reason: governance.reason,
-        context: runtimeContext
+        context: runtimeContext,
+        toolId: selectTool(step),
+        requestFingerprint:(()=>{
+          try {
+            if(!plan.executionContext) return undefined;
+            return fingerprintTaskEffect({
+              taskId:plan.id,stepId:step.id,action:step.action,
+              toolId:selectTool(step),args:approvedArgs,context:plan.executionContext,
+            });
+          } catch { return undefined; /* Old unbound plans never obtain executable grants. */ }
+        })(),
+        principalId:plan.executionContext?.principalId,
+        sessionId:plan.executionContext?.sessionId,
+        expiresAt:new Date(Date.now()+24*3600_000).toISOString(),
       });
       // Persist maxRecovery so task_resume can restore it
       plan.maxRecovery = maxRecovery;
@@ -214,12 +268,14 @@ export async function runClosedAgentLoop(
       // Use AbortController for real cancellation on timeout
       const stepAbort = new AbortController();
       const signal = stepAbort.signal;
-      const execute = () => executeToolStep(step, executor, signal);
+      const execute = () => approvedRequestId !== undefined && step.id === approvedStepId
+        ? runWithTrustedTaskApproval(approvedRequestId, () => executeToolStep(step, executor, signal))
+        : executeToolStep(step, executor, signal);
       const timeout = step.timeout ?? 30_000;
+      // Service compatibility context is installed only inside the R2 handler
+      // after the shared gateway has verified and claimed the exact Task approval.
       const { result: raw, timedOut } = await withStepTimeout(
-        governance.decision === "approval_required"
-          ? runWithPolicyApproval(selectTool(step), execute)
-          : execute(),
+        execute(),
         timeout,
         stepAbort
       );

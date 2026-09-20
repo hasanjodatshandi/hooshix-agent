@@ -15,14 +15,8 @@ import { assertCwdExists, describeExecaFailure } from "../execa-result.js";
  * tools/package/index.ts and core/executor/handlers/package-handler.ts are
  * derived from this tuple so the registry can never drift from the service.
  */
-export const PACKAGE_MANAGERS = [
-  "npm", "pnpm", "yarn", "bun",
-  "pip", "uv", "poetry",
-  "cargo", "dotnet", "composer", "bundler", "gem", "go",
-  "maven", "gradle",
-  "winget", "choco", "brew", "apt", "dnf", "pacman", "zypper",
-] as const;
-export type PackageManager = (typeof PACKAGE_MANAGERS)[number];
+import type { PackageManager } from "../../application/services/package-managers.js";
+export { PACKAGE_MANAGERS, type PackageManager } from "../../application/services/package-managers.js";
 export type PackageAction = "install" | "remove" | "update";
 
 /** Managers that install OS-wide software and therefore require ADMIN_MODE. */

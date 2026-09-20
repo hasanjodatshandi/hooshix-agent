@@ -153,4 +153,14 @@ export function runMigrations(db: Database.Database): void {
         ON recovery_events(task_id, started_at);
     `);
   });
+  // R2 approval integrity: nullable additions preserve historical rows for a
+  // controlled migration. Legacy unbound pending approvals fail closed at resume.
+  migrate(db, 9, "r2-exact-task-approval-binding", () => {
+    ensureColumn(db, "approval_requests", "tool_id", "TEXT");
+    ensureColumn(db, "approval_requests", "request_fingerprint", "TEXT");
+    ensureColumn(db, "approval_requests", "principal_id", "TEXT");
+    ensureColumn(db, "approval_requests", "session_id", "TEXT");
+    ensureColumn(db, "approval_requests", "expires_at", "TEXT");
+    ensureColumn(db, "approval_requests", "dispatched_at", "TEXT");
+  });
 }

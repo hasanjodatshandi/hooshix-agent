@@ -4,6 +4,16 @@ import { auditToolCall } from "../memory/tool-audit.js";
 import { dispatchToHandler } from "../../infrastructure/composition/legacy-tool-handler-composition.js";
 import { resolveTaskWorkspace } from "../../security/task-workspace.js";
 import { runWithWorkspaceScope } from "../../security/workspace-guard.js";
+import { getActiveWorkspace, isUnrestrictedMode } from "../../security/workspace-guard.js";
+import { createR2RuntimeGateway, requireSuccessfulGateway } from "../../infrastructure/composition/r2-runtime-gateway.js";
+import { getTrustedTaskApproval } from "../../infrastructure/composition/r2-trusted-task-approval.js";
+import { runWithPolicyApproval } from "../governance/policy-decision-point.js";
+import { requestsUnrestrictedEffect, hasInvalidUnrestrictedArgument } from "../../infrastructure/composition/r2-unrestricted-operation.js";
+import { getTrustedInboundIdentity } from "../../infrastructure/composition/r2-trusted-inbound-identity.js";
+import { captureWorkspaceScope } from "../../domain/workspace/workspace-scope.js";
+import type { Principal } from "../../domain/auth/principal.js";
+import type { PrincipalId, SessionId, TaskId, StepId, ToolId } from "../../domain/shared/ids.js";
+import { getConfiguredPermissionLevel } from "../../infrastructure/config/permission-config.js";
 
 /**
  * Tools whose handler returns a subset of fields that need enrichment
@@ -44,15 +54,78 @@ export function createLocalToolExecutor(correlationId: string, taskId?: string, 
   return async (tool: string, step: TaskStep, signal?: AbortSignal): Promise<unknown> => {
     const validatedTool = validateToolName(tool);
     const input = step.arguments ?? {};
+    if(hasInvalidUnrestrictedArgument(validatedTool,input))throw new Error("invalid_unrestricted_operation");
     // NOTE: deliberately NOT wrapped in runWithPolicyApproval here. Approval
     // context is granted ONLY by the task loop for steps that passed a real
     // approval (closed-agent-loop wraps approval_required steps after
     // task_approve/task_resume). A blanket wrap here would auto-satisfy every
     // policy gate invoked inside handlers (e.g. the execute_command cwd
     // escalation) — that was the task_run workspace-isolation bypass.
-    const execute = () => auditToolCall(tool, correlationId, taskId, () =>
-      dispatchToHandler(validatedTool, input, correlationId, executionContext, signal)
-    );
+    // R2: Task executor and direct MCP enter the same application gateway.
+    // Derive scope ONLY from the persisted Task snapshot, never the current
+    // direct caller/session or arguments. Historical unbound Task approval
+    // records cannot authorize a new effect.
+    if (!executionContext || !taskId) {
+      // A standalone helper call has no persisted Task approval or Task scope.
+      // Route it through the same *direct* policy, never synthesize a Task grant.
+      const identity=getTrustedInboundIdentity();
+      const direct=()=>auditToolCall(tool,correlationId,undefined,async()=>{
+        const gateway=createR2RuntimeGateway({
+          execute:async(id,args)=> {
+            const active=getActiveWorkspace();
+            return dispatchToHandler(id as ToolName,args as Record<string,unknown>,
+              correlationId,{workspace:active,roots:active?[active]:[],
+                unrestricted:isUnrestrictedMode()},signal);
+          },
+        });
+        return requireSuccessfulGateway(await gateway.execute({
+          principal:identity.principal,descriptorId:validatedTool as ToolId,
+          arguments:input,directContext:{sessionId:identity.sessionId},
+        }));
+      });
+      return enrichResult(validatedTool,input,await direct());
+    }
+    const owner=executionContext.principalId ?? "local-stdio";
+    const session=executionContext.sessionId ?? "local-stdio-session";
+    const capturedRoots=executionContext.allowedRootsSnapshot ?? executionContext.roots;
+    const active=executionContext.workspace;
+    const legacyLocal=executionContext.origin===undefined &&
+      owner==="local-stdio" && getTrustedInboundIdentity().principal.origin==="local_stdio";
+    const principal:Principal={
+      id:owner as PrincipalId,
+      origin:executionContext.origin ?? (legacyLocal?"local_stdio":undefined),
+      scopes:[...(executionContext.scopes??[])],
+      permission:({READ_ONLY:"READ",PROJECT_ACCESS:"PROJECT_ACCESS",DEVELOPER_MODE:"DEVELOPER",ADMIN_MODE:"ADMIN"} as const)[getConfiguredPermissionLevel()],
+    };
+    const scope=captureWorkspaceScope({
+      principalId:principal.id,sessionId:session as SessionId,root:active,
+      allowedRoots:active?[active]:[],
+      unrestricted:executionContext.unrestricted || requestsUnrestrictedEffect(validatedTool,input),
+      capturedAt:executionContext.createdAt ?? new Date().toISOString(),
+    });
+    // The snapshot of the root pool is preserved by the plan, but a Task
+    // receives file access only to its originally selected workspace.
+    if(active && !capturedRoots.includes(active)) throw new Error("task_workspace_not_in_captured_roots");
+    const execute=()=>auditToolCall(tool,correlationId,taskId,async()=>{
+      const gateway=createR2RuntimeGateway({
+        execute:async(id,args)=>{
+          const dispatch=()=>dispatchToHandler(id as ToolName,args as Record<string,unknown>,
+            correlationId,executionContext,signal);
+          // This handler port runs only AFTER authorization and the atomic
+          // single-use exact-action approval claim. No Task-loop or caller
+          // may activate the legacy service-level compatibility flag.
+          return getTrustedTaskApproval()!==undefined
+            ? runWithPolicyApproval(id,dispatch)
+            : dispatch();
+        },
+      });
+      const result=await gateway.execute({
+        principal,descriptorId:validatedTool as ToolId,arguments:input,
+        taskContext:{taskId:taskId as TaskId,stepId:step.id as StepId,
+          workspaceScope:scope,approvalId:getTrustedTaskApproval()},
+      });
+      return requireSuccessfulGateway(result);
+    });
     const resolvedWorkspace = resolveTaskWorkspace(executionContext);
     const raw = await (resolvedWorkspace.workspace
       ? runWithWorkspaceScope(resolvedWorkspace.workspace, execute)
@@ -60,15 +133,3 @@ export function createLocalToolExecutor(correlationId: string, taskId?: string, 
     return enrichResult(validatedTool, input, raw);
   };
 }
-
-
-
-
-
-
-
-
-
-
-
-

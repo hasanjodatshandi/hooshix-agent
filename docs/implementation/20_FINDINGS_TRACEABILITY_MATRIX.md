@@ -11,7 +11,7 @@ Status values: `OPEN`, `TEST_ENCODED`, `IMPLEMENTING`, `IMPLEMENTED`, `VERIFIED_
 
 | ID | Short title | Primary phase | Primary specs | Mandatory closure evidence | Current status |
 |---|---|---|---|---|---|
-| HIGH-01 | Workspace authorization/scope expansion gap | R2 | 02, 08, 09 | actual MCP + Task regression; ADMIN+approval unrestricted; no bypass path | TEST_ENCODED |
+| HIGH-01 | Workspace authorization/scope expansion gap | R2 | 02, 08, 09 | actual MCP + Task regression; ADMIN+approval unrestricted; no bypass path | VERIFIED_CLOSED |
 | HIGH-02 | `search_files` sensitive denylist bypass | R2 | 08, 09, 14, 16 | fake `.env/.token/.ssh` regression; no read occurs | VERIFIED_CLOSED |
 | HIGH-03 | `git diff --no-index` outside disclosure | R2 | 08, 09, 16 | PoC regression blocked/approval-required; no output disclosure | VERIFIED_CLOSED |
 | HIGH-04 | OAuth expiry not enforced | R5 | 10, 13, 16, 31 | fake-clock expiry, distinct token, rotated refresh, wrong-resource/scope tests | TEST_ENCODED |
@@ -58,7 +58,7 @@ Status values: `OPEN`, `TEST_ENCODED`, `IMPLEMENTING`, `IMPLEMENTED`, `VERIFIED_
 | MED-25 | Prometheus HELP/TYPE malformed | R6 | 15,16 | golden grammar + promtool where available | OPEN |
 | MED-26 | Dependency inversion incomplete | R1-R9 | 02,03,06,07,22 | architecture import gates; zero forbidden edges | OPEN |
 | MED-27 | Runtime/loop broad responsibilities | R1-R9 | 02,05,06,11 | use-case/port split + architecture tests | OPEN |
-| MED-28 | Direct/Task adapter drift | R2/R9 | 02,08,19 | one catalog + one ExecuteTool gateway + completeness test | OPEN |
+| MED-28 | Direct/Task adapter drift | R2/R9 | 02,08,19 | one catalog + one ExecuteTool gateway + completeness test | VERIFIED_CLOSED |
 | MED-29 | Host-header trust + CORS `*` | R5 | 10,16,31 | configured issuer/public URL; hostile Host/origin tests | OPEN |
 
 ---

@@ -133,17 +133,16 @@ describe("executor no longer auto-satisfies the cwd escalation", () => {
     })).rejects.toThrow(/Approval required/);
   });
 
-  it("approved task steps still pass the cwd escalation", async () => {
+  it("legacy in-process approval context cannot replace an exact persisted Task approval", async () => {
     const { runWithPolicyApproval } = await import("../src/core/governance/policy-decision-point.js");
     const executor = createLocalToolExecutor("corr-test-2", undefined, { workspace: ws, roots: [ws], unrestricted: false });
-    const result = await runWithPolicyApproval("execute_command", () =>
+    await expect(runWithPolicyApproval("execute_command", () =>
       executor("execute_command", {
         id: 1, action: "echo probe", tool: "execute_command",
         arguments: { command: "node", args: ["-e", "console.log('cwd-ok')"], cwd: outside },
         status: "pending",
       })
-    );
-    expect((result as { stdout?: string }).stdout).toContain("cwd-ok");
+    )).rejects.toThrow(/Approval required/);
   });
 
   it("inside-cwd auto-allowed task steps run normally (no approval context needed)", async () => {

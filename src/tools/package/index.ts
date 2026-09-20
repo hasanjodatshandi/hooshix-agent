@@ -1,8 +1,7 @@
 import { z } from "zod";
 import type { McpServer } from "../../adapters/inbound/mcp/legacy-sdk-bridge.js";
-import { PACKAGE_MANAGERS, managePackage, restorePackage, type PackageAction } from "../../services/package/package-service.js";
-import { auditToolCall } from "../../core/memory/tool-audit.js";
-import { resolveCorrelationId } from "../../core/runtime/correlation-id.js";
+import { PACKAGE_MANAGERS } from "../../application/services/package-managers.js";
+type PackageAction = "install" | "remove" | "update";
 
 const schema = z.object({
   manager: z.enum(PACKAGE_MANAGERS),
@@ -21,13 +20,7 @@ function register(server: McpServer, tool: "install_package" | "remove_package" 
     description: desc,
     annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true },
     inputSchema: schema
-  }, async ({ manager, name, cwd, timeout, correlationId, taskId }) => {
-    const traceId = resolveCorrelationId(correlationId);
-    return auditToolCall(tool, traceId, taskId, async () => {
-      const value = await managePackage({ manager, action, name, cwd, timeout, correlationId: traceId });
-      return { content: [{ type: "text" as const, text: JSON.stringify(value, null, 2) }], _meta: { correlationId: traceId } };
-    });
-  });
+  }, async () => { throw new Error("r2_legacy_direct_callback_retired"); });
 }
 
 export function registerPackageTools(server: McpServer) {
@@ -41,11 +34,5 @@ export function registerPackageTools(server: McpServer) {
     description: "📦 PACKAGE — Restore package.json/lockfile to their state before a package operation, from its snapshotId.\n\nExample: { \"snapshotId\": \"8812499c-...\" }",
     annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true },
     inputSchema: z.object({ snapshotId: z.string().uuid(), correlationId: z.string().min(1).optional(), taskId: z.string().optional() })
-  }, async ({ snapshotId, correlationId, taskId }) => {
-    const traceId = resolveCorrelationId(correlationId);
-    return auditToolCall("package_restore", traceId, taskId, async () => {
-      const value = await restorePackage(snapshotId, traceId);
-      return { content: [{ type: "text" as const, text: JSON.stringify(value, null, 2) }], _meta: { correlationId: traceId } };
-    });
-  });
+  }, async () => { throw new Error("r2_legacy_direct_callback_retired"); });
 }

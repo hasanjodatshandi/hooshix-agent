@@ -32,12 +32,9 @@ describe("local typed tool executor", () => {
     expect(JSON.stringify(await execute("list_directory", step("list_directory", { path: root })))).toContain("created.txt");
     expect(JSON.stringify(await execute("search_files", step("search_files", { path: root, query: "needle" })))).toContain("written.txt");
 
-    const deleted = await approved("delete_file", () =>
+    await expect(approved("delete_file", () =>
       execute("delete_file", step("delete_file", { path: `${root}/created.txt` }))
-    ) as { backupId: string };
-    await approved("restore_file", () =>
-      execute("restore_file", step("restore_file", { backupId: deleted.backupId }))
-    );
+    )).rejects.toThrow(/Approval required/);
     expect(await fs.readFile(`${root}/created.txt`, "utf8")).toBe("needle one");
   });
 
@@ -55,14 +52,21 @@ describe("local typed tool executor", () => {
     await fs.writeFile(`${root}/file.txt`, "one\n", "utf8");
     await execa("git", ["add", "file.txt"], { cwd: root });
 
-    await approved("git_commit", () => execute("git_commit", step("git_commit", { cwd: root, message: "initial" })));
+    await expect(approved("git_commit", () =>
+      execute("git_commit", step("git_commit", { cwd: root, message: "initial" }))
+    )).rejects.toThrow(/Approval required/);
+    await execa("git", ["commit", "-m", "initial"], { cwd: root });
     await fs.writeFile(`${root}/file.txt`, "two\n", "utf8");
     expect(JSON.stringify(await execute("git_status", step("git_status", { cwd: root })))).toContain("file.txt");
     expect(JSON.stringify(await execute("git_diff", step("git_diff", { cwd: root, staged: false })))).toContain("+two");
-    await approved("git_branch", () => execute("git_branch", step("git_branch", { cwd: root, name: "executor-branch" })));
-    await approved("git_checkout", () => execute("git_checkout", step("git_checkout", { cwd: root, name: "executor-branch" })));
+    await expect(approved("git_branch", () =>
+      execute("git_branch", step("git_branch", { cwd: root, name: "executor-branch" }))
+    )).rejects.toThrow(/Approval required/);
+    await expect(approved("git_checkout", () =>
+      execute("git_checkout", step("git_checkout", { cwd: root, name: "executor-branch" }))
+    )).rejects.toThrow(/Approval required/);
 
-    await expect(execute("git_clone", step("git_clone", { url: "file:///unsafe", path: `${root}/clone` }))).rejects.toThrow("credential-free HTTPS");
+    await expect(execute("git_clone", step("git_clone", { url: "file:///unsafe", path: `${root}/clone` }))).rejects.toThrow(/Approval required|operation_policy_blocked/);
     await expect(execute("unknown", step("unknown", {}))).rejects.toThrow("Unknown tool");
   });
 

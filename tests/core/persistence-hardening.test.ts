@@ -8,7 +8,7 @@ import { getTaskPlan, saveTaskPlan } from "../../src/core/memory/task-repository
 describe("persistence hardening", () => {
   it("records ordered schema migrations and creates a consistent backup", async () => {
     const versions = withAgentDatabase((db) => db.prepare("SELECT version FROM schema_migrations ORDER BY version").all()) as Array<{ version: number }>;
-    expect(versions.map((row) => row.version)).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
+    expect(versions.map((row) => row.version)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9]);
     const destination = path.resolve("data/test-backups/agent.db.bak");
     try {
       expect(await backupAgentDatabase(destination)).toBe(destination);
@@ -17,6 +17,14 @@ describe("persistence hardening", () => {
     } finally {
       await fs.rm(path.dirname(destination), { recursive: true, force: true });
     }
+  });
+
+  it("migration 9 persists exact, expiring, single-use approval bindings",()=>{
+    withAgentDatabase(db=>{
+      const columns=new Set((db.prepare("PRAGMA table_info(approval_requests)").all() as Array<{name:string}>).map(row=>row.name));
+      for(const column of ["tool_id","request_fingerprint","principal_id","session_id","expires_at","dispatched_at"])
+        expect(columns.has(column),column).toBe(true);
+    });
   });
 
   it("migration 7 owns the durable task contract schema", () => {

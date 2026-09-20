@@ -7,7 +7,7 @@ export type AuthorizationDecision =
   | { readonly kind: "approval_required"; readonly reason: string }
   | { readonly kind: "blocked"; readonly reason: string };
 const PERMISSION_ORDER: Readonly<Record<PermissionLevel,number>> = { READ: 0, PROJECT_ACCESS: 1, DEVELOPER: 2, ADMIN: 3 };
-export interface AuthorizationService { decide(input: { readonly principal: Principal; readonly descriptor: ToolDescriptor; readonly scope: WorkspaceScope; readonly approvedActionFingerprint?: string }): AuthorizationDecision; }
+export interface AuthorizationService { decide(input: { readonly principal: Principal; readonly descriptor: ToolDescriptor; readonly scope: WorkspaceScope; readonly operationPolicy?: "allowed" | "approval_required" | "blocked"; readonly approvalVerified?: boolean }): AuthorizationDecision; }
 /** R1 minimal fail-closed authorization. R2 will add effective scope and exact-action binding. */
 export function createR1AuthorizationService(): AuthorizationService {
  return { decide({ principal, descriptor, scope }) {
@@ -30,7 +30,8 @@ export function createAuthorizationService(settings: {
 }): AuthorizationService {
   function blocked(reason: string): AuthorizationDecision { return {kind:"blocked", reason}; }
   const ceilingRank=PERMISSION_ORDER[settings.serverCeiling];
-  return { decide({principal,descriptor,scope}) {
+  return { decide(input) {
+    const {principal,descriptor,scope}=input;
     if (!principal?.id || !scope || scope.principalId!==principal.id) return blocked("principal_scope_mismatch");
     if (principal.origin!=="local_stdio" && principal.origin!=="http_oauth") return blocked("untrusted_principal_origin");
     const canonical=getOperationDescriptor(descriptor.id);
@@ -52,15 +53,33 @@ export function createAuthorizationService(settings: {
     if (scope.unrestricted) {
       if (!settings.allowUnrestricted || PERMISSION_ORDER[principal.permission]<PERMISSION_ORDER.ADMIN || ceilingRank<PERMISSION_ORDER.ADMIN)
         return blocked("unrestricted_requires_server_allow_and_admin");
+      if (principal.origin==="http_oauth" && !principal.scopes.includes("hooshix:admin"))
+        return blocked("unrestricted_requires_admin_oauth_scope");
+      // A server configuration bit or old global flag is never itself an
+      // authorization grant. Each unrestricted effect needs an exact, consumed
+      // and single-use Task approval bound to the requested arguments.
+      if (!input.approvalVerified)
+        return {kind:"approval_required",reason:"unrestricted_exact_task_approval_required"};
     }
     if (canonical.workspaceScope!=="none" && canonical.workspaceScope!=="scope_mutation") {
       if (!scope.root || !scope.allowedRoots.includes(scope.root)) return blocked("workspace_missing_or_ungranted");
     }
 
-    // No unverified external input (including approvedActionFingerprint) can grant
-    // a mutation. R2.05 will introduce a task-bound, consumed approval verifier.
-    if (canonical.approval!=="never" || canonical.effect!=="read_only" || canonical.workspaceScope==="scope_mutation")
-      return {kind:"approval_required",reason:"verified_task_approval_required"};
+    // The only approvalVerified source is the gateway's trusted ApprovalVerifierPort.
+    // In the absence of concrete per-argument policy, effectful operations fail closed.
+    const policy = input.operationPolicy;
+    if (policy==="blocked") return blocked("operation_policy_blocked");
+    if (policy==="approval_required" && !input.approvalVerified)
+      return {kind:"approval_required",reason:"operation_specific_approval_required"};
+    if (canonical.approval==="always" || canonical.approval==="admin-and-approval") {
+      if (!input.approvalVerified) return {kind:"approval_required",reason:"verified_task_approval_required"};
+    } else if (canonical.approval==="on-risk") {
+      if ((canonical.effect!=="read_only" || canonical.workspaceScope==="scope_mutation") &&
+          policy!=="allowed" && !input.approvalVerified)
+        return {kind:"approval_required",reason:"argument_policy_or_verified_approval_required"};
+    } else if (canonical.effect!=="read_only" && policy!=="allowed" && !input.approvalVerified) {
+      return {kind:"approval_required",reason:"unknown_mutation_policy"};
+    }
     return {kind:"allowed"};
   }};
 }

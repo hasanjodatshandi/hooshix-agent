@@ -27,6 +27,11 @@ export interface TaskStep {
   templateArguments?: Record<string, unknown>;
 }
 export interface TaskExecutionContext {
+  /** Immutable trusted identity copied when the Task is created. */
+  principalId?: string;
+  sessionId?: string;
+  origin?: "local_stdio" | "http_oauth";
+  scopes?: string[];
   workspace: string | null;
   allowedRootsSnapshot?: string[];
   roots: string[];

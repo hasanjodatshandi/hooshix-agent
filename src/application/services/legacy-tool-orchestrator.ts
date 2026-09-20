@@ -1,5 +1,5 @@
 /** Legacy import facade: R2.01 metadata is sourced only from the exhaustive operation catalog.
- * Runtime gateway and approval cutover remain R2.02-R2.09. */
+ * Runtime tool effects are mediated by the R2 ExecuteToolUseCase; this facade remains for typed Task-step selection. */
 import { TOOL_NAMES, TOOL_CAPABILITIES } from "./operation-catalog.js";
 import type { ToolName, ToolCapability } from "./operation-catalog.js";
 import type { ToolRisk } from "../../domain/tool/tool-descriptor.js";

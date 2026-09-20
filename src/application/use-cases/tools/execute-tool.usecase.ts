@@ -17,6 +17,16 @@ export interface ToolHandlerPort {
   execute(toolId: ToolId, args: unknown, scope: WorkspaceScope): Promise<unknown>;
 }
 export interface ToolDescriptorPort { get(id: ToolId): ToolDescriptor | null; }
+/** Pure application ports. Concrete argument classifiers, approvals and handlers live in composition. */
+export interface ToolOperationPolicyPort {
+  classify(input: { readonly descriptor: ToolDescriptor; readonly args: unknown; readonly scope: WorkspaceScope; readonly principal: Principal }):
+    Promise<"allowed" | "approval_required" | "blocked"> | "allowed" | "approval_required" | "blocked";
+}
+export interface ToolApprovalVerifierPort {
+  verify(input: { readonly approvalId: number; readonly taskId: TaskId; readonly stepId: StepId;
+    readonly toolId: ToolId; readonly args: unknown; readonly scope: WorkspaceScope; readonly principal: Principal }): Promise<boolean>;
+}
+
 
 export interface ExecuteToolCommand {
   readonly principal: Principal;
@@ -30,6 +40,8 @@ export interface ExecuteToolCommand {
     readonly taskId: TaskId;
     readonly stepId: StepId;
     readonly workspaceScope: WorkspaceScope;
+    /** Supplied only by the trusted task runtime after persisted approval consumption. */
+    readonly approvalId?: number;
   };
 }
 export interface ExecuteToolUseCase { execute(input: ExecuteToolCommand): Promise<ToolExecutionResult>; }
@@ -42,6 +54,8 @@ export function createExecuteToolUseCase(deps: {
   readonly audit: AuditPort;
   readonly workspace: WorkspaceContextRepository;
   readonly securityEvents?: SecurityEventPort;
+  readonly operationPolicy?: ToolOperationPolicyPort;
+  readonly approvals?: ToolApprovalVerifierPort;
 }): ExecuteToolUseCase {
   async function deny(principal: Principal, toolId: ToolId, reason: string): Promise<ToolExecutionResult> {
     try { await deps.securityEvents?.record({kind:"authorization_denied",principalId:principal.id,toolId,reason}); }
@@ -78,22 +92,78 @@ export function createExecuteToolUseCase(deps: {
       if (!scope || scope.principalId !== principal.id)
         return deny(principal,descriptorId,"principal_scope_mismatch");
 
-      const decision=deps.authorization.decide({principal,descriptor,scope});
+      // First enforce identity/role/workspace. An operation-specific classifier
+      // cannot bypass the server ceiling, even if its decision is "allowed".
+      const initial=deps.authorization.decide({principal,descriptor,scope});
+      if (initial.kind==="blocked") return deny(principal,descriptorId,initial.reason);
+
+      let operationPolicy:"allowed"|"approval_required"|"blocked" = "allowed";
+      if (deps.operationPolicy) {
+        try { operationPolicy=await deps.operationPolicy.classify({descriptor,args:validated.value,scope,principal}); }
+        catch { return deny(principal,descriptorId,"operation_policy_unavailable"); }
+      } else if (descriptor.effect!=="read_only" || descriptor.workspaceScope==="scope_mutation") {
+        operationPolicy="approval_required";
+      }
+      if (operationPolicy==="blocked") return deny(principal,descriptorId,"operation_policy_blocked");
+
+      // Never accept an approval fingerprint or "approved" flag from tool args.
+      // The verifier must consult the persisted, single-use approval bound to
+      // the exact task, step, tool, args and immutable workspace scope.
+      let approvalVerified=false;
+      if (taskContext?.approvalId!==undefined) {
+        if (!Number.isSafeInteger(taskContext.approvalId) || taskContext.approvalId<=0 || !deps.approvals)
+          return deny(principal,descriptorId,"invalid_approval_context");
+        try {
+          approvalVerified=await deps.approvals.verify({
+            approvalId:taskContext.approvalId,taskId:taskContext.taskId,stepId:taskContext.stepId,
+            toolId:descriptorId,args:validated.value,scope,principal,
+          });
+        } catch { return deny(principal,descriptorId,"approval_verification_failed"); }
+        if (!approvalVerified) return deny(principal,descriptorId,"approval_not_bound_to_exact_operation");
+      }
+
+      const needsApproval=descriptor.approval==="always" || descriptor.approval==="admin-and-approval" ||
+        operationPolicy==="approval_required" ||
+        (descriptor.effect!=="read_only" && !deps.operationPolicy);
+      if (needsApproval && !approvalVerified)
+        return {kind:"approval_required",reason:"verified_task_approval_required"};
+
+      const decision=deps.authorization.decide({principal,descriptor,scope,operationPolicy,approvalVerified});
       if (decision.kind!=="allowed") {
         if (decision.kind==="blocked") return deny(principal,descriptorId,decision.reason);
         return decision;
       }
 
-      // R2.02 establishes the single application entry point. Mutating dispatch remains
-      // fail-closed until R2.03 exact approval binding and R2.04-R2.09 runtime cutover.
-      if (descriptor.effect!=="read_only" || descriptor.approval!=="never" || descriptor.workspaceScope==="scope_mutation")
-        return {kind:"approval_required",reason:"mutation_requires_verified_task_approval"};
-
       let result:ToolExecutionResult;
       try {
         result={kind:"succeeded",output:await deps.handler.execute(descriptorId,validated.value,scope)};
-      } catch {
-        result={kind:"failed",reason:"tool_handler_failure"};
+      } catch (error) {
+        // Only expose a fixed, non-secret control-plane error code. Never echo
+        // arbitrary subprocess stderr, filesystem paths or credential-bearing messages.
+        const knownBudgetFailure=error instanceof Error &&
+          error.message.includes("maxConsecutiveFailures");
+        result={kind:"failed",reason:knownBudgetFailure
+          ?"maxConsecutiveFailures_budget_exhausted":"tool_handler_failure"};
+      }
+      // Persist a distinct security decision event for any successfully
+      // executed privilege elevation or workspace mutation. The exact
+      // one-use approval is already consumed before handler dispatch; this
+      // event cannot itself authorize an effect or replay a consumed request.
+      if (result.kind==="succeeded" &&
+          (scope.unrestricted || descriptor.workspaceScope==="scope_mutation")) {
+        try {
+          await deps.securityEvents?.record({
+            kind:scope.unrestricted?"approved_unrestricted_effect_executed":"workspace_mutation_executed",
+            principalId:principal.id,toolId:descriptorId,
+            reason:taskContext
+              ? `task=${taskContext.taskId};step=${taskContext.stepId};approval=${taskContext.approvalId??"none"}`
+              : "direct_authorized_selection",
+          });
+        } catch {
+          // An audit sink failure after a known side effect is degradation,
+          // not an execution failure that could trigger a duplicate retry.
+          result={...result,observabilityDegraded:true};
+        }
       }
       try {
         await deps.audit.record({

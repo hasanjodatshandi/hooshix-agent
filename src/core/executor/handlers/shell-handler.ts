@@ -25,7 +25,7 @@ export class ShellToolHandler implements ToolHandler {
     // With the empty-by-default pool, executionContext?.workspace can be null —
     // then executeShellCommand's validation denies every cwd (no active
     // workspace), which is the fail-closed contract.
-    const cwd = value.cwd ?? executionContext?.workspace ?? ".";
+    const cwd = !value.cwd || value.cwd === "." ? (executionContext?.workspace ?? ".") : value.cwd;
     const result = await executeShellCommand(value.command, value.args, cwd, value.timeout, correlationId, signal);
     if (result.exitCode !== 0) throw new Error(result.stderr || describeExecaFailure(value.command, result));
     return result;

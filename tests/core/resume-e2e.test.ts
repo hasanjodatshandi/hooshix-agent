@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import path from "node:path";
 import { runClosedAgentLoop } from "../../src/core/loop/closed-agent-loop.js";
 import { approveRequest, getApprovalRequest } from "../../src/core/governance/approval-memory.js";
 import { resumeApprovedTask } from "../../src/core/loop/resume-orchestrator.js";
@@ -9,6 +10,13 @@ describe("full pause approve resume flow", () => {
     const plan = {
       id: "approval-resume-task",
       task: "workflow",
+      executionContext:{
+        principalId:"local-stdio",sessionId:"local-stdio-session",
+        origin:"local_stdio" as const,scopes:[],
+        workspace:path.resolve("."),roots:[path.resolve(".")],
+        allowedRootsSnapshot:[path.resolve(".")],unrestricted:false,
+        createdAt:new Date().toISOString(),
+      },
       steps: [
         { id: 1, action: "normal first step", status: "pending" as const },
         { id: 2, action: "delete file", status: "pending" as const }

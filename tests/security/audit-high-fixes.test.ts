@@ -71,11 +71,11 @@ describe("HIGH-01: unrestricted-mode elevation gate", () => {
     expect(isUnrestrictedMode()).toBe(false);
   });
 
-  it("env opt-in is the only remaining elevation path", () => {
-    // The runtime gate is now absolute: no tool and no approval context can
-    // enable unrestricted mode. The operator-level HOOSHIX_UNRESTRICTED env
-    // var (parsed at module init in workspace-guard) is the only way in.
-    expect(() => assertUnrestrictedElevationAllowed()).toThrow(/cannot be enabled at runtime/i);
+  it("server opt-in alone never grants process-wide unrestricted access", () => {
+    // The legacy global switch remains disabled. An explicit approved ADMIN
+    // Task file operation receives only a one-effect scope, never a global grant.
+    expect(() => assertUnrestrictedElevationAllowed()).toThrow(/server opt-in.*exact approved Task/i);
+    expect(isUnrestrictedMode()).toBe(false);
   });
 });
 

@@ -14,6 +14,9 @@ import fs from "node:fs";
 import path from "node:path";
 import { readLegacyHttpServerSettings, readLegacyHttpAccessToken } from "../infrastructure/config/legacy-http-server.js";
 import { createSessionWorkspaceContext, runWithSessionWorkspace, type SessionWorkspaceContext } from "../security/workspace-guard.js";
+import { runWithTrustedInboundIdentity } from "../infrastructure/composition/r2-trusted-inbound-identity.js";
+import { getConfiguredPermissionLevel } from "../infrastructure/config/permission-config.js";
+import type { PrincipalId, SessionId } from "../domain/shared/ids.js";
 
 const { port: PORT, publicBaseUrl: PUBLIC_BASE_URL } = readLegacyHttpServerSettings();
 
@@ -259,6 +262,16 @@ async function handleRequest(
   const principalBinding = crypto.createHash("sha256")
     .update(req.headers.authorization ?? "")
     .digest("hex");
+  const grant=oauth.tokenClaims(req.headers.authorization);
+  if (!grant) { sendJSON(res,401,{error:"invalid_authenticated_principal"}); return; }
+  const grantedScopes=grant.scopes;
+  const permission=({READ_ONLY:"READ",PROJECT_ACCESS:"PROJECT_ACCESS",DEVELOPER_MODE:"DEVELOPER",ADMIN_MODE:"ADMIN"} as const)[getConfiguredPermissionLevel()];
+  function runAuthorizedSession<T>(sessionId:string,entry:SessionEntry,operation:()=>T):T {
+    return runWithTrustedInboundIdentity({
+      principal:{id:principalBinding as PrincipalId,permission,origin:"http_oauth",scopes:grantedScopes},
+      sessionId:sessionId as SessionId,
+    },()=>runWithSessionWorkspace(entry.workspace,operation));
+  }
   const requestedSessionId = req.headers["mcp-session-id"] as string | undefined;
   if (requestedSessionId && sessions.has(requestedSessionId) &&
       sessions.get(requestedSessionId)!.principalBinding !== principalBinding) {
@@ -295,7 +308,7 @@ async function handleRequest(
         .filter(Boolean)
         .join(", ");
     }
-    await runWithSessionWorkspace(entry.workspace, () => entry.transport.handleRequest(req, res));
+    await runAuthorizedSession(sessionId,entry, () => entry.transport.handleRequest(req, res));
     return;
   }
 
@@ -331,7 +344,7 @@ async function handleRequest(
           .filter(Boolean)
           .join(", ");
       }
-      await runWithSessionWorkspace(entry.workspace, () => entry.transport.handleRequest(req, res));
+      await runAuthorizedSession(existingSessionId,entry, () => entry.transport.handleRequest(req, res));
       return;
     }
 
@@ -358,7 +371,7 @@ async function handleRequest(
 
     // Forward the initial request under its new, isolated workspace selection.
     const entry = sessions.get(sessionId)!;
-    await runWithSessionWorkspace(entry.workspace, () => transport.handleRequest(req, res));
+    await runAuthorizedSession(sessionId,entry, () => transport.handleRequest(req, res));
 
     // Log session creation after transport processes the body
     mcpMetrics.recordSessionCreated(sessionId);

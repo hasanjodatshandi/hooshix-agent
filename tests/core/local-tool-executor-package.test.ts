@@ -9,12 +9,12 @@ vi.mock("../../src/services/package/package-service.js", () => ({
 import { createLocalToolExecutor } from "../../src/core/executor/local-tool-executor.js";
 
 describe("local package dispatch", () => {
-  it("maps package tool names to typed actions", async () => {
+  it("never dispatches package mutations from a standalone executor without an exact persisted approval", async () => {
     const execute = createLocalToolExecutor("package-dispatch", "package-task");
     const base = { id: 1, action: "package", status: "pending" as const, arguments: { manager: "npm", name: "zod" } };
-    await execute("install_package", { ...base, tool: "install_package" });
-    await execute("remove_package", { ...base, tool: "remove_package" });
-    await execute("update_package", { ...base, tool: "update_package" });
-    expect(managePackageMock.mock.calls.map(([input]) => input.action)).toEqual(["install", "remove", "update"]);
+    for (const tool of ["install_package", "remove_package", "update_package"] as const) {
+      await expect(execute(tool, { ...base, tool })).rejects.toThrow(/Approval required/);
+    }
+    expect(managePackageMock).not.toHaveBeenCalled();
   });
 });

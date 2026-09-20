@@ -35,7 +35,7 @@ export function checkStepGovernance(step: TaskStep | string, effectiveCwd?: stri
   // paths outside the active workspace (no approval legitimizes it), so such
   // steps are BLOCKED up-front instead of pausing for a doomed approval.
   // Mirrors the enforcement error message in workspace-guard.
-  if (FILE_PATH_TOOLS.has(tool) && typeof args.path === "string") {
+  if (FILE_PATH_TOOLS.has(tool) && args.unrestricted !== true && typeof args.path === "string") {
     try {
       validateWorkspace(args.path);
     } catch (error) {
@@ -76,8 +76,11 @@ export function checkStepGovernance(step: TaskStep | string, effectiveCwd?: stri
   }
   const result = policyDecisionPoint.evaluate({ tool, arguments: args });
   return {
-    decision: !result.allowed ? "blocked" as const : result.requiresApproval ? "approval_required" as const : "allow" as const,
-    risk: result.risk,
-    reason: result.reason
+    decision: !result.allowed ? "blocked" as const
+      : FILE_PATH_TOOLS.has(tool) && args.unrestricted === true ? "approval_required" as const
+      : result.requiresApproval ? "approval_required" as const : "allow" as const,
+    risk: FILE_PATH_TOOLS.has(tool) && args.unrestricted === true ? "critical" as const : result.risk,
+    reason: FILE_PATH_TOOLS.has(tool) && args.unrestricted === true
+      ? "unrestricted_requires_admin_server_flag_and_exact_task_approval" : result.reason
   };
 }

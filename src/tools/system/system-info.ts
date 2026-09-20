@@ -1,10 +1,7 @@
-import os from "node:os";
-import type { McpServer } from "../../adapters/inbound/mcp/legacy-sdk-bridge.js";
 import { z } from "zod";
-import { resolveCorrelationId } from "../../core/runtime/correlation-id.js";
-import { auditToolCall } from "../../core/memory/tool-audit.js";
-import { policyDecisionPoint } from "../../core/governance/policy-decision-point.js";
+import type { McpServer } from "../../adapters/inbound/mcp/legacy-sdk-bridge.js";
 
+/** Schema-only: executable system info flows solely through the approved R2 gateway. */
 export function registerSystemInfoTool(server: McpServer){
   server.registerTool(
     "get_system_info",
@@ -17,18 +14,6 @@ export function registerSystemInfoTool(server: McpServer){
         taskId: z.string().optional()
       })
     },
-    async({ correlationId, taskId })=>{
-      policyDecisionPoint.assertAllowed({ tool: "get_system_info", arguments: {}, correlationId });
-      const traceId = resolveCorrelationId(correlationId);
-      return auditToolCall("get_system_info", traceId, taskId, () => ({ content:[{
-        type:"text",
-        text: JSON.stringify({
-          platform: os.platform(),
-          cpu: os.cpus()[0]?.model,
-          memoryBytes: os.totalmem(),
-          memory: os.totalmem()  // kept for backward compat
-        }, null, 2)
-      }], _meta: { correlationId: traceId } }));
-    }
+    async () => { throw new Error("r2_legacy_direct_callback_retired"); },
   );
 }

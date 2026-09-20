@@ -1,10 +1,7 @@
 import { z } from "zod";
 import type { McpServer } from "../../adapters/inbound/mcp/legacy-sdk-bridge.js";
-import { executeShellCommand } from "../../services/shell/shell-service.js";
-import { getWorkspaceRoot } from "../../security/workspace-guard.js";
-import { resolveCorrelationId } from "../../core/runtime/correlation-id.js";
-import { auditToolCall } from "../../core/memory/tool-audit.js";
 
+/** Schema-only MCP registrar. Process dispatch is available exclusively via R2 gateway. */
 export function registerExecuteCommandTool(server: McpServer) {
   server.registerTool("execute_command", {
     title: "Execute Command",
@@ -18,17 +15,5 @@ export function registerExecuteCommandTool(server: McpServer) {
       correlationId: z.string().min(1).optional(),
       taskId: z.string().optional()
     })
-  }, async ({ command, args, cwd, timeout, correlationId, taskId }) => {
-    const traceId = resolveCorrelationId(correlationId);
-    return auditToolCall("execute_command", traceId, taskId, async () => {
-      // "." (or unset) means "the active workspace", not the server's process
-      // cwd — so a workspace switch keeps direct calls scoped correctly. With
-      // the empty-by-default pool, null propagates: executeShellCommand fails
-      // closed with "no active workspace".
-      const active = getWorkspaceRoot();
-      const effectiveCwd = !cwd || cwd === "." ? (active ?? ".") : cwd;
-      const result = await executeShellCommand(command, args, effectiveCwd, timeout, traceId);
-      return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }], _meta: { correlationId: traceId } };
-    });
-  });
+  }, async () => { throw new Error("r2_legacy_direct_callback_retired"); });
 }

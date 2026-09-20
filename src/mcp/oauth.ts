@@ -71,6 +71,24 @@ export class OAuthProvider {
     return true;
   }
 
+  /** Runtime-only trusted identity claims. Never derives scopes from HTTP headers. */
+  tokenClaims(authorization: string | undefined): {kind:"bootstrap"|"issued"; scopes: readonly string[] } | null {
+    if(!this.verifyToken(authorization)) return null;
+    const token=authorization!.slice(7);
+    if(timingSafeStringEqual(token,this.accessToken)) {
+      // R2 compatibility: the private bootstrap credential is the operator.
+      // R5 removes bootstrap-as-client-token entirely.
+      return {kind:"bootstrap",scopes:[
+        "hooshix:read","hooshix:project:write","hooshix:execute",
+        "hooshix:task:manage","hooshix:workspace:manage",
+        "hooshix:monitoring:read","hooshix:admin",
+      ]};
+    }
+    // R2 limits legacy issued OAuth credentials to the read scope while R5
+    // introduces persistent, principal-bound OAuth grant/scopes.
+    return {kind:"issued",scopes:["hooshix:read"]};
+  }
+
   /** Issue an authorization code (PKCE S256) */
   issueCode(
     codeChallenge: string,

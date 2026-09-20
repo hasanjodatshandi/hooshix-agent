@@ -36,7 +36,14 @@ describe("R2.03 effective authorization with explicit principal/server ceilings"
    const unrestricted=captureWorkspaceScope({...workspace,unrestricted:true});
    expect(auth("ADMIN",false).decide({principal:local("ADMIN"),descriptor:descriptor("read_file"),scope:unrestricted}).kind).toBe("blocked");
    expect(auth("ADMIN",true).decide({principal:local("DEVELOPER"),descriptor:descriptor("read_file"),scope:unrestricted}).kind).toBe("blocked");
-   expect(auth("ADMIN",true).decide({principal:local("ADMIN"),descriptor:descriptor("read_file"),scope:unrestricted})).toEqual({kind:"allowed"});
+   expect(auth("ADMIN",true).decide({principal:local("ADMIN"),descriptor:descriptor("read_file"),scope:unrestricted}))
+     .toMatchObject({kind:"approval_required",reason:"unrestricted_exact_task_approval_required"});
+   expect(auth("ADMIN",true).decide({principal:local("ADMIN"),descriptor:descriptor("read_file"),scope:unrestricted,approvalVerified:true}))
+     .toEqual({kind:"allowed"});
+   expect(auth("ADMIN",true).decide({
+     principal:{...local("ADMIN"),origin:"http_oauth",scopes:["hooshix:read"]},
+     descriptor:descriptor("read_file"),scope:unrestricted,approvalVerified:true,
+   })).toMatchObject({kind:"blocked",reason:"unrestricted_requires_admin_oauth_scope"});
  });
  it("denies a forged read-only descriptor bearing a mutation tool id",()=>{
    const real=descriptor("delete_file");

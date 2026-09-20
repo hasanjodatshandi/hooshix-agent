@@ -1,9 +1,7 @@
 import { z } from "zod";
 import type { McpServer } from "../../adapters/inbound/mcp/legacy-sdk-bridge.js";
-import { modifyWorkspaceFile } from "../../services/filesystem/filesystem-service.js";
-import { resolveCorrelationId } from "../../core/runtime/correlation-id.js";
-import { auditToolCall } from "../../core/memory/tool-audit.js";
 
+/** Schema-only registration. Runtime effects are dispatched from the authorized R2 gateway. */
 export function registerModifyFileTool(server: McpServer) {
   server.registerTool("modify_file", {
     title: "Modify File",
@@ -17,12 +15,5 @@ export function registerModifyFileTool(server: McpServer) {
       correlationId: z.string().min(1).optional(),
       taskId: z.string().optional()
     })
-  }, async ({ path, search, replacement, ifMatchSha256, correlationId, taskId }) => {
-    const traceId = resolveCorrelationId(correlationId);
-    return auditToolCall("modify_file", traceId, taskId, async () => {
-      const result = await modifyWorkspaceFile(path, search, replacement, traceId, { ifMatchSha256 });
-      const flat = { path, ...result };
-      return { ...flat, content: [{ type: "text" as const, text: JSON.stringify(flat) }], _meta: { correlationId: traceId } };
-    });
-  });
+  } , async () => { throw new Error("r2_legacy_direct_callback_retired"); });
 }
