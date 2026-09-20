@@ -1,5 +1,6 @@
 import type { ToolName } from "../services/legacy-tool-orchestrator.js";
 import type { TaskState } from "../../domain/task/legacy-task-state-machine.js";
+import type { ExecutionReceipt } from "../../domain/task/execution-outcome.js";
 
 export type TaskStepStatus = "pending" | "running" | "completed" | "failed" | "pending_approval" | "blocked" | "cancelled" | "outcome_unknown";
 export type StepRunCondition = "success" | "failure" | "always";
@@ -25,6 +26,8 @@ export interface TaskStep {
   failedAttempts?: number;
   attemptHistory?: StepAttempt[];
   templateArguments?: Record<string, unknown>;
+  /** Canonical, durable record of the latest attempted mutation; read-only steps omit it. */
+  lastReceipt?: ExecutionReceipt;
 }
 export interface TaskExecutionContext {
   /** Immutable trusted identity copied when the Task is created. */

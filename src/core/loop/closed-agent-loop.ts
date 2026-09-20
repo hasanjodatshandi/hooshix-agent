@@ -12,6 +12,9 @@ import { PersistentRecoveryObservability } from "../trace/persistent-recovery-ob
 import type { RecoveryObservabilitySink } from "../trace/recovery-observability.js";
 import { saveTaskPlan, saveTaskStep, saveTaskStatus, updateTaskHeartbeat } from "../memory/task-repository.js";
 import { transitionTask, type TaskState } from "../state/task-state-machine.js";
+import { beginStepExecutionReceipt, finishStepExecutionReceipt } from "../memory/task-repository.js";
+import { createMutationReceipt, finalizeMutationReceipt } from "./execution-receipt.js";
+import type { ExecutionReceipt } from "../../domain/task/execution-outcome.js";
 
 import { fingerprintTaskEffect, resolveApprovedTaskArgs } from "../../infrastructure/composition/r2-approval-fingerprint.js";
 import { runWithTrustedTaskApproval } from "../../infrastructure/composition/r2-trusted-task-approval.js";
@@ -248,9 +251,10 @@ export async function runClosedAgentLoop(
     }
 
     step.status = "running";
-    // Track attempt
+    // Track attempt; mutation receipt and running state commit atomically
+    // after template validation and immediately BEFORE tool dispatch.
     step.attempts = (step.attempts ?? 0) + 1;
-    persistStep();
+    let activeReceipt:ExecutionReceipt|undefined;
     try {
       // Resolve template references in step arguments using completed step outputs
       const stepContext = buildStepContext(completedSteps);
@@ -263,6 +267,15 @@ export async function runClosedAgentLoop(
         validateTemplates(step.arguments, stepContext);
         step.arguments = resolveTemplates(step.arguments, stepContext);
         // Persist resolved arguments so they survive restart
+        persistStep();
+      }
+      // Every mutation attempt has its own durable intent. The record contains
+      // effect identity and timestamps, never plaintext arguments or results.
+      activeReceipt=createMutationReceipt(step,toolId);
+      if(activeReceipt){
+        step.lastReceipt=activeReceipt;
+        beginStepExecutionReceipt(plan.id,step,index,activeReceipt);
+      }else{
         persistStep();
       }
       // Use AbortController for real cancellation on timeout
@@ -280,6 +293,11 @@ export async function runClosedAgentLoop(
         stepAbort
       );
       if (timedOut) {
+        if(activeReceipt){
+          activeReceipt=finalizeMutationReceipt(activeReceipt,"outcome_unknown");
+          finishStepExecutionReceipt(plan.id,activeReceipt);
+          step.lastReceipt=activeReceipt;
+        }
         // Use outcome_unknown instead of cancelled: the underlying process may
         // still be running or may have produced partial side effects. The
         // caller should reconcile before retrying.
@@ -322,6 +340,11 @@ export async function runClosedAgentLoop(
           ? (raw as { tool: string; result: unknown }).result
           : raw
       );
+      if(activeReceipt){
+        activeReceipt=finalizeMutationReceipt(activeReceipt,"succeeded",result);
+        finishStepExecutionReceipt(plan.id,activeReceipt);
+        step.lastReceipt=activeReceipt;
+      }
       step.status = "completed";
       step.output = result;
       step.error = undefined;
@@ -334,6 +357,30 @@ export async function runClosedAgentLoop(
       saveExecutionWithContext({ taskId: plan.id, stepId: step.id, action: step.action, result, status: "completed", context: runtimeContext });
       index++;
     } catch (error) {
+      // A thrown executor failure is only a known failure if the adapter
+      // returned that failure. Timeout/cancellation exceptions from tools do
+      // not prove the mutation did not commit. Leave unknown for reconciliation.
+      const executionErrorCode=classifyError(error);
+      if(activeReceipt?.status==="started"){
+        const uncertain=executionErrorCode==="TIMEOUT";
+        activeReceipt=finalizeMutationReceipt(activeReceipt,uncertain?"outcome_unknown":"failed_known");
+        finishStepExecutionReceipt(plan.id,activeReceipt);
+        step.lastReceipt=activeReceipt;
+        if(uncertain){
+          step.status="outcome_unknown";
+          step.error="Tool execution timed out; mutation outcome requires reconciliation";
+          step.errorType="TIMEOUT";
+          step.failedAttempts=(step.failedAttempts??0)+1;
+          step.attemptHistory=[...(step.attemptHistory??[]),{
+            attempt:step.attempts??1,status:"failed" as const,
+            error:step.error,timestamp:new Date().toISOString(),
+          }];
+          persistStep();
+          failedAt=failedAt===-1?index:failedAt;
+          index++;
+          continue;
+        }
+      }
       const message = error instanceof Error ? error.message : String(error);
       const errorCode = classifyError(error);
       const isMissingVariable = errorCode === "MISSING_CONTEXT_VARIABLE" || error instanceof MissingVariableError;

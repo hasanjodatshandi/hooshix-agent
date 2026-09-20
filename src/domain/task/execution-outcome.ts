@@ -16,6 +16,14 @@ export interface ExecutionReceipt {
   readonly effect: ToolEffect;
   readonly startedAt: string;
   readonly finishedAt?: string;
+  /** Stable identity of this attempted effect; does not assert exactly-once delivery. */
   readonly effectId?: string;
+  /** A receipt is started before dispatch. Terminal statuses describe only known observations. */
+  readonly status: "started" | "succeeded" | "failed_known" | "outcome_unknown";
+  readonly termination?: "completed" | "terminated" | "unknown";
+  readonly idempotencyKeyHash?: string;
+  readonly preconditionRevision?: string;
+  readonly postconditionRevision?: string;
+  readonly externalReference?: string;
   readonly reconciliation: ReconciliationState;
 }

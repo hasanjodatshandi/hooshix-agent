@@ -168,4 +168,30 @@ export function runMigrations(db: Database.Database): void {
   migrate(db, 10, "r3-canonical-task-aggregate-revision", () => {
     ensureColumn(db, "tasks", "task_revision", "INTEGER NOT NULL DEFAULT 0");
   });
+
+  // R3.02: append-only identity/intent for each attempted mutation. Finalizing
+  // an existing receipt updates only its observed outcome, never its identity.
+  // The table intentionally contains NO tool arguments, results or credentials.
+  migrate(db, 11, "r3-durable-mutation-execution-receipts", () => {
+    db.exec(`
+      CREATE TABLE execution_receipts (
+        execution_id TEXT PRIMARY KEY,
+        task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+        step_id INTEGER NOT NULL,
+        attempt INTEGER NOT NULL CHECK(attempt > 0),
+        tool_id TEXT NOT NULL,
+        effect TEXT NOT NULL CHECK(effect IN ('idempotent_mutation','non_idempotent_mutation')),
+        status TEXT NOT NULL CHECK(status IN ('started','succeeded','failed_known','outcome_unknown')),
+        started_at TEXT NOT NULL,
+        finished_at TEXT,
+        reconciliation TEXT NOT NULL,
+        termination TEXT,
+        receipt_json TEXT NOT NULL,
+        UNIQUE(task_id,step_id,attempt),
+        CHECK ((status = 'started' AND finished_at IS NULL) OR
+               (status != 'started' AND finished_at IS NOT NULL))
+      );
+      CREATE INDEX idx_execution_receipts_task_step ON execution_receipts(task_id,step_id,started_at);
+    `);
+  });
 }

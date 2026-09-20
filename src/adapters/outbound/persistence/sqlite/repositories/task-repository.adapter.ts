@@ -3,6 +3,7 @@ import type { TaskState } from "../../../../../core/state/task-state-machine.js"
 import { withAgentDatabase } from "../../../../../core/memory/database.js";
 import path from "node:path";
 import type Database from "better-sqlite3";
+import type { ExecutionReceipt } from "../../../../../domain/task/execution-outcome.js";
 
 interface TaskRow {
   id: string;
@@ -150,20 +151,94 @@ export function saveTaskStatus(taskId: string, status: TaskState, correlationId?
   void correlationId;
 }
 
-export function saveTaskStep(taskId: string, step: TaskStep, order: number): void {
-  ensureExtraColumns();
-  withAgentDatabase((db) => db.prepare(`
+/** Writes the mutable Step state. Receipt START is inserted in the same transaction before dispatch. */
+function writeStepRow(db:Database.Database,taskId:string,step:TaskStep,order:number):number {
+  return db.prepare(`
     UPDATE task_steps SET step_order=?, action=?, tool=?, input=?, dependencies=?, run_when=?, step_timeout_ms=?, status=?, output=?, error=?, error_type=?, attempts=?, failed_attempts=?, attempt_history=?, template_arguments=?, updated_at=?
     WHERE task_id=? AND step_id=?
-  `).run(order, step.action, step.tool ?? null, JSON.stringify(step.arguments ?? {}), JSON.stringify(step.dependsOn ?? []),
-    step.runWhen ?? "success",
-    step.timeout ?? null,
-    step.status, step.output === undefined ? null : JSON.stringify(step.output), step.error ?? null,
-    step.errorType ?? null,
-    step.attempts ?? 0, step.failedAttempts ?? 0,
-    step.attemptHistory ? JSON.stringify(step.attemptHistory) : null,
-    step.templateArguments ? JSON.stringify(step.templateArguments) : null,
-    new Date().toISOString(), taskId, step.id));
+  `).run(order,step.action,step.tool??null,JSON.stringify(step.arguments??{}),JSON.stringify(step.dependsOn??[]),
+    step.runWhen??"success",step.timeout??null,step.status,
+    step.output===undefined?null:JSON.stringify(step.output),step.error??null,step.errorType??null,
+    step.attempts??0,step.failedAttempts??0,
+    step.attemptHistory?JSON.stringify(step.attemptHistory):null,
+    step.templateArguments?JSON.stringify(step.templateArguments):null,
+    new Date().toISOString(),taskId,step.id).changes;
+}
+
+export function saveTaskStep(taskId:string,step:TaskStep,order:number):void {
+  ensureExtraColumns();
+  withAgentDatabase(db=>{writeStepRow(db,taskId,step,order);});
+}
+
+/**
+ * Durable mutation intent: the Step's running state and unique receipt start
+ * commit atomically before invoking the tool. No arguments/output/secret content
+ * is written to receipt history. A crash can leave a STARTED receipt; that is
+ * NOT proof of completion and is reconciled in the later R3.04-R3.06 leaf.
+ */
+export function beginStepExecutionReceipt(
+  taskId:string,step:TaskStep,order:number,receipt:ExecutionReceipt,
+):void {
+  if(step.status!=="running"||step.attempts===undefined||step.attempts<1||
+    receipt.status!=="started"||receipt.finishedAt!==undefined||
+    !receipt.executionId||receipt.stepId!==step.id||
+    (step.tool!==undefined&&receipt.toolId!==step.tool)||receipt.effect==="read_only"||
+    receipt.reconciliation!=="unresolved")
+    throw new Error("invalid_execution_receipt_start");
+  withAgentDatabase(db=>db.transaction(()=>{
+    if(writeStepRow(db,taskId,step,order)!==1)throw new Error("receipt_task_step_not_found");
+    db.prepare(`
+      INSERT INTO execution_receipts(
+        execution_id,task_id,step_id,attempt,tool_id,effect,status,
+        started_at,finished_at,reconciliation,termination,receipt_json
+      ) VALUES(?,?,?,?,?,?,?, ?,NULL,?,NULL,?)
+    `).run(receipt.executionId,taskId,step.id,step.attempts,receipt.toolId,receipt.effect,
+      "started",receipt.startedAt,receipt.reconciliation,JSON.stringify(receipt));
+  })());
+}
+
+/**
+ * Finalize only an existing STARTED receipt; never overwrite immutable
+ * execution identity, step/tool/effect, startedAt or an already-final state.
+ */
+export function finishStepExecutionReceipt(taskId:string,receipt:ExecutionReceipt):void {
+  if(receipt.status==="started"||!receipt.finishedAt||
+    !receipt.termination||receipt.status==="outcome_unknown"&&
+    (receipt.termination!=="unknown"||receipt.reconciliation!=="unresolved")||
+    receipt.status!=="outcome_unknown"&&receipt.reconciliation!=="not_required")
+    throw new Error("invalid_execution_receipt_finish");
+  withAgentDatabase(db=>db.transaction(()=>{
+    const row=db.prepare(`SELECT task_id,step_id,tool_id,effect,status,started_at,receipt_json
+      FROM execution_receipts WHERE execution_id=?`).get(receipt.executionId) as {
+        task_id:string;step_id:number;tool_id:string;effect:string;
+        status:string;started_at:string;receipt_json:string;
+      }|undefined;
+    if(!row||row.task_id!==taskId||row.step_id!==receipt.stepId||
+      row.tool_id!==receipt.toolId||row.effect!==receipt.effect||
+      row.status!=="started"||row.started_at!==receipt.startedAt)
+      throw new Error("execution_receipt_not_started_or_identity_mismatch");
+    const original=JSON.parse(row.receipt_json) as ExecutionReceipt;
+    if(original.effectId!==receipt.effectId||
+      original.idempotencyKeyHash!==receipt.idempotencyKeyHash||
+      original.preconditionRevision!==receipt.preconditionRevision||
+      original.externalReference!==receipt.externalReference&&original.externalReference!==undefined)
+      throw new Error("execution_receipt_identity_modified");
+    const result=db.prepare(`
+      UPDATE execution_receipts SET status=?,finished_at=?,termination=?,
+      reconciliation=?,receipt_json=? WHERE execution_id=? AND status='started'
+    `).run(receipt.status,receipt.finishedAt,receipt.termination,
+      receipt.reconciliation,JSON.stringify(receipt),receipt.executionId);
+    if(result.changes!==1)throw new Error("execution_receipt_already_finalized");
+  })());
+}
+
+/** Stable ascending attempt history for reconciliation/reporting. */
+export function listStepExecutionReceipts(taskId:string,stepId:number):ExecutionReceipt[] {
+  return withAgentDatabase(db=>(db.prepare(`
+    SELECT receipt_json FROM execution_receipts WHERE task_id=? AND step_id=?
+    ORDER BY rowid ASC
+  `).all(taskId,stepId) as Array<{receipt_json:string}>)
+    .map(row=>JSON.parse(row.receipt_json) as ExecutionReceipt));
 }
 
 /**
@@ -181,6 +256,12 @@ function hydrateTaskById(db:Database.Database,taskId:string):TaskPlan|null {
   if(!task)return null;
   const stepRows=db.prepare("SELECT * FROM task_steps WHERE task_id=? ORDER BY step_order")
     .all(taskId) as StepRow[];
+  const latestReceiptByStep=new Map<number,ExecutionReceipt>();
+  const receiptRows=db.prepare(`
+    SELECT step_id,receipt_json FROM execution_receipts WHERE task_id=? ORDER BY rowid ASC
+  `).all(taskId) as Array<{step_id:number;receipt_json:string}>;
+  for(const row of receiptRows)
+    latestReceiptByStep.set(row.step_id,JSON.parse(row.receipt_json) as ExecutionReceipt);
   let pendingApproval:TaskPlan["pendingApproval"];
   if(task.status==="waiting_approval") {
     const approval=db.prepare(`
@@ -211,7 +292,12 @@ function hydrateTaskById(db:Database.Database,taskId:string):TaskPlan|null {
     createdAt:task.created_at,
     updatedAt:task.updated_at,
     pendingApproval,
-    steps:stepRows.map(hydrateTaskStep),
+    steps:stepRows.map(row=>{
+      const step=hydrateTaskStep(row);
+      const receipt=latestReceiptByStep.get(step.id);
+      if(receipt)step.lastReceipt=receipt;
+      return step;
+    }),
   };
 }
 
