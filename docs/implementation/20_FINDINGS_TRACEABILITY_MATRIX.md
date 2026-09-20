@@ -36,7 +36,7 @@ Status values: `OPEN`, `TEST_ENCODED`, `IMPLEMENTING`, `IMPLEMENTED`, `VERIFIED_
 | MED-03 | No rate/concurrency limits | R5/R6 | 10,14,16 | 429/budget/concurrency tests | OPEN |
 | MED-04 | Shell cwd not workspace-authorized | R2 | 06,08,09,16 | outside cwd rejected for auto-approved path | VERIFIED_CLOSED |
 | MED-05 | Audit failure masks successful effect | R3/R6 | 11,15,16 | effect succeeds + sink fails -> success/degraded, no retry | TEST_ENCODED |
-| MED-06 | Direct MCP hides CAS/idempotency | R2 | 06,08,12,16 | direct/task parity tests | OPEN |
+| MED-06 | Direct MCP hides CAS/idempotency | R2 | 06,08,12,16 | direct/task parity tests | VERIFIED_CLOSED |
 | MED-07 | Project identity non-canonical | R4 | 12,13,16 | equivalent path one identity; collision migration test | TEST_ENCODED |
 | MED-08 | Task idempotency ignores payload | R3 | 11,13,16 | same key/diff hash conflict | TEST_ENCODED |
 | MED-09 | Append allows terminal tasks | R3 | 05,11,16 | completed/cancelled append rejected or explicit revision behavior | TEST_ENCODED |

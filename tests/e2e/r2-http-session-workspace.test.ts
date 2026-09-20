@@ -25,8 +25,14 @@ describe("R2.04 HTTP transport session-scoped real workspace",()=>{
     const runner=path.join(fixture.root,"http-runner.mts");
     fs.writeFileSync(runner,`import { startHttpServer } from ${JSON.stringify(pathToFileURL(path.join(repo,"src/mcp/http-server.ts")).href)};\nawait startHttpServer();\n`);
     const accessToken="R2_ONLY_SYNTHETIC_HTTP_TOKEN";
-    const child=spawn(process.execPath,[path.join(repo,"node_modules/tsx/dist/cli.mjs"),runner],{
-      cwd:fixture.root,
+    // Invoke tsx as a Node import in this process: the tsx CLI may fork a
+    // second Node process that survives killing the wrapper and locks the fixture DB.
+    const tsxLoader=pathToFileURL(path.join(repo,"node_modules/tsx/dist/loader.mjs")).href;
+    const child=spawn(process.execPath,["--import",tsxLoader,runner],{
+      // The child must not hold its temporary fixture directory as its cwd on Windows;
+      // node/tsx cleanup can retain a directory handle briefly after process close.
+      // All runtime DB/log/workspace paths remain explicitly isolated below.
+      cwd:repo,
       env:{...process.env,MCP_PORT:String(port),MCP_ACCESS_TOKEN:accessToken,
         HOOSHIX_WORKSPACE:[a,b].join(","),HOOSHIX_DB_PATH:path.join(fixture.root,"db","agent.sqlite"),
         HOOSHIX_LOG_DIR:path.join(fixture.root,"logs"),HOOSHIX_PERMISSION_LEVEL:"DEVELOPER_MODE"},

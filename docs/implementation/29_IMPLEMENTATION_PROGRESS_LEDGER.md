@@ -37,7 +37,7 @@ Notes on pre-existing dirty changes: none at R0 baseline; source hardening alrea
 |---|---|---|---|---|---|
 | R0 Baseline + regressions | GATE_PASSED | G0 PASS — all HIGH pre-fix contracts encoded; none resolved | 2026-09-19 | 2026-09-19 | 103 files / 492 passing / 18 expected failures; real two-process lease fixture; see R0_G0_COMPLETION_2026-09-19.md |
 | R1 Architecture + MCP v2 foundation | GATE_PASSED | G1 PASS — strict 166-source-file inventory zero candidates; new-tree dependency/in-memory adapter and composition tests pass; SDK v2 upgrade belongs to R5 | 2026-09-19 | 2026-09-20 | Full suite 119 files / 542 PASS + 18 expected RED; standalone/full typecheck and build PASS; see R1_G1_COMPLETION_2026-09-20.md |
-| R2 Unified tool/auth/workspace | IN_PROGRESS | G2 OPEN — R2.01 VERIFIED; R2.04 session isolation tested; R2.06/07/08 security fixes validated; R2.02/03/05/09 runtime cutover outstanding | 2026-09-20 | | 128 files / 572 PASS + 15 expected RED; Typecheck, Build, G1 (168 files/0 candidates) PASS; HIGH-02/03, MED-04, LOW-01 VERIFIED_CLOSED; see latest R2 worklog below |
+| R2 Unified tool/auth/workspace | IN_PROGRESS | G2 OPEN — R2.01 VERIFIED; R2.04 session isolation tested; R2.06/07/08 security fixes validated; R2.02/03/05/09 runtime cutover outstanding | 2026-09-20 | | 129 files / 573 PASS + 15 expected RED; Typecheck, Build, G1 (168 files/0 candidates) PASS; HIGH-02/03, MED-04/06, LOW-01 VERIFIED_CLOSED; see latest R2 worklog below |
 | R3 Task/recovery/idempotency/lease | NOT_STARTED | — | | | |
 | R4 Data integrity/compensation | NOT_STARTED | — | | | |
 | R5 HTTP/OAuth/MCP modern | NOT_STARTED | — | | | |
@@ -56,9 +56,9 @@ Allowed phase status: `NOT_STARTED`, `IN_PROGRESS`, `BLOCKED`, `GATE_FAILED`, `G
 | Severity | Total | OPEN | TEST_ENCODED | IMPLEMENTING | IMPLEMENTED | VERIFIED_CLOSED | DEFERRED_BY_OWNER |
 |---|---:|---:|---:|---:|---:|---:|---:|
 | HIGH | 13 | 0 | 11 | 0 | 0 | 2 | 0 |
-| MEDIUM | 29 | 19 | 9 | 0 | 0 | 1 | 0 |
+| MEDIUM | 29 | 18 | 9 | 0 | 0 | 2 | 0 |
 | LOW | 12 | 11 | 0 | 0 | 0 | 1 | 0 |
-| **TOTAL** | **54** | **30** | **20** | **0** | **0** | **4** | **0** |
+| **TOTAL** | **54** | **29** | **20** | **0** | **0** | **5** | **0** |
 
 The detailed source is `20_FINDINGS_TRACEABILITY_MATRIX.md`; keep totals consistent.
 
@@ -68,7 +68,7 @@ The detailed source is `20_FINDINGS_TRACEABILITY_MATRIX.md`; keep totals consist
 
 ```text
 Task ID (e.g. R2-07): R2.02 — shared ExecuteToolUseCase for direct MCP + Task (IN_PROGRESS)
-Finding IDs: HIGH-01/MED-06/MED-28 remain dependent on complete common gateway; HIGH-02/03, MED-04, LOW-01 separately VERIFIED_CLOSED with direct/Task regressions
+Finding IDs: HIGH-01/MED-28 remain dependent on complete common gateway; HIGH-02/03, MED-04/06, LOW-01 separately VERIFIED_CLOSED with direct/Task regressions
 Status: IN_PROGRESS — R2.01 descriptor catalog VERIFIED; isolated R2.02 app-level direct/Task scope resolution and R2.03 pure authorization policy implemented and tested, but production runtime gateway and effective authorization wiring remain unimplemented and separately gated
 Goal: implement and wire R2.02 shared MCP/Task gateway under G2 regression rules without breaking the R2.01 canonical catalog or G1 zero-candidate protection
 Files/modules planned: src/application/use-cases/tools/**, src/domain/tool/**, src/adapters/inbound/mcp/** and legacy src/tools/**/src/core/** call paths; validate complete catalog and retain R1 boundaries
@@ -76,7 +76,7 @@ Architecture layer(s): R1 Domain/Application and global static G1 boundaries PAS
 Tests to add first: exhaustive catalog parity, direct MCP/Task shared authorization and R0 HIGH-01/02/03 regression conversion only after actual R2 fixes
 External docs rechecked (if version-sensitive): SDK v2 NOT selected or migrated in R1; existing SDK v1 remains only in legacy inbound paths; verify actual v2 packages/spec before R5 migration
 Start timestamp: 2026-09-20
-Notes: R1 G1 PASSED; latest R2 run 15 expected failures; 4 findings VERIFIED_CLOSED; 50 unresolved. R2/G2 remains OPEN; no live gateway production cutover
+Notes: R1 G1 PASSED; latest R2 run 15 expected failures; 5 findings VERIFIED_CLOSED; 49 unresolved. R2/G2 remains OPEN; no live gateway production cutover
 ```
 
 ---
@@ -527,3 +527,10 @@ Finding IDs: architectural G1; no HIGH/MED/LOW finding independently closed.
 - **Full validation:** `pnpm exec vitest run` 128 test files / 572 PASS / 15 expected pre-fix RED (587 total); no unexpected failure. `pnpm run typecheck` PASS (standalone and complete TypeScript); `pnpm run build` PASS; `node scripts/verify-g1-global.mjs --strict` PASS (168 source files, zero candidates). Task evidence ID: `8b831f1c-3404-43b2-9471-c37d044dc512`. Focused coverage additionally includes direct-file schema parity and fake gateway/authorization tests.
 - **Migration/rollback:** no SQL migration, deployment, service restart, push, merge, live user-file mutation, or destructive Git cleanup. Changes remain on `feature/r2-unified-tool-gateway-2026-09-20`; no production cutover implied.
 - **Remaining leaf dependency:** R2.02 real direct MCP + durable Task shared gateway, R2.03 actual authenticated principal/server-ceiling/scope/request authorization, R2.05 exact approval and unrestricted-capability controls, R2.09 remove alternate execution paths, then run the complete G2 matrix. Do not mark G2 passed or begin R3 on the basis of this bounded remediation.
+
+## R2.08 — direct MCP and durable Task CAS/idempotency verified — 2026-09-20
+
+- **MED-06 VERIFIED_CLOSED:** actual MCP `read_file(includeSha256)`, `write_file(ifMatchSha256,idempotencyKey)` and `modify_file(ifMatchSha256)` operate on the same underlying file service as durable Task handlers, with identical revision checks and no stale overwrite. `tests/e2e/r2-file-cas-real-parity.test.ts` performs direct read/write/replay/stale rejection, Task read-to-write revision templates, direct modify/stale rejection and Task read-to-modify templates on a marker-protected disposable directory. Fake adapter/schema parity remains in `tests/core/r2-direct-file-parity.test.ts`. This closure is for exposed and enforced file CAS/idempotency parity, **not** approval binding or a common execution gateway.
+- **Windows HTTP E2E fixture cleanup:** `tests/e2e/r2-http-session-workspace.test.ts` no longer starts its child with its disposable directory as cwd; test DB/log/roots remain explicitly isolated within the fixture. Child process close precedes protected fixture cleanup. Two separate runs pass; an earlier full-suite run failed with Windows EPERM during fixture teardown, without evidence of authorization behavior failure. This test-harness correction makes the subsequent complete suite green; no recursive cleanup outside the fixture namespace.
+- **Full validated baseline:** `pnpm exec vitest run` 129 files / 573 PASS + 15 expected pre-fix RED (588 total), no unexpected test failures; `pnpm run typecheck` PASS, `pnpm run build` PASS, `node scripts/verify-g1-global.mjs --strict` PASS (168 files, zero candidates). Task evidence `f90ebae7-a168-46e6-9f2e-4ceb63a13726`.
+- **Phase and release status:** R2.02/R2.03 runtime wiring, R2.05 scope elevation/verified approvals and R2.09 alternate execution-path retirement remain required. G2 OPEN; do not enter R3 or claim production security/release readiness. No merge, push, live data migration, runtime restart or deployment.
