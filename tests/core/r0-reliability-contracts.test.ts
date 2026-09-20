@@ -33,7 +33,7 @@ function git(cwd: string, ...args: string[]): string {
 }
 
 describe("R0 execution-reality and compensation safety contracts", () => {
-  it.fails("HIGH-05: timeout must await termination acknowledgement before returning the uncertain result", async () => {
+  it("HIGH-05: timeout awaits acknowledgement and records known completion instead of prematurely finalizing", async () => {
     // The mock intentionally ignores cancellation, modeling a child process
     // still performing a side effect after the step's timeout fires.
     let settled = false;
@@ -52,9 +52,8 @@ describe("R0 execution-reality and compensation safety contracts", () => {
         completeEffect();
         return { mocked: true };
       }, 0, 0, undefined, undefined, undefined, 1);
-      expect(result.plan.steps[0].status).toBe("outcome_unknown");
-      // The current implementation returns immediately after calling abort;
-      // the underlying non-cooperative operation is still in flight.
+      expect(result.plan.steps[0].status).toBe("completed");
+      // Completion was acknowledged during bounded termination grace.
       expect(settled).toBe(true);
     } finally { await effectCompletion; }
   }, 10000);

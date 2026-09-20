@@ -3,6 +3,7 @@ import type { TaskState } from "../../../../../core/state/task-state-machine.js"
 import { withAgentDatabase } from "../../../../../core/memory/database.js";
 import path from "node:path";
 import type Database from "better-sqlite3";
+import {assertTaskLeaseWrite} from "./task-lease.adapter.js";
 import type { ExecutionReceipt } from "../../../../../domain/task/execution-outcome.js";
 
 interface TaskRow {
@@ -14,6 +15,7 @@ interface TaskRow {
   execution_context?: string | null;
   max_recovery?: number | null;
   idempotency_key: string | null;
+  request_hash: string | null;
   retry_policy: string | null;
   total_run_count: number | null;
   task_revision: number | null;
@@ -91,18 +93,20 @@ export function saveTaskPlan(plan: TaskPlan, status: TaskState = plan.state ?? "
   const transaction = withAgentDatabase((db) => {
     const now = new Date().toISOString();
     return db.transaction(() => {
+      assertTaskLeaseWrite(db,plan.id);
       db.prepare(`
-        INSERT INTO tasks(id, title, description, status, correlation_id, idempotency_key, execution_context, max_recovery, retry_policy, total_run_count, task_revision, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO tasks(id, title, description, status, correlation_id, idempotency_key, request_hash, execution_context, max_recovery, retry_policy, total_run_count, task_revision, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(id) DO UPDATE SET title=excluded.title, description=excluded.description,
           status=excluded.status, correlation_id=COALESCE(excluded.correlation_id, tasks.correlation_id),
           idempotency_key=COALESCE(excluded.idempotency_key, tasks.idempotency_key),
+          request_hash=COALESCE(tasks.request_hash, excluded.request_hash),
           execution_context=COALESCE(excluded.execution_context, tasks.execution_context),
           max_recovery=COALESCE(excluded.max_recovery, tasks.max_recovery),
           retry_policy=COALESCE(excluded.retry_policy, tasks.retry_policy),
           total_run_count=excluded.total_run_count, task_revision=excluded.task_revision,
           updated_at=excluded.updated_at
-      `).run(plan.id, plan.task, plan.description ?? plan.task, status, correlationId ?? null, plan.idempotencyKey ?? null,
+       `).run(plan.id, plan.task, plan.description ?? plan.task, status, correlationId ?? null, plan.idempotencyKey ?? null, plan.requestHash ?? null,
         plan.executionContext ? JSON.stringify(plan.executionContext) : null,
         plan.maxRecovery ?? null,
         plan.retryPolicy ? JSON.stringify(plan.retryPolicy) : null,
@@ -144,10 +148,13 @@ export function saveTaskPlan(plan: TaskPlan, status: TaskState = plan.state ?? "
  */
 export function saveTaskStatus(taskId: string, status: TaskState, correlationId?: string): void {
   ensureExtraColumns();
-  withAgentDatabase((db) => db.prepare(`
-    UPDATE tasks SET status = ?, updated_at = ?, last_heartbeat = ?
-    WHERE id = ?
-  `).run(status, new Date().toISOString(), new Date().toISOString(), taskId));
+  withAgentDatabase(db=>db.transaction(()=>{
+    assertTaskLeaseWrite(db,taskId);
+    return db.prepare(`
+      UPDATE tasks SET status = ?, updated_at = ?, last_heartbeat = ?
+      WHERE id = ?
+    `).run(status,new Date().toISOString(),new Date().toISOString(),taskId);
+  })());
   void correlationId;
 }
 
@@ -167,7 +174,10 @@ function writeStepRow(db:Database.Database,taskId:string,step:TaskStep,order:num
 
 export function saveTaskStep(taskId:string,step:TaskStep,order:number):void {
   ensureExtraColumns();
-  withAgentDatabase(db=>{writeStepRow(db,taskId,step,order);});
+  withAgentDatabase(db=>db.transaction(()=>{
+    assertTaskLeaseWrite(db,taskId);
+    writeStepRow(db,taskId,step,order);
+  })());
 }
 
 /**
@@ -186,6 +196,7 @@ export function beginStepExecutionReceipt(
     receipt.reconciliation!=="unresolved")
     throw new Error("invalid_execution_receipt_start");
   withAgentDatabase(db=>db.transaction(()=>{
+    assertTaskLeaseWrite(db,taskId);
     if(writeStepRow(db,taskId,step,order)!==1)throw new Error("receipt_task_step_not_found");
     db.prepare(`
       INSERT INTO execution_receipts(
@@ -208,6 +219,7 @@ export function finishStepExecutionReceipt(taskId:string,receipt:ExecutionReceip
     receipt.status!=="outcome_unknown"&&receipt.reconciliation!=="not_required")
     throw new Error("invalid_execution_receipt_finish");
   withAgentDatabase(db=>db.transaction(()=>{
+    assertTaskLeaseWrite(db,taskId);
     const row=db.prepare(`SELECT task_id,step_id,tool_id,effect,status,started_at,receipt_json
       FROM execution_receipts WHERE execution_id=?`).get(receipt.executionId) as {
         task_id:string;step_id:number;tool_id:string;effect:string;
@@ -248,7 +260,7 @@ export function listStepExecutionReceipts(taskId:string,stepId:number):Execution
  */
 function hydrateTaskById(db:Database.Database,taskId:string):TaskPlan|null {
   const task=db.prepare(`
-    SELECT id,title,description,status,correlation_id,idempotency_key,
+    SELECT id,title,description,status,correlation_id,idempotency_key,request_hash,
       execution_context,max_recovery,retry_policy,total_run_count,
       task_revision,created_at,updated_at
     FROM tasks WHERE id=?
@@ -283,6 +295,7 @@ function hydrateTaskById(db:Database.Database,taskId:string):TaskPlan|null {
     description:task.description,
     correlationId:task.correlation_id??undefined,
     idempotencyKey:task.idempotency_key??undefined,
+    requestHash:task.request_hash??undefined,
     state:task.status,
     executionContext:parseJson(task.execution_context??null,undefined) as TaskExecutionContext|undefined,
     maxRecovery:task.max_recovery??undefined,
@@ -312,6 +325,69 @@ export function listTasks(limit = 50): Array<Record<string, unknown>> {
     SELECT id, title, description, status, correlation_id, created_at, updated_at
     FROM tasks ORDER BY updated_at DESC LIMIT ?
   `).all(limit) as Array<Record<string, unknown>>);
+}
+
+/**
+ * R3.05: evidence-based reconciliation changes only the interrupted STEP state,
+ * never fabricates the original tool's return value. Every decision and receipt
+ * update is in the same transaction. Resolved success remains distinguishable
+ * from normal completed execution.
+ */
+export function applyTaskReconciliationDecision(input:{
+  taskId:string;stepId:number;
+  decision:"confirmed_succeeded"|"confirmed_failed"|"safe_to_retry";
+  evidence:string;verificationTaskId:string;
+}):void {
+  withAgentDatabase(db=>db.transaction(()=>{
+    assertTaskLeaseWrite(db,input.taskId);
+    const task=db.prepare("SELECT status FROM tasks WHERE id=?").get(input.taskId) as {status:string}|undefined;
+    const step=db.prepare("SELECT status,tool,input FROM task_steps WHERE task_id=? AND step_id=?")
+      .get(input.taskId,input.stepId) as {status:string;tool:string|null;input:string}|undefined;
+    if(task?.status!=="failed"||step?.status!=="outcome_unknown")
+      throw new Error("reconciliation_requires_failed_task_with_unknown_step");
+    const newStatus=input.decision==="confirmed_succeeded"?"reconciled_succeeded":
+      input.decision==="confirmed_failed"?"reconciled_failed":"pending";
+    let nextTaskState=input.decision==="confirmed_failed"?"failed":"planning";
+    const receiptRow=db.prepare(`SELECT execution_id,receipt_json FROM execution_receipts
+      WHERE task_id=? AND step_id=? ORDER BY rowid DESC LIMIT 1`)
+      .get(input.taskId,input.stepId) as {execution_id:string;receipt_json:string}|undefined;
+    if(input.decision==="safe_to_retry"&&
+      (!receiptRow||step.tool!=="create_file"||
+       !(JSON.parse(receiptRow.receipt_json) as ExecutionReceipt).idempotencyKeyHash))
+      throw new Error("safe_to_retry_requires_verified_durable_tool_idempotency");
+    const stepUpdate=db.prepare(`UPDATE task_steps SET status=?,error=?,updated_at=?
+      WHERE task_id=? AND step_id=? AND status='outcome_unknown'`)
+      .run(newStatus,
+        input.decision==="safe_to_retry"?null:
+        input.decision==="confirmed_succeeded"?"Effect observed independently; original tool result remains unknown":
+        "No effect reported by independent verification; original tool result remains unknown",
+        new Date().toISOString(),input.taskId,input.stepId);
+    if(stepUpdate.changes!==1)throw new Error("reconciliation_conflict");
+    if(input.decision==="confirmed_succeeded"){
+      const pending=(db.prepare(`SELECT COUNT(*) AS count FROM task_steps
+        WHERE task_id=? AND status NOT IN ('completed','reconciled_succeeded','cancelled')`)
+        .get(input.taskId) as {count:number}).count;
+      if(pending===0)nextTaskState="completed";
+    }
+    const taskUpdate=db.prepare(`UPDATE tasks SET status=?,updated_at=? WHERE id=? AND status='failed'`)
+      .run(nextTaskState,new Date().toISOString(),input.taskId);
+    if(taskUpdate.changes!==1)throw new Error("reconciliation_conflict");
+    if(receiptRow){
+      const receipt=JSON.parse(receiptRow.receipt_json) as ExecutionReceipt;
+      // Observed external state is NOT retroactive proof that the tool call
+      // returned normally, so receipt.status remains outcome_unknown.
+      if(receipt.status==="outcome_unknown"&&receipt.reconciliation==="unresolved"){
+        const decisionState=input.decision==="confirmed_succeeded"?"effect_observed":
+          input.decision==="confirmed_failed"?"effect_not_observed":"effect_not_observed";
+        db.prepare("UPDATE execution_receipts SET reconciliation=?,receipt_json=? WHERE execution_id=?")
+          .run(decisionState,JSON.stringify({...receipt,reconciliation:decisionState}),receiptRow.execution_id);
+      }
+    }
+    db.prepare(`INSERT INTO memory_items(project_id,task_id,kind,content,created_at)
+      VALUES(NULL,?,'outcome_reconciliation',?,?)`).run(input.taskId,JSON.stringify({
+        ...input,recordedAt:new Date().toISOString(),originalToolResult:"unknown",replayed:false,
+      }),new Date().toISOString());
+  })());
 }
 
 export function saveMemoryItem(input: { taskId?: string; projectId?: string; kind: string; content: unknown }): number {
@@ -455,9 +531,11 @@ export function listProjects(
 
 export function updateTaskHeartbeat(taskId: string): void {
   ensureExtraColumns();
-  withAgentDatabase((db) => db.prepare(
-    "UPDATE tasks SET last_heartbeat = ? WHERE id = ?"
-  ).run(new Date().toISOString(), taskId));
+  withAgentDatabase(db=>db.transaction(()=>{
+    assertTaskLeaseWrite(db,taskId);
+    db.prepare("UPDATE tasks SET last_heartbeat = ? WHERE id = ?")
+      .run(new Date().toISOString(),taskId);
+  })());
 }
 
 // ─── Crash Recovery ─────────────────────────────────────────────────
@@ -478,7 +556,9 @@ export function findInterruptedTasks():TaskPlan[] {
 }
 
 export function markTaskRecovered(taskId: string): void {
-  withAgentDatabase((db) => db.prepare(
-    "UPDATE tasks SET status = 'resuming', last_heartbeat = ? WHERE id = ?"
-  ).run(new Date().toISOString(), taskId));
+  withAgentDatabase(db=>db.transaction(()=>{
+    assertTaskLeaseWrite(db,taskId);
+    db.prepare("UPDATE tasks SET status = 'resuming', last_heartbeat = ? WHERE id = ?")
+      .run(new Date().toISOString(),taskId);
+  })());
 }

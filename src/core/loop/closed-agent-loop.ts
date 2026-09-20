@@ -4,10 +4,10 @@ import type { TaskPlan, TaskStep } from "../../application/dto/legacy-task-plan.
 import { executeToolStep } from "../../application/services/legacy-tool-orchestrator.js";
 import { UnifiedRecoveryService, type RecoveryProvider } from "../trace/unified-recovery-service.js";
 import { getExecutionTrace } from "../memory/execution-trace.js";
-import { saveDecisionWithContext, saveExecutionWithContext, saveTaskWithContext } from "../memory/context-memory.js";
+import { saveDecisionWithContext as persistDecisionEvent, saveExecutionWithContext as persistExecutionEvent, saveTaskWithContext as persistTaskEvent } from "../memory/context-memory.js";
 import { checkStepGovernance } from "../governance/step-governance.js";
 import { createApprovalRequest } from "../governance/approval-memory.js";
-import { checkpointStep } from "./checkpoint-integration.js";
+import { checkpointStep as persistCheckpoint } from "./checkpoint-integration.js";
 import { PersistentRecoveryObservability } from "../trace/persistent-recovery-observability.js";
 import type { RecoveryObservabilitySink } from "../trace/recovery-observability.js";
 import { saveTaskPlan, saveTaskStep, saveTaskStatus, updateTaskHeartbeat } from "../memory/task-repository.js";
@@ -22,6 +22,20 @@ import { requestsUnrestrictedEffect, hasInvalidUnrestrictedArgument } from "../.
 import { selectTool } from "../../application/services/legacy-tool-orchestrator.js";
 import { buildStepContext, resolveTemplates, hasTemplates, validateTemplates, MissingVariableError } from "../runtime/template-resolver.js";
 import { classifyError, isTransientError } from "../errors.js";
+import { terminationGraceMs } from "../../infrastructure/config/r3-termination-grace-config.js";
+
+import {bestEffortTelemetry} from "../trace/telemetry-degradation.js";
+
+// Timeline, checkpoint and diagnostic persistence is observability, not an
+// authority on external effects. Receipt and Task state writes remain strict.
+const checkpointStep:typeof persistCheckpoint=(...args)=>
+  bestEffortTelemetry(()=>persistCheckpoint(...args));
+const saveExecutionWithContext:typeof persistExecutionEvent=(...args)=>
+  bestEffortTelemetry(()=>persistExecutionEvent(...args));
+const saveDecisionWithContext:typeof persistDecisionEvent=(...args)=>
+  bestEffortTelemetry(()=>persistDecisionEvent(...args));
+const saveTaskWithContext:typeof persistTaskEvent=(...args)=>
+  bestEffortTelemetry(()=>persistTaskEvent(...args));
 
 const MAX_PERSISTED_RESULT_BYTES = 128 * 1024;
 const MAX_RESULT_PREVIEW_CHARACTERS = 32 * 1024;
@@ -46,19 +60,50 @@ function sleep(ms: number): Promise<void> {
  * IMPORTANT: This function requires the AbortController itself (not just its signal)
  * so it can call abort() which triggers execa's cancelSignal → process kill.
  */
-function withStepTimeout<T>(promise: Promise<T>, timeoutMs: number, abortController?: AbortController): Promise<{ result?: T; timedOut: boolean }> {
-  if (timeoutMs <= 0) return promise.then((result) => ({ result, timedOut: false }));
-  return new Promise<{ result?: T; timedOut: boolean }>((resolve, reject) => {
-    const timer = setTimeout(() => {
-      // Abort the controller so execa's cancelSignal triggers process tree kill
-      abortController?.abort();
-      resolve({ timedOut: true });
-    }, timeoutMs);
-    promise.then(
-      (result) => { clearTimeout(timer); resolve({ result, timedOut: false }); },
-      (error) => { clearTimeout(timer); reject(error); }
-    );
-  });
+/** Timeout is cancellation REQUEST, not proof of termination.
+ * After the deadline the exact underlying promise is observed for a bounded
+ * acknowledgement grace. A late successful result is known; an aborted
+ * rejection or unacknowledged call cannot establish that no mutation occurred.
+ */
+type TimedResult<T>=
+  |{timedOut:false;settled:true;result:T}
+  |{timedOut:true;settled:true;result:T}
+  |{timedOut:true;settled:true;error:unknown}
+  |{timedOut:true;settled:false};
+async function withStepTimeout<T>(
+  promise:Promise<T>,timeoutMs:number,controller?:AbortController,grace:number=5000,
+):Promise<TimedResult<T>> {
+  if(timeoutMs<=0)return {timedOut:false,settled:true,result:await promise};
+  let timer:ReturnType<typeof setTimeout>|undefined;
+  const normal=promise.then(
+    result=>({kind:"result" as const,result}),
+    error=>({kind:"error" as const,error}),
+  );
+  try{
+    const initial=await Promise.race([
+      normal,
+      new Promise<{kind:"timeout"}>(resolve=>{
+        timer=setTimeout(()=>resolve({kind:"timeout"}),timeoutMs);
+      }),
+    ]);
+    if(initial.kind==="result")return {timedOut:false,settled:true,result:initial.result};
+    if(initial.kind==="error")throw initial.error;
+    controller?.abort();
+    let graceTimer:ReturnType<typeof setTimeout>|undefined;
+    try{
+      const acknowledged=await Promise.race([
+        normal,
+        new Promise<{kind:"unacknowledged"}>(resolve=>{
+          graceTimer=setTimeout(()=>resolve({kind:"unacknowledged"}),grace);
+        }),
+      ]);
+      if(acknowledged.kind==="result")
+        return {timedOut:true,settled:true,result:acknowledged.result};
+      if(acknowledged.kind==="error")
+        return {timedOut:true,settled:true,error:acknowledged.error};
+      return {timedOut:true,settled:false};
+    }finally{if(graceTimer!==undefined)clearTimeout(graceTimer);}
+  }finally{if(timer!==undefined)clearTimeout(timer);}
 }
 
 function boundedResult(value: unknown): unknown {
@@ -126,12 +171,20 @@ export async function runClosedAgentLoop(
   if (plan.state !== "executing") move(plan, "executing");
   const recovery = recoveryService ?? new UnifiedRecoveryService({ getTrace: () => getExecutionTrace(runtimeContext.correlationId) }, recoverySink);
 
+  // A preceding unknown mutation blocks ALL subsequent effects, including
+  // corrective steps appended after the unknown result. This is checked before
+  // moving state or attempting to reuse a prior approval.
+  if(plan.steps.some(step=>step.status==="outcome_unknown")){
+    move(plan,"failed");
+    return {status:"failed",plan,completedSteps,correlationId:runtimeContext.correlationId,
+      reason:"outcome_unknown_requires_reconciliation"};
+  }
   while (index < plan.steps.length) {
     const step = plan.steps[index];
 
     // Skip already-completed or cancelled steps — they are immutable (TR-02).
     // Only pending, failed, outcome_unknown, or blocked steps should be executed.
-    if (step.status === "completed" || step.status === "cancelled") {
+    if (step.status === "completed" || step.status === "cancelled" || step.status === "reconciled_succeeded") {
       index++;
       continue;
     }
@@ -285,14 +338,20 @@ export async function runClosedAgentLoop(
         ? runWithTrustedTaskApproval(approvedRequestId, () => executeToolStep(step, executor, signal))
         : executeToolStep(step, executor, signal);
       const timeout = step.timeout ?? 30_000;
+      const grace=terminationGraceMs(); // config validation before effect dispatch
       // Service compatibility context is installed only inside the R2 handler
       // after the shared gateway has verified and claimed the exact Task approval.
-      const { result: raw, timedOut } = await withStepTimeout(
+      const outcome = await withStepTimeout(
         execute(),
         timeout,
-        stepAbort
+        stepAbort,
+        grace
       );
-      if (timedOut) {
+      // A late *fulfilled* tool result, observed before grace expires,
+      // establishes the actual tool-return outcome. Cancellation rejection
+      // does NOT establish that a mutation had no externally committed effect.
+      const raw = outcome.settled && "result" in outcome ? outcome.result : undefined;
+      if (outcome.timedOut && (!outcome.settled || "error" in outcome)) {
         if(activeReceipt){
           activeReceipt=finalizeMutationReceipt(activeReceipt,"outcome_unknown");
           finishStepExecutionReceipt(plan.id,activeReceipt);
@@ -309,29 +368,13 @@ export async function runClosedAgentLoop(
         persistStep();
         checkpointStep({ taskId: plan.id, stepId: step.id, stepIndex: index, status: "outcome_unknown", context: runtimeContext });
         saveExecutionWithContext({ taskId: plan.id, stepId: step.id, action: step.action, result: { error: step.error, errorType: "TIMEOUT", timeout, reconciliationRequired: true }, status: "outcome_unknown", context: runtimeContext });
-        if (recoveries >= maxRecovery) {
-          failedAt = failedAt === -1 ? index : failedAt;
-          index++;
-          continue; // Continue loop for runWhen=failure steps
-        }
-        // Allow recovery on timeout (TimeoutError → classifyError → "retry")
-        move(plan, "recovering");
-        const action = recovery.decideRecovery(recovery.analyzeFailure(runtimeContext.correlationId));
-        recoveries++;
-        saveDecisionWithContext({ taskId: plan.id, reason: action.reason, action: action.type, context: runtimeContext });
-        saveExecutionWithContext({ taskId: plan.id, stepId: step.id, action: `recovery_attempt_${recoveries}`, result: { type: "recovery_attempt", attempt: recoveries, strategy: action.type, reason: "timeout", stepId: step.id, outcome: action.type === "stop" ? "not_recovered" : "retrying" }, status: action.type === "stop" ? "failed" : "completed", context: runtimeContext });
-        const recovered = recovery.executeRecovery(plan, action, { correlationId: runtimeContext.correlationId, taskId: plan.id, sink: recoverySink, stepIndex: index, retryCount: recoveries });
-        if (action.type === "stop" || !recovered) {
-          failedAt = failedAt === -1 ? index : failedAt;
-          index++;
-          continue; // Continue loop for runWhen=failure steps
-        }
-        // Backoff before the hot retry loop hammers the same operation
-        await sleep(backoffDelayMs(recoveries));
-        step.status = "pending";
-        move(plan, "executing");
-        // retry stays at this index
-        continue;
+        // R3.04: a timed-out mutation has no proven safe replay. Never feed it
+        // to self-healing or continue later steps until reconciliation.
+        failedAt=index;
+        move(plan,"failed");
+        return {status:"failed",plan,completedSteps,correlationId:runtimeContext.correlationId,
+          reason:"outcome_unknown_requires_reconciliation"};
+
       }
       // Unwrap { tool, result } from executeToolStep so template resolver
       // can access flat fields like {{step1.output.path}} directly
@@ -376,9 +419,9 @@ export async function runClosedAgentLoop(
             error:step.error,timestamp:new Date().toISOString(),
           }];
           persistStep();
-          failedAt=failedAt===-1?index:failedAt;
-          index++;
-          continue;
+          move(plan,"failed");
+          return {status:"failed",plan,completedSteps,correlationId:runtimeContext.correlationId,
+            reason:"outcome_unknown_requires_reconciliation"};
         }
       }
       const message = error instanceof Error ? error.message : String(error);

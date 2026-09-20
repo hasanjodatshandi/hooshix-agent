@@ -1,4 +1,5 @@
 import { insertToolCallAuditRow } from "../../adapters/outbound/persistence/sqlite/repositories/tool-call-audit.adapter.js";
+import {bestEffortTelemetry} from "../trace/telemetry-degradation.js";
 
 /** Classify tool calls into categories for metric separation. */
 const OBSERVABILITY_TOOLS = new Set([
@@ -25,19 +26,21 @@ function record(tool: string, correlationId: string, taskId: string | undefined,
 }
 
 export async function auditToolCall<T>(
-  tool: string,
-  correlationId: string,
-  taskId: string | undefined,
-  operation: () => Promise<T> | T
-): Promise<T> {
-  const startedAt = new Date().toISOString();
-  const started = performance.now();
-  try {
-    const result = await operation();
-    record(tool, correlationId, taskId, "success", startedAt, Math.max(0, Math.round(performance.now() - started)));
-    return result;
-  } catch (error) {
-    record(tool, correlationId, taskId, "failed", startedAt, Math.max(0, Math.round(performance.now() - started)), error);
+  tool:string,correlationId:string,taskId:string|undefined,
+  operation:()=>Promise<T>|T,
+):Promise<T>{
+  const startedAt=new Date().toISOString(),started=performance.now();
+  let outcome:T;
+  try{outcome=await operation();}
+  catch(error){
+    // Audit failure must not replace the ORIGINAL business failure.
+    bestEffortTelemetry(()=>record(tool,correlationId,taskId,"failed",startedAt,
+      Math.max(0,Math.round(performance.now()-started)),error));
     throw error;
   }
+  // This is outside the operation try/catch: if audit persistence fails after
+  // a successful external side effect, do not reinterpret it as tool failure.
+  bestEffortTelemetry(()=>record(tool,correlationId,taskId,"success",startedAt,
+    Math.max(0,Math.round(performance.now()-started))));
+  return outcome;
 }

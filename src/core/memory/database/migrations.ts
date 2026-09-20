@@ -194,4 +194,25 @@ export function runMigrations(db: Database.Database): void {
       CREATE INDEX idx_execution_receipts_task_step ON execution_receipts(task_id,step_id,started_at);
     `);
   });
+  // R3.07: monotonic fencing version must survive release/reacquire.
+  migrate(db,12,"r3-durable-task-execution-lease",()=>{
+    db.exec(`
+      CREATE TABLE task_leases (
+        task_id TEXT PRIMARY KEY REFERENCES tasks(id) ON DELETE CASCADE,
+        owner_id TEXT NOT NULL,
+        lease_token TEXT NOT NULL,
+        version INTEGER NOT NULL CHECK(version>0),
+        acquired_at TEXT NOT NULL,
+        heartbeat_at TEXT NOT NULL,
+        expires_at TEXT NOT NULL,
+        released_at TEXT
+      );
+      CREATE INDEX idx_task_leases_expiry ON task_leases(expires_at);
+    `);
+  });
+  // R3.08: the key cannot be reused for a different canonical request or scope.
+  // Legacy keyed rows have no verified hash; reject their ambiguous replay.
+  migrate(db,13,"r3-task-creation-request-hash",()=>{
+    ensureColumn(db,"tasks","request_hash","TEXT");
+  });
 }

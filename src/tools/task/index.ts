@@ -10,7 +10,6 @@ import { getApprovalRequest } from "../../core/governance/approval-memory.js";
 
 import { TOOL_NAMES, validateToolName } from "../../application/services/legacy-tool-orchestrator.js";
 import { ReplayExecutor } from "../../core/trace/replay-executor.js";
-import { recordTaskReconciliation } from "../../core/recovery/task-reconciliation.js";
 import { AgentError } from "../../core/errors.js";
 import { persistAppendedTaskSteps, persistTaskLink, getPersistedTaskLinks } from "../../adapters/outbound/persistence/sqlite/repositories/task-tool-persistence.adapter.js";
 
@@ -44,18 +43,14 @@ export function registerTaskTools(server: McpServer) {
   server.registerTool("task_create", { title: "Create Task", description: "🗂️ TASK — Persist an explicit multi-step plan. Lifecycle: task_create → task_run → (approval?) task_approve → task_resume → task_report.\n\nEach step: { action, tool, arguments, dependsOn?, runWhen?, timeout? }.\n\nTEMPLATE VARIABLES pass output between steps: {{stepN.output.field}} · {{stepN.output}} · {{stepN.status}} · {{stepN.error}}\n\nExample:\n{ \"title\": \"Setup\", \"steps\": [\n  { \"action\": \"Create pkg\", \"tool\": \"create_file\", \"arguments\": { \"path\": \"package.json\", \"content\": \"{}\" } },\n  { \"action\": \"Install deps\", \"tool\": \"install_package\", \"arguments\": { \"manager\": \"npm\", \"name\": \"express\" }, \"dependsOn\": [1] }\n] }\n\nretryPolicy: { maxTotalAttempts, maxConsecutiveFailures } limits re-runs. idempotencyKey deduplicates retries.", annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false },    inputSchema: z.object({ title: z.string().min(1).max(200), description: z.string().max(4000).optional(), steps: z.array(stepSchema).min(1).max(100), retryPolicy: z.object({ maxTotalAttempts: z.number().int().min(1).max(100).optional(), maxConsecutiveFailures: z.number().int().min(1).max(50).optional() }).optional(), idempotencyKey: z.string().max(200).optional(), ...traceSchema }) }, async ({ title, description, steps, retryPolicy, idempotencyKey, correlationId }) => {
     assertToolPermission("task_create"); const traceId = resolveCorrelationId(correlationId);
     return auditToolCall("task_create", traceId, undefined, () => {
-      // If idempotencyKey is provided, check for existing task with same key
-      if (idempotencyKey) {
-        const existingId = findTaskByIdempotencyKey(idempotencyKey);
-        if (existingId) {
-          // A global idempotency-key hit may belong to another authenticated
-          // session. Do not disclose its id or reuse its plan across principals.
-          // The runtime checks the persisted Task owner/session before returning.
-          runtime.get(existingId);
-          return response({ id: existingId, idempotent: true, message: "Existing task returned for this idempotency key" }, traceId);
-        }
-      }
-      return response(runtime.create({ title, description, steps: steps.map((step) => ({ ...step, status: "pending" as const })), retryPolicy, idempotencyKey, correlationId: traceId }), traceId);
+      // Only the runtime may decide whether a key is an identical request:
+      // a bare key lookup cannot authorize a changed payload or a new scope.
+      const priorId=idempotencyKey?findTaskByIdempotencyKey(idempotencyKey):undefined;
+      const created=runtime.create({title,description,steps:steps.map(step=>({...step,status:"pending" as const})),
+        retryPolicy,idempotencyKey,correlationId:traceId});
+      return response(priorId===created.id
+        ?{id:created.id,idempotent:true,message:"Existing task returned for this idempotency key"}
+        :created,traceId);
     });
   });
   server.registerTool("task_get", { title: "Get Task", description: "🗂️ TASK (read) — Full task object: state, steps with statuses/outputs/errors, pending approval info.\n\nExample: { \"taskId\": \"550e8400-...\" }", annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true }, inputSchema: z.object({ taskId: z.string().uuid(), ...traceSchema }) }, async ({ taskId, correlationId }) => {
@@ -90,22 +85,24 @@ export function registerTaskTools(server: McpServer) {
     return auditToolCall("task_resume", traceId, resolvedTaskId, async () => response(await runtime.resume(approvalId), traceId));
   });
   server.registerTool("task_reconcile", {
-    title: "Record Outcome Reconciliation",
-    description: "🗂️ TASK — Record evidence for an outcome_unknown step without replaying the operation or declaring the entire step completed. For effect_observed, verificationTaskId must refer to a completed read-only task. The original step remains outcome_unknown and the task remains failed.",
-    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false },
+    title: "Reconcile Interrupted Task Outcome",
+    description: "🗂️ TASK — Audit evidence for an outcome_unknown step (default) or explicitly apply an independently verified operator decision. decision=confirmed_succeeded/confirmed_failed requires an independent completed read-only verification Task with the same owner; safe_to_retry additionally requires a durable idempotent create_file receipt. Original tool result stays unknown and no automatic replay occurs.",
+    annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false },
     inputSchema: z.object({
       taskId: z.string().uuid(),
       stepId: z.number().int().positive(),
-      finding: z.enum(["effect_observed", "effect_not_observed", "undetermined"]),
+      finding: z.enum(["effect_observed", "effect_not_observed", "undetermined"]).default("undetermined"),
+      decision: z.enum(["confirmed_succeeded","confirmed_failed","safe_to_retry",
+        "still_unknown","manual_intervention_required"]).optional(),
       evidence: z.string().min(12).max(4000),
       verificationTaskId: z.string().uuid().optional(),
       ...traceSchema
     })
-  }, async ({ taskId, stepId, finding, evidence, verificationTaskId, correlationId }) => {
+  }, async ({ taskId, stepId, finding, decision, evidence, verificationTaskId, correlationId }) => {
     assertToolPermission("task_run");
     const traceId = resolveCorrelationId(correlationId);
     return auditToolCall("task_reconcile", traceId, taskId, () =>
-      response(recordTaskReconciliation({ taskId, stepId, finding, evidence, verificationTaskId }), traceId));
+      response(runtime.reconcile({taskId,stepId,finding,decision,evidence,verificationTaskId}), traceId));
   });
   server.registerTool("task_report", { title: "Task Report", description: "🗂️ TASK (read) — Full report: step statuses, unified execution/recovery timeline, reflection (problem/cause/solution), metrics.\n\nExample: { \"taskId\": \"550e8400-...\" }", annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true }, inputSchema: z.object({ taskId: z.string().uuid(), ...traceSchema }) }, async ({ taskId, correlationId }) => {
     assertToolPermission("task_report"); const traceId = resolveCorrelationId(correlationId);
@@ -165,14 +162,15 @@ export function registerTaskTools(server: McpServer) {
   });
 
   // ---- Task Plan Extension ----
-  server.registerTool("task_append_steps", { title: "Append Steps to Task", description: "🗂️ TASK — Add corrective steps to a failed/completed/cancelled task (completed steps stay immutable). New steps auto-chain from the last step.\n\nExample: { \"taskId\": \"uuid\", \"steps\": [{ \"action\": \"Fix implementation\", \"tool\": \"modify_file\", \"arguments\": { \"path\": \"src/app.ts\", \"search\": \"old\", \"replacement\": \"new\" } }] }", annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false }, inputSchema: z.object({ taskId: z.string().uuid(), steps: z.array(stepSchema).min(1).max(50), ...traceSchema }) }, async ({ taskId, steps, correlationId }) => {
+  server.registerTool("task_append_steps", { title: "Append Steps to Task", description: "🗂️ TASK — Append corrective steps ONLY to a failed Task with no unresolved effect. Completed/cancelled Tasks are terminal and cannot reopen. New steps auto-chain; use runWhen=always for a corrective step following a failed dependency.\n\nExample: { \"taskId\": \"uuid\", \"steps\": [{ \"action\": \"Fix implementation\", \"tool\": \"modify_file\", \"arguments\": { \"path\": \"src/app.ts\", \"search\": \"old\", \"replacement\": \"new\" } }] }", annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false }, inputSchema: z.object({ taskId: z.string().uuid(), steps: z.array(stepSchema).min(1).max(50), ...traceSchema }) }, async ({ taskId, steps, correlationId }) => {
     assertToolPermission("task_run"); const traceId = resolveCorrelationId(correlationId);
     return auditToolCall("task_append_steps", traceId, taskId, async () => {
       const plan = runtime.get(taskId);
       if (!plan) throw new Error("Task not found");
-      if (plan.state !== "failed" && plan.state !== "completed" && plan.state !== "cancelled") {
-        throw new Error(`Cannot append steps to task with state: ${plan.state}. Task must be failed, completed, or cancelled.`);
-      }
+      if (plan.state === "completed" || plan.state === "cancelled") throw new Error("terminal_task_append_forbidden");
+      if (plan.state !== "failed") throw new Error("task_append_requires_failed_state");
+      if (plan.steps.some(step => step.status === "outcome_unknown" || step.status === "running" || step.status === "pending_approval"))
+        throw new Error("task_append_requires_reconciliation");
       const previousState = plan.state;
       // Find the max existing step ID
       const maxId = Math.max(0, ...plan.steps.map((s: { id: number }) => s.id));
@@ -184,20 +182,13 @@ export function registerTaskTools(server: McpServer) {
         dependsOn: step.dependsOn && step.dependsOn.length > 0 ? step.dependsOn : (i === 0 && lastStepId > 0 ? [lastStepId] : []),
         status: "pending" as const,
       }));
-      // Legacy append SQL is contained in the outbound persistence adapter.
-      persistAppendedTaskSteps(taskId, plan.steps.length, newSteps);
-      // Transition the task from terminal state to planning (runnable)
-      const { saveTaskPlan } = await import("../../core/memory/task-repository.js");
-      plan.state = "planning";
-      // Do NOT reset failedAttempts — historical failure counters must be
-      // preserved for auditability (TR-13). The retry gate is bypassed by
-      // resetting totalRunCount instead (TR-04).
-      plan.totalRunCount = 0;
-      saveTaskPlan(plan, "planning", plan.correlationId);
-      // Reload plan to reflect new steps
-      const updated = runtime.get(taskId);
-      const newRevision = (plan.revision ?? 1) + 1;
-      return response({ taskId, appended: newSteps.length, totalSteps: updated?.steps?.length ?? plan.steps.length + newSteps.length, revision: newRevision, previousState, newState: "planning" }, traceId);
+      // The outbound adapter atomically validates the state/revision and inserts
+      // corrective steps + the Task transition. No separate stale plan save.
+      const newRevision=persistAppendedTaskSteps(taskId,plan.steps.length,newSteps,plan.revision??0);
+      const updated=runtime.get(taskId);
+      return response({taskId,appended:newSteps.length,
+        totalSteps:updated?.steps.length??plan.steps.length+newSteps.length,
+        revision:newRevision,previousState,newState:"planning"},traceId);
     });
   });
 

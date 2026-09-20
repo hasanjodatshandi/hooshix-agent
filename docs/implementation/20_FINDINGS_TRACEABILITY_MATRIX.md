@@ -15,15 +15,15 @@ Status values: `OPEN`, `TEST_ENCODED`, `IMPLEMENTING`, `IMPLEMENTED`, `VERIFIED_
 | HIGH-02 | `search_files` sensitive denylist bypass | R2 | 08, 09, 14, 16 | fake `.env/.token/.ssh` regression; no read occurs | VERIFIED_CLOSED |
 | HIGH-03 | `git diff --no-index` outside disclosure | R2 | 08, 09, 16 | PoC regression blocked/approval-required; no output disclosure | VERIFIED_CLOSED |
 | HIGH-04 | OAuth expiry not enforced | R5 | 10, 13, 16, 31 | fake-clock expiry, distinct token, rotated refresh, wrong-resource/scope tests | TEST_ENCODED |
-| HIGH-05 | Timeout finalizes before termination | R3 | 06, 11, 16 | cancellation race/termination-grace tests; no overlapping retry | TEST_ENCODED |
-| HIGH-06 | Crash recovery replays uncertain effects | R3 | 11, 13, 16 | crash-after-marker test -> unknown, no duplicate marker | TEST_ENCODED |
-| HIGH-07 | Crash hydration incomplete | R3 | 11, 13, 16 | all-fields Task round-trip + recovery uses canonical get | IMPLEMENTING |
+| HIGH-05 | Timeout finalizes before termination | R3 | 06, 11, 16 | cancellation race/termination-grace tests; no overlapping retry | VERIFIED_CLOSED |
+| HIGH-06 | Crash recovery replays uncertain effects | R3 | 11, 13, 16 | crash-after-marker test -> unknown, no duplicate marker | VERIFIED_CLOSED |
+| HIGH-07 | Crash hydration incomplete | R3 | 11, 13, 16 | all-fields Task round-trip + recovery uses canonical get | VERIFIED_CLOSED |
 | HIGH-08 | Dirty Git rollback destroys work | R4 | 12, 16 | dirty repo snapshot rejected; clean rollback verified | TEST_ENCODED |
 | HIGH-09 | Package rollback overstates guarantee | R4 | 12, 16 | manifest-only result wording + environment evidence requirement | TEST_ENCODED |
 | HIGH-10 | Docker frozen-lock fallback | R7 | 17 | static Docker assertion + real frozen build failure test | TEST_ENCODED |
 | HIGH-11 | Auth config/env/static secret drift | R7/R5 | 10, 17, 18, 19 | stale var failure, no literal secret, one config contract | TEST_ENCODED |
 | HIGH-12 | Authenticated health vs unauth probe | R7/R5 | 10, 17, 18 | container live/ready smoke without credential leakage | TEST_ENCODED |
-| HIGH-13 | Same-task guard process-local | R3 | 06, 11, 13, 16 | two-process lease race exactly one winner | TEST_ENCODED |
+| HIGH-13 | Same-task guard process-local | R3 | 06, 11, 13, 16 | two-process lease race exactly one winner | VERIFIED_CLOSED |
 
 ---
 
@@ -35,11 +35,11 @@ Status values: `OPEN`, `TEST_ENCODED`, `IMPLEMENTING`, `IMPLEMENTED`, `VERIFIED_
 | MED-02 | Separate-arg secret redaction leak | R6 | 15,16 | opaque `--token VALUE` regression | TEST_ENCODED |
 | MED-03 | No rate/concurrency limits | R5/R6 | 10,14,16 | 429/budget/concurrency tests | OPEN |
 | MED-04 | Shell cwd not workspace-authorized | R2 | 06,08,09,16 | outside cwd rejected for auto-approved path | VERIFIED_CLOSED |
-| MED-05 | Audit failure masks successful effect | R3/R6 | 11,15,16 | effect succeeds + sink fails -> success/degraded, no retry | TEST_ENCODED |
+| MED-05 | Audit failure masks successful effect | R3/R6 | 11,15,16 | effect succeeds + sink fails -> success/degraded, no retry | VERIFIED_CLOSED |
 | MED-06 | Direct MCP hides CAS/idempotency | R2 | 06,08,12,16 | direct/task parity tests | VERIFIED_CLOSED |
 | MED-07 | Project identity non-canonical | R4 | 12,13,16 | equivalent path one identity; collision migration test | TEST_ENCODED |
-| MED-08 | Task idempotency ignores payload | R3 | 11,13,16 | same key/diff hash conflict | TEST_ENCODED |
-| MED-09 | Append allows terminal tasks | R3 | 05,11,16 | completed/cancelled append rejected or explicit revision behavior | TEST_ENCODED |
+| MED-08 | Task idempotency ignores payload | R3 | 11,13,16 | same key/diff hash conflict | VERIFIED_CLOSED |
+| MED-09 | Append allows terminal tasks | R3 | 05,11,16 | completed/cancelled append rejected or explicit revision behavior | VERIFIED_CLOSED |
 | MED-10 | Absent backup reuse creates empty file | R4 | 12,13,16 | repeated restore remains absent | TEST_ENCODED |
 | MED-11 | Restore missing revision guard | R4 | 12,16 | intervening edit -> conflict, no overwrite | TEST_ENCODED |
 | MED-12 | Restore binds current workspace | R4 | 12,16 | stored absolute target + reauthorization test | TEST_ENCODED |

@@ -635,7 +635,7 @@ describe("Idempotency", () => {
         idempotencyKey: "test-idempotent-key",
       }}));
       const p2 = json(await harness.client.callTool({ name: "task_create", arguments: {
-        title: "idem2",
+        title: "idem1",
         steps: [{ action: "r", tool: "read_file", arguments: { path: "README.md" } }],
         idempotencyKey: "test-idempotent-key",
       }}));

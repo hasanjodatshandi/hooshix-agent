@@ -2,7 +2,7 @@
 
 **Project:** `D:/workspace/hooshix-agent`  
 **Program:** Full Hexagonal/Clean redesign + complete consolidated-audit remediation  
-**Status:** R0 GATE_PASSED; R1 GATE_PASSED (G1 PASS); R2 GATE_PASSED (G2 PASS on isolated feature branch); R3 IN_PROGRESS (R3.01 and R3.02 VERIFIED; G3 OPEN). R4–R10 NOT_STARTED.
+**Status:** R0 GATE_PASSED; R1 GATE_PASSED (G1 PASS); R2 GATE_PASSED (G2 PASS on isolated feature branch); R3 GATE_PASSED (G3 PASS on isolated feature branch, 2026-09-21). R4–R10 NOT_STARTED.
 **Owner directive:** all 13 HIGH, 29 MEDIUM, 12 LOW findings must be fixed and verified.
 
 This file is intentionally a live execution ledger. The implementing assistant updates it during implementation. Do not erase previous evidence; append/update status while preserving history.
@@ -38,7 +38,7 @@ Notes on pre-existing dirty changes: none at R0 baseline; source hardening alrea
 | R0 Baseline + regressions | GATE_PASSED | G0 PASS — all HIGH pre-fix contracts encoded; none resolved | 2026-09-19 | 2026-09-19 | 103 files / 492 passing / 18 expected failures; real two-process lease fixture; see R0_G0_COMPLETION_2026-09-19.md |
 | R1 Architecture + MCP v2 foundation | GATE_PASSED | G1 PASS — strict 166-source-file inventory zero candidates; new-tree dependency/in-memory adapter and composition tests pass; SDK v2 upgrade belongs to R5 | 2026-09-19 | 2026-09-20 | Full suite 119 files / 542 PASS + 18 expected RED; standalone/full typecheck and build PASS; see R1_G1_COMPLETION_2026-09-20.md |
 | R2 Unified tool/auth/workspace | GATE_PASSED | G2 PASS — shared Direct MCP/Task gateway, exact approval, scope controls and retired alternate inbound handlers | 2026-09-20 | 2026-09-20 | Commit e641b6d; 133 files / 589 PASS + 15 expected RED, Typecheck, Build, G1 PASS; R2 G2 closure worklog below |
-| R3 Task/recovery/idempotency/lease | IN_PROGRESS | G3 OPEN — R3.01 canonical hydration and R3.02 mutation receipts VERIFIED; R3.03–R3.10 outstanding | 2026-09-20 | | R3.02 final full suite 135 files / 604 PASS + 14 expected RED; Typecheck, Build, G1 PASS; see R3.02 leaf record below |
+| R3 Task/recovery/idempotency/lease | GATE_PASSED | G3 PASS — R3.01–R3.10 VERIFIED on isolated branch; no release/deployment claim | 2026-09-20 | 2026-09-21 | 142 files / 639 PASS + 11 expected RED; Typecheck, Build, strict G1 183/0 candidates, live-owner crash-recovery and real 2-process lease proofs PASS; see G3 completion record |
 | R4 Data integrity/compensation | NOT_STARTED | — | | | |
 | R5 HTTP/OAuth/MCP modern | NOT_STARTED | — | | | |
 | R6 Persistence/perf/observability | NOT_STARTED | — | | | |
@@ -55,10 +55,10 @@ Allowed phase status: `NOT_STARTED`, `IN_PROGRESS`, `BLOCKED`, `GATE_FAILED`, `G
 
 | Severity | Total | OPEN | TEST_ENCODED | IMPLEMENTING | IMPLEMENTED | VERIFIED_CLOSED | DEFERRED_BY_OWNER |
 |---|---:|---:|---:|---:|---:|---:|---:|
-| HIGH | 13 | 0 | 9 | 1 | 0 | 3 | 0 |
-| MEDIUM | 29 | 17 | 9 | 0 | 0 | 3 | 0 |
+| HIGH | 13 | 0 | 6 | 0 | 0 | 7 | 0 |
+| MEDIUM | 29 | 17 | 6 | 0 | 0 | 6 | 0 |
 | LOW | 12 | 11 | 0 | 0 | 0 | 1 | 0 |
-| **TOTAL** | **54** | **28** | **18** | **1** | **0** | **7** | **0** |
+| **TOTAL** | **54** | **28** | **12** | **0** | **0** | **14** | **0** |
 
 The detailed source is `20_FINDINGS_TRACEABILITY_MATRIX.md`; keep totals consistent.
 
@@ -67,10 +67,10 @@ The detailed source is `20_FINDINGS_TRACEABILITY_MATRIX.md`; keep totals consist
 ## 4. Current task
 
 ```text
-Completed leaf: R3.02 — Durable mutation execution receipt model (VERIFIED, feature branch)
-Next pending leaf: R3.03 — Timeout handshake (NOT_STARTED)
-Findings: HIGH-07 IMPLEMENTING (Task aggregate and receipt fields now round-trip; request-hash persistence in R3.08 remains). HIGH-05/HIGH-06/HIGH-13 and MED-05/08/09 remain unresolved in future R3 leaves.
-Gate: G3 OPEN; do not start R4 or represent HooshiX as release-ready.
+Completed phase: R3.01–R3.10 — execution/recovery/idempotency/lease (G3 VERIFIED PASS, isolated feature branch)
+Next pending phase: R4.01 — immutable file backup schema (NOT_STARTED)
+Findings: HIGH-05/06/07/13 and MED-05/08/09 VERIFIED_CLOSED with G3 evidence; 14/54 total closed. Other findings retain their statuses.
+Gate: G3 PASS on isolated branch. R4 is NOT_STARTED; HooshiX is NOT release-ready.
 Workspace: D:/workspace/hooshix-agent; isolated feature/r2-unified-tool-gateway-2026-09-20 branch.
 No live database migration, deployment, restart, push, merge, reset or removal of unrelated user files.
 ```
@@ -580,3 +580,20 @@ Finding IDs: architectural G1; no HIGH/MED/LOW finding independently closed.
 - **Full regression before the final inferred-tool fixture:** Task `1f58647e-2aee-4d7d-9a38-da89c0d7c35f`: `pnpm exec vitest run` 135 files / 603 PASS + 14 expected RED (617 total), zero unexpected failures; `pnpm run typecheck` PASS; `pnpm run build` PASS; `node scripts/verify-g1-global.mjs --strict` PASS (176 files / 0 candidates); `git diff --check` exit 0 with only LF/CRLF normalization warnings. The inferred-tool fixture was added afterward and independently passed; final complete suite to be recorded in a subsequent ledger amendment after rerun.
 - **Final complete post-inferred-tool validation:** Task `f7ff5bd8-a11d-459e-81ec-68dfc7d6b719`: `pnpm exec vitest run` **135 test files / 604 PASS + 14 expected RED (618 total), zero unexpected failures**; `pnpm run typecheck` PASS; `pnpm run build` PASS; `node scripts/verify-g1-global.mjs --strict` PASS (176 source files, zero candidates); `git diff --check` exit 0 (Git LF/CRLF warnings only). No source changes after this validation; only ledger evidence amended.
 - **Scope/residual risk:** Current Task loop's timeout request still does not wait for external termination acknowledgement (R3.03), and its pre-existing timed-out branch may attempt recovery before reconciliation (R3.04–R3.06). Durable receipt STARTED or OUTCOME_UNKNOWN does not prove external success or safe retry. Execution lease/fencing (R3.07), payload-hash idempotency (R3.08), terminal Task append (R3.09), and business-outcome versus telemetry-failure separation (R3.10) remain open. No push, merge, deployment, service restart, online DB migration or unrelated repository modification performed.
+---
+
+## R3 G3 — complete phase acceptance — 2026-09-21
+
+- **Decision:** `GATE_PASSED` on isolated feature branch `feature/r2-unified-tool-gateway-2026-09-20`. All ten R3 leaves are implemented/tested; G3 applies to execution reality and recovery only, not the product release. Do not begin R4 without the next explicit user request.
+- **R3.01–02 baseline:** Commit `7cc0b89` unified normal/recovery Task hydration; commit `41472b8` added durable per-mutation receipts and copied-DB migration 10/11. The R3.03–10 changes below extend, rather than rewrite, those accepted contracts.
+- **R3.03 Timeout handshake:** `withStepTimeout` treats abort as a cancellation request and observes the exact tool promise for an independently bounded grace. A late returned value within grace is reported as observed success; rejection or no termination acknowledgement remains `outcome_unknown`, never invented as a known failed effect. Grace configuration validated before dispatch. Evidence: `tests/core/r3-timeout-unknown-policy.test.ts` (delayed acknowledgement, grace expiration, aborted rejection, config failure).
+- **R3.04 Unknown-outcome policy:** Any unresolved mutation result blocks replay and *all* dependent/corrective execution, including when `maxRecovery>0` or a later pending step exists. Runtime and loop reject automatic retry pending independent reconciliation. The original effect ID and mutation receipt are retained.
+- **R3.05 Reconciliation:** Explicit `task_reconcile` audit-only mode and operator decisions `confirmed_succeeded`, `confirmed_failed`, `safe_to_retry`, `still_unknown`, `manual_intervention_required`. Positive/negative classification requires a separate completed read-only verification Task with matching principal/session. The original interrupted tool result remains unknown, and unsupported non-idempotent/unkeyed retry requests fail closed. Reconciliation is not a synthetic retroactive tool success. Evidence: `tests/core/r3-reconciliation-decision.test.ts` (6 cases) and task-repository transactional decisions.
+- **R3.06 Crash recovery:** A persisted running mutation/started receipt is treated as unknown; a completed external receipt without a Task commit does not silently re-execute the operation or forge a Task completion. Proven read-only interrupted steps can be resumed; historical missing Tool IDs fail closed. The startup recovery service now acquires the SAME cross-process Task lease before rehydration or any status/receipt write; when a live owner holds it, recovery skips the Task without changing its state. All recovery failures avoid unleased status writes. Evidence: `tests/core/r3-crash-recovery-receipts.test.ts` (4 tests including live-owner skip and subsequent post-release unknown outcome), existing crash-after-marker `HIGH-06`, recovery-coverage suite, focused acceptance Task `bebd4ca7-b704-4451-b84a-d863f4b2f3e5` (13 tests PASS), and final full suite.
+- **R3.07 Durable lease:** SQLite migration 12, atomic cross-process acquire/renew/release with owner ID, unique token, monotonically increasing fencing epoch, expiry and heartbeat. Task runtime/resume wrap execution under the lease; Task row/step/receipt writes check the DB epoch/expiry, preventing stale owners from committing after takeover. Evidence: `tests/core/r3-durable-lease-multiprocess.test.ts` with **two independent child processes and exactly one lease winner**, stale-owner write denied, replacement-owner write succeeds. Acceptance Task `d430c953-9257-4c4f-a0aa-a41784965fe0` PASS for multiprocess fixture and source/test TypeScript.
+- **R3.08 Idempotency:** Canonical request SHA-256 is stored with the Task creation key (migration 13); input steps/args, title, retry policy and captured principal/session/workspace/scope are included, while incidental correlation metadata is excluded. Same-key/same-request returns the original Task; same-key/different-payload conflicts; a legacy keyed row with no trustworthy original hash fails closed. SQLite unique index serializes competing creators. Evidence: `tests/core/r3-task-creation-idempotency.test.ts` (8 tests), `MED-08` exploit test and copied-v12-to-v13 migration preserving legacy Task records.
+- **R3.09 Terminal append:** Completed/cancelled Tasks reject implicit append; a failed Task can receive a corrective append only when no unresolved/running/approval effect exists. Step insert, Task revision increment and transition are atomic and revision-checked; no stale plan overwrite. Evidence: `tests/core/r3-terminal-append.test.ts` (4 cases), updated MCP in-process tests and `MED-09` exploit test. A future explicit reopen use case, if required, is outside R3 and NOT assumed to exist.
+- **R3.10 Telemetry separation:** Best-effort audit, metrics and checkpoint/timeline sinks increment degraded observability without changing a known tool result, converting success into failure or triggering a duplicate mutation; authoritative Task/receipt writes are NOT silently swallowed. Evidence: `tests/core/r3-telemetry-degradation.test.ts` (4 cases), existing audit-failure contract.
+- **Final full regression:** Task `ea20d895-35e1-4c02-b423-44cf187ee213`: `pnpm exec vitest run` **142 test files / 639 PASS + 11 expected failures assigned to other phases (650 total), zero unexpected failures**; `pnpm run typecheck` PASS (source and tests); `pnpm run build` PASS; `node scripts/verify-g1-global.mjs --strict` PASS (183 source files; 0 architecture candidates); `git diff --check` exit 0 (only Windows CRLF normalization warnings). Explicit R3 multiprocess/lease acceptance is recorded above; the full suite includes those tests. The first full run flagged two now-green MED-08/09 `it.fails` markers; converting those to normal assertions and rerunning yielded the stated final result.
+- **Closure update:** `HIGH-05`, `HIGH-06`, `HIGH-07`, `HIGH-13`, `MED-05`, `MED-08`, `MED-09` changed to `VERIFIED_CLOSED` in `20_FINDINGS_TRACEABILITY_MATRIX.md`. Matrix count: 14/54 closed; 40 remaining (28 OPEN, 12 TEST_ENCODED). This does **not** imply authentication, compensation, deployment or release gates G4–G10 are passed.
+- **Safety and isolation:** R3 source/tests/docs only; untracked `HooshiX_EAAP_Implementation_Package/` existed concurrently and is deliberately left untouched and **excluded from staging/commit**. No push, merge, deployment, service restart, user workspace cleanup or manually applied production DB migration. R4 NOT_STARTED.

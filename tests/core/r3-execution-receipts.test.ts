@@ -46,6 +46,8 @@ describe("R3.02 durable mutation execution receipts",()=>{
   });
 
   it("marks timed-out mutation as unknown without claiming termination, preserves receipt for reconciliation",async()=>{
+    const previousGrace=process.env.HOOSHIX_TERMINATION_GRACE_MS;
+    process.env.HOOSHIX_TERMINATION_GRACE_MS="15";
     const plan=mutation();plan.steps[0].timeout=8;saveTaskPlan(plan,"planning");
     let settle!:()=>void;
     const underlying=new Promise<void>(resolve=>{settle=resolve;});
@@ -55,6 +57,8 @@ describe("R3.02 durable mutation execution receipts",()=>{
     expect(receipt).toMatchObject({status:"outcome_unknown",termination:"unknown",reconciliation:"unresolved"});
     expect(receipt.finishedAt).toBeTruthy();
     settle();
+    if(previousGrace===undefined)delete process.env.HOOSHIX_TERMINATION_GRACE_MS;
+    else process.env.HOOSHIX_TERMINATION_GRACE_MS=previousGrace;
   });
 
   it("preserves every previous attempt receipt independently, including after normal plan saves",async()=>{

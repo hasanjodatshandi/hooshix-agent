@@ -222,11 +222,14 @@ describe("in-process MCP tool coverage", () => {
     expect(metrics).toHaveProperty("workflowTotalActions");
   });
 
-  it("task_append_steps on a completed task", async () => {
+  it("task_append_steps rejects a completed task without changing it", async () => {
     const task = json(await client.callTool({ name: "task_create", arguments: { title: "append", steps: [{ action: "read", tool: "read_file", arguments: { path: "README.md" } }] } }));
     json(await client.callTool({ name: "task_run", arguments: { taskId: task.id, maxRecovery: 0 } }));
-    const appended = json(await client.callTool({ name: "task_append_steps", arguments: { taskId: task.id, steps: [{ action: "read again", tool: "read_file", arguments: { path: "package.json" } }] } }));
-    expect(appended.appended).toBe(1);
+    const rejected = await client.callTool({ name: "task_append_steps", arguments: { taskId: task.id, steps: [{ action: "read again", tool: "read_file", arguments: { path: "package.json" } }] } });
+    expect(rejected.isError).toBe(true);
+    const reloaded=json(await client.callTool({name:"task_get",arguments:{taskId:task.id}}));
+    expect(reloaded.state).toBe("completed");
+    expect(reloaded.steps).toHaveLength(1);
   });
 
   it("package_restore is governance-gated on direct calls", async () => {

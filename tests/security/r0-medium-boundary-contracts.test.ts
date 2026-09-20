@@ -44,7 +44,7 @@ describe("R0 MED-01/02/04/08 direct boundary contracts", () => {
     expect(fs.existsSync(path.join(fixture.root, ".hooshix-r0-marker"))).toBe(true);
   });
 
-  it.fails("MED-08: same idempotency key but different Task payload must return a conflict, not replay old task", async () => {
+  it("MED-08: same idempotency key but different Task payload must return a conflict, not replay old task", async () => {
     const mcp = await connectInProcessMcp();
     try {
       const key = "r0-idempotency-48215973";
@@ -63,7 +63,7 @@ describe("R0 MED-01/02/04/08 direct boundary contracts", () => {
     } finally { await mcp.close(); }
   });
 
-  it.fails("MED-09: completed Tasks cannot be reopened by an implicit append", async () => {
+  it("MED-09: completed Tasks cannot be reopened by an implicit append", async () => {
     const mcp = await connectInProcessMcp();
     try {
       const created = await mcp.client.callTool({ name: "task_create", arguments: {

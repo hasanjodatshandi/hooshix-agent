@@ -2,7 +2,7 @@ import type { ToolName } from "../services/legacy-tool-orchestrator.js";
 import type { TaskState } from "../../domain/task/legacy-task-state-machine.js";
 import type { ExecutionReceipt } from "../../domain/task/execution-outcome.js";
 
-export type TaskStepStatus = "pending" | "running" | "completed" | "failed" | "pending_approval" | "blocked" | "cancelled" | "outcome_unknown";
+export type TaskStepStatus = "pending" | "running" | "completed" | "failed" | "pending_approval" | "blocked" | "cancelled" | "outcome_unknown" | "reconciled_succeeded" | "reconciled_failed";
 export type StepRunCondition = "success" | "failure" | "always";
 export interface StepAttempt {
   attempt: number;
@@ -51,6 +51,8 @@ export interface TaskPlan {
   description?: string;
   correlationId?: string;
   idempotencyKey?: string;
+  /** SHA-256 fingerprint of the canonical initial payload and bound execution scope. */
+  requestHash?: string;
   state?: TaskState;
   steps: TaskStep[];
   executionContext?: TaskExecutionContext;

@@ -6,11 +6,14 @@
  *
  * Called once on server startup.
  */
-import { findInterruptedTasks, markTaskRecovered, updateTaskHeartbeat } from "../memory/task-repository.js";
+import { findInterruptedTasks, getTaskPlan, markTaskRecovered, updateTaskHeartbeat } from "../memory/task-repository.js";
+import {withTaskExecutionLease} from "../runtime/task-lease-runner.js";
 import { createLocalToolExecutor } from "../executor/local-tool-executor.js";
 import { runClosedAgentLoop } from "../loop/closed-agent-loop.js";
 import { createExecutionContext } from "../runtime/execution-context.js";
-import { saveTaskPlan } from "../memory/task-repository.js";
+import { saveTaskPlan, finishStepExecutionReceipt } from "../memory/task-repository.js";
+import { finalizeMutationReceipt } from "../loop/execution-receipt.js";
+import { OPERATION_CATALOG } from "../../application/services/operation-catalog.js";
 import type { TaskState } from "../state/task-state-machine.js";
 import { resolveTaskWorkspace } from "../../security/task-workspace.js";
 import { runWithWorkspaceScope } from "../../security/workspace-guard.js";
@@ -24,10 +27,12 @@ export interface CrashRecoveryResult {
   reason?: string;
 }
 
-const READ_ONLY_TOOLS = new Set([
-  "get_system_info", "agent_metrics", "list_directory", "read_file", "search_files",
-  "git_status", "git_diff", "git_log", "get_workspace",
-]);
+/** Reconstruct the authoritative effect class from the R2 catalog. Missing
+ * or invalid historical Tool IDs are NEVER treated as read-only. */
+function isProvenReadOnly(tool:unknown):boolean {
+  return typeof tool==="string"&&Object.hasOwn(OPERATION_CATALOG,tool)&&
+    OPERATION_CATALOG[tool as keyof typeof OPERATION_CATALOG].effect==="read_only";
+}
 
 /**
  * Scan for interrupted tasks and attempt to resume them.
@@ -41,8 +46,19 @@ export async function recoverInterruptedTasks(): Promise<CrashRecoveryResult[]> 
 
   const results: CrashRecoveryResult[] = [];
 
-  for (const plan of interrupted) {
+  for (const discovered of interrupted) {
     try {
+      // A prior process may still own this Task, even when its state is
+      // executing. Acquire the SAME durable lease as normal run/resume BEFORE
+      // reading current state, changing a receipt or resuming any effect.
+      await withTaskExecutionLease(discovered.id,async()=>{
+        const plan=getTaskPlan(discovered.id);
+        if(!plan||!["executing","checkpointing","recovering","resuming","verifying"].includes(plan.state??"")){
+          results.push({taskId:discovered.id,title:discovered.task,resumedFrom:0,
+            totalSteps:discovered.steps.length,status:"skipped",
+            reason:"Task no longer requires crash recovery"});
+          return;
+        }
       // Find the first non-completed step
       const startIndex = plan.steps.findIndex((s) => s.status !== "completed");
 
@@ -59,17 +75,34 @@ export async function recoverInterruptedTasks(): Promise<CrashRecoveryResult[]> 
           reason: "All steps were completed; task state updated to completed",
         });
         console.error(`  ✅ ${plan.task}: all steps done, marking completed`);
-        continue;
+        return;
       }
 
       const step = plan.steps[startIndex];
 
+      if(plan.steps.some(s=>s.status==="outcome_unknown")){
+        saveTaskPlan(plan,"failed",plan.correlationId);
+        results.push({taskId:plan.id,title:plan.task,resumedFrom:startIndex,
+          totalSteps:plan.steps.length,status:"failed",
+          reason:"Task contains an unresolved external effect; reconciliation required"});
+        return;
+      }
+
       // Read-only stale calls are safe to retry. Mutating calls become
       // outcome_unknown because their side effect may already have happened.
       if (step.status === "running") {
-        if (step.tool && READ_ONLY_TOOLS.has(step.tool)) {
+        if (isProvenReadOnly(step.tool)) {
           step.status = "pending";
         } else {
+          // The receipt might have been persisted before the crash even if
+          // the Step row still says running. Terminal results do not prove the
+          // Task output/state committed. Preserve that evidence but never replay.
+          const receipt=step.lastReceipt;
+          if(receipt?.status==="started"){
+            const unknown=finalizeMutationReceipt(receipt,"outcome_unknown");
+            finishStepExecutionReceipt(plan.id,unknown);
+            step.lastReceipt=unknown;
+          }
           step.status = "outcome_unknown";
           step.error = "Step was running in a previous service instance; mutation outcome requires reconciliation";
           step.errorType = "OUTCOME_UNKNOWN";
@@ -82,7 +115,7 @@ export async function recoverInterruptedTasks(): Promise<CrashRecoveryResult[]> 
             status: "failed",
             reason: "Mutating step outcome is unknown and requires reconciliation",
           });
-          continue;
+          return;
         }
       }
 
@@ -97,7 +130,7 @@ export async function recoverInterruptedTasks(): Promise<CrashRecoveryResult[]> 
           reason: "Step requires approval; needs human intervention",
         });
         console.error(`  ⏭️  ${plan.task}: waiting for approval at step ${startIndex + 1}`);
-        continue;
+        return;
       }
 
       // Resume execution from the interrupted step — pass the task's captured
@@ -140,18 +173,17 @@ export async function recoverInterruptedTasks(): Promise<CrashRecoveryResult[]> 
         `  ${result.status === "completed" ? "✅" : "❌"} ${plan.task}: ` +
         `resumed from step ${startIndex + 1}/${plan.steps.length} → ${result.status}`
       );
-    } catch (error) {
-      const msg = error instanceof Error ? error.message : String(error);
-      saveTaskPlan(plan, "failed", plan.correlationId);
-      results.push({
-        taskId: plan.id,
-        title: plan.task,
-        resumedFrom: 0,
-        totalSteps: plan.steps.length,
-        status: "failed",
-        reason: `Recovery failed: ${msg}`,
       });
-      console.error(`  ❌ ${plan.task}: recovery failed — ${msg}`);
+    } catch(error) {
+      const message=error instanceof Error?error.message:String(error);
+      // A live owner or expired/fenced recovery MUST NOT be marked failed by
+      // an out-of-lease handler: that would corrupt the authoritative result.
+      const contention=message==="task_lease_conflict"||message==="task_lease_fenced";
+      results.push({taskId:discovered.id,title:discovered.task,resumedFrom:0,
+        totalSteps:discovered.steps.length,status:contention?"skipped":"failed",
+        reason:contention?"Live Task owner holds the execution lease":
+          "Recovery failed without an unguarded Task state write: "+message});
+      console.error("Crash recovery attempt skipped/failed: "+(contention?"lease held":message));
     }
   }
 
