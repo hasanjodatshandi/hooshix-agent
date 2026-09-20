@@ -417,3 +417,52 @@ Finding IDs: architectural G1; no HIGH/MED/LOW finding independently closed.
 - Strict global G1 inventory script: 145 source files, 19 legacy SQL candidate files and 19 legacy MCP SDK-import candidate files, with paths and failure on `--strict`.
 - R1 skeleton and bounded leaf work complete; formal G1 remains NOT PASSED pending R2/R5/R6/R9 legacy execution/transport/persistence migrations. No finding closure or dependent phase claimed.
 - No service restart, live DB migration, push, merge, release tag or deployment.
+
+## R1 bounded migration — seven SQLite repository modules (2026-09-20)
+
+- Moved the real SQL implementations of workspace roots, approval requests, checkpoints,
+  recovery events, resumable tasks, execution memory and execution trace to
+  `src/adapters/outbound/persistence/sqlite/repositories/*.adapter.ts`.
+- The seven legacy source paths now re-export the *same* implementation objects;
+  no duplicate database state, SQL reimplementation or changed public signatures.
+- Added `tests/core/r1-sqlite-repository-migration.test.ts`: seven exact
+  export-identity checks PASS; existing six focused Workspace/approval/recovery
+  test files: 72 tests PASS.
+- Complete regression: **114 files, 532 PASS + 18 expected pre-fix failures**
+  (550 cases); combined independent/project Typecheck PASS; production Build PASS.
+- The strict global G1 scanner reported **152 source files, 12 residual SQL
+  candidate files and 19 residual legacy SDK import files**, with zero
+  environment-access violations outside config/bootstrap. It remains
+  `NOT_PASSED`; these are not severity-finding closure claims.
+- SQL extraction in the remaining large cross-cutting modules is assigned to
+  R2/R6/R9; SDK inbound migration and shared execution gateway belong to
+  R2/R5/R9. The seven facades remain compatibility paths until R9.
+- Work isolated on `feature/r1-hexagonal-foundation-2026-09-19`; no live
+  SQLite migration, runtime service restart, main/release merge, push or deploy.
+
+## R1/R6 bounded SQLite architecture extraction — 2026-09-20
+
+- Additional actual SQL moved to outbound persistence: shared connection/schema
+  bootstrap (`src/adapters/outbound/persistence/sqlite/connection.adapter.ts`),
+  retention cleanup (`cleanup.adapter.ts`), audit-log inserts, reflection
+  execution-row lookup and Git task-snapshot storage/lookup.
+- Old imports retain compatibility exports or call typed data-only adapter
+  functions. Git rollback and Reflection interpretation stay in their legacy
+  services; this relocation does not revise HIGH-08 or mutate the live DB.
+- Added shared connection export-identity regression to the seven repository
+  reference checks. Focused post-extraction tests: five files / 69 PASS.
+- Full `pnpm exec vitest run`: **114 files / 533 PASS + 18 expected RED**
+  (551 total), no unexpected failures. `pnpm run typecheck` and
+  `pnpm run build` PASS. Git CRLF conversion warnings require exit-code and
+  stdout-based `git diff --check` verification; they are not by themselves
+  whitespace errors.
+- Strict G1 inventory after these changes: 9 SQL candidate files outside the
+  target SQLite adapter and 19 MCP SDK import files outside inbound; G1 remains
+  **NOT PASSED**. The `tools/system/workspace.ts` SQL candidate may be
+  natural-language documentation detected by the conservative text scanner:
+  do not silently waive or alter the G1 gate without evidence.
+- Remaining critical work is real R2 unified authorization gateway plus
+  R5/R9 MCP registration cutover and R6/R9 cross-cutting SQL extraction.
+  No direct MCP/Task tool executor was replaced in this slice.
+- No finding marked `VERIFIED_CLOSED`, no public deployment, live schema
+  migration, force-kill, push, merge or release tag.

@@ -1,4 +1,4 @@
-import { withAgentDatabase } from "./database.js";
+import { insertToolCallAuditRow } from "../../adapters/outbound/persistence/sqlite/repositories/tool-call-audit.adapter.js";
 
 /** Classify tool calls into categories for metric separation. */
 const OBSERVABILITY_TOOLS = new Set([
@@ -18,13 +18,9 @@ function classifyCall(tool: string): CallCategory {
 }
 
 function record(tool: string, correlationId: string, taskId: string | undefined, status: "success" | "failed", startedAt: string, durationMs: number, error?: unknown): void {
-  const category = classifyCall(tool);
-  withAgentDatabase((db) => {
-    db.prepare(`
-      INSERT INTO tool_calls(correlation_id, task_id, tool, status, created_at, completed_at, duration_ms, error, category)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(correlationId, taskId ?? null, tool, status, startedAt, new Date().toISOString(), durationMs,
-      error instanceof Error ? error.name : error === undefined ? null : "UnknownError", category);
+  insertToolCallAuditRow({
+    tool, correlationId, taskId, status, category: classifyCall(tool), startedAt, durationMs,
+    errorName: error instanceof Error ? error.name : error === undefined ? null : "UnknownError"
   });
 }
 

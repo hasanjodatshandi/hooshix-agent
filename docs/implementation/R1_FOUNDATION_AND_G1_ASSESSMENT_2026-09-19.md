@@ -209,3 +209,33 @@ crossing into the mass-migration work assigned to R2–R9.
   reclassifying legacy violations as acceptable or starting R2 under a
   falsely successful prerequisite. No push, merge, live DB change, server
   restart or deployment occurred.
+
+## 2026-09-20 actual SQLite extraction and remaining strict G1 blockers
+
+- Eleven genuine persistence/SQL implementations or query operations have
+  been moved out of legacy core/security into the canonical outbound SQLite
+  adapter: shared connection/bootstrap; retention cleanup; workspace-root
+  policy; approval requests; checkpoints; recovery events; resumable tasks;
+  execution memory; execution trace; audit-write query; Reflection read query;
+  Git snapshot storage/lookup. Some entries are **queries within services**,
+  not entire services: the count of source files removed from the scanner is
+  not identical to the number of adapters or APIs migrated.
+- The legacy imports are compatibility facades referencing the same export
+  identities; concrete audit/Reflection/Git handlers delegate SQL-only calls
+  to adapter functions. This does not substitute for full port injection,
+  principal-scoped authorization, or deletion of compatibility imports (R2/R9).
+- Dedicated test `r1-sqlite-repository-migration.test.ts` validates eight
+  legacy/adapter module export identities. Full regression 114 files,
+  533 successful and 18 expected pre-fix failures; combined independent/full
+  TypeScript compile and build PASS.
+- Strict global G1 remains `NOT_PASSED`: 9 static SQL candidate paths and
+  19 SDK import paths, despite zero environment-access violations. See
+  `node scripts/verify-g1-global.mjs` for the exact remaining paths.
+  Old handbook snapshots above show earlier counts and are preserved as
+  historical evidence; they are not current G1 sign-off.
+- The remaining SQL modules mix persistent data access with tool execution,
+  package/file side effects, Task aggregate mapping and HTTP monitoring.
+  Removing their SQL and all legacy SDK imports **correctly** requires the
+  allocated R2/R5/R6/R9 gateway, adapter and legacy-cutover work. Mere
+  export-path rewrites would create a misleading architecture gate and are
+  not used to claim completion.

@@ -1,4 +1,4 @@
-import { withAgentDatabase } from "../memory/database.js";
+import { readTaskReflectionExecutions } from "../../adapters/outbound/persistence/sqlite/repositories/reflection-read.adapter.js";
 import { getTaskPlan } from "../memory/task-repository.js";
 import { getTaskReconciliations } from "../recovery/task-reconciliation.js";
 
@@ -72,9 +72,7 @@ export function analyzeTaskHistory(taskId: string): ReflectionReport {
     };
   }
 
-  return withAgentDatabase((db) => {
-    const rows = db.prepare("SELECT action, result, status FROM executions WHERE task_id = ? ORDER BY id")
-      .all(taskId) as Array<{ action: string; result: string | null; status: string }>;
+  const rows = readTaskReflectionExecutions(taskId);
     const failures = rows.filter((row) => row.status === "failed" || row.status === "outcome_unknown");
     const blocked = rows.filter((row) => row.status === "blocked");
     const successes = rows.filter((row) => row.status === "completed");
@@ -159,5 +157,5 @@ export function analyzeTaskHistory(taskId: string): ReflectionReport {
       summary,
       correctiveAction,
     };
-  });
+
 }

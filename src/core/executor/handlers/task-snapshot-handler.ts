@@ -6,7 +6,7 @@ import type { ToolHandler, ToolHandlerContext } from "./tool-handler.js";
 import type { ToolName } from "../../../application/services/legacy-tool-orchestrator.js";
 import { validateWorkspace } from "../../../security/workspace-guard.js";
 import { canonicalizePath } from "../../memory/task-repository.js";
-import { withAgentDatabase } from "../../memory/database.js";
+import { findTaskGitSnapshot, storeTaskGitSnapshot } from "../../../adapters/outbound/persistence/sqlite/repositories/task-snapshot-storage.adapter.js";
 
 const TASK_SNAPSHOT_TOOLS: ReadonlySet<ToolName> = new Set(["task_snapshot", "task_rollback"]);
 
@@ -63,18 +63,14 @@ export async function captureTaskSnapshot(cwd: string, correlationId: string): P
     return { snapshotId: "", head: "", branch: "", clean: false, cwd: safeCwd, error: "NOT_A_GIT_REPOSITORY" };
   }
   const snapshotId = randomUUID();
-  withAgentDatabase((db) => db.prepare(
-    "INSERT INTO file_backups(id, correlation_id, path, content, created_at) VALUES (?, ?, ?, ?, ?)"
-  ).run(snapshotId, correlationId, `__task_snapshot__:${safeCwd}`, Buffer.from(JSON.stringify(snap)), new Date().toISOString()));
+  storeTaskGitSnapshot(snapshotId, correlationId, safeCwd, Buffer.from(JSON.stringify(snap)));
   return { snapshotId, head: snap.head, branch: snap.branch, clean: snap.clean, cwd: safeCwd };
 }
 
 export async function rollbackTaskSnapshot(snapshotId: string, cwd: string): Promise<{ snapshotId: string; rolledBackTo: string; clean: boolean; cwd: string }> {
   const safeCwd = validateWorkspace(cwd);
   const opts = { cwd: safeCwd, reject: false, encoding: "utf8" as const, timeout: 30000 };
-  const row = withAgentDatabase((db) => db.prepare(
-    "SELECT path, content FROM file_backups WHERE id = ?"
-  ).get(snapshotId) as { path: string; content: Buffer } | undefined);
+  const row = findTaskGitSnapshot(snapshotId);
   if (!row) throw new Error("Snapshot not found");
   if (!row.path.startsWith("__task_snapshot__:")) throw new Error("Not a task snapshot id — use restore_file for file backups");
   const snap = JSON.parse(row.content.toString()) as GitSnapshot;
