@@ -2,6 +2,8 @@ import { z } from "zod";
 import type { McpServer } from "../../adapters/inbound/mcp/legacy-sdk-bridge.js";
 import { resolveCorrelationId } from "../../core/runtime/correlation-id.js";
 import { auditToolCall } from "../../core/memory/tool-audit.js";
+import { policyDecisionPoint } from "../../core/governance/policy-decision-point.js";
+import { assertToolPermission } from "../../security/permission.js";
 import { setActiveWorkspace, listWorkspaceRoots, getWorkspaceRoot, removeWorkspaceRoot, addWorkspaceRoots } from "../../security/workspace-guard.js";
 
 export function registerWorkspaceTools(server: McpServer): void {
@@ -19,6 +21,7 @@ export function registerWorkspaceTools(server: McpServer): void {
     async ({ path: targetPath, correlationId }) => {
       const traceId = resolveCorrelationId(correlationId);
       return auditToolCall("set_workspace", traceId, undefined, () => {
+        assertToolPermission("set_workspace");
         const { resolved, previous } = setActiveWorkspace(targetPath);
         return {
           content: [{
@@ -84,6 +87,9 @@ export function registerWorkspaceTools(server: McpServer): void {
     async ({ paths, correlationId }) => {
       const traceId = resolveCorrelationId(correlationId);
       return auditToolCall("add_workspace_roots", traceId, undefined, () => {
+        assertToolPermission("add_workspace_roots");
+        // Never expand the persistent root pool via an unapproved direct MCP call.
+        policyDecisionPoint.assertAllowed({tool:"add_workspace_roots",arguments:{paths},correlationId:traceId});
         const results = addWorkspaceRoots(paths);
         const active = getWorkspaceRoot();
         return {
@@ -116,6 +122,8 @@ export function registerWorkspaceTools(server: McpServer): void {
     async ({ path: targetPath, correlationId }) => {
       const traceId = resolveCorrelationId(correlationId);
       return auditToolCall("remove_workspace_root", traceId, undefined, () => {
+        assertToolPermission("remove_workspace_root");
+        policyDecisionPoint.assertAllowed({tool:"remove_workspace_root",arguments:{path:targetPath},correlationId:traceId});
         const removed = removeWorkspaceRoot(targetPath);
         return {
           content: [{

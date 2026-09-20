@@ -1,80 +1,12 @@
-export const TOOL_NAMES = [
-  "get_system_info", "agent_metrics", "list_directory", "read_file", "write_file", "create_file",
-  "modify_file", "delete_file", "restore_file", "search_files", "execute_command",
-  "git_status", "git_diff", "git_clone", "git_commit", "git_branch", "git_checkout",
-  "git_add", "git_init", "git_log",
-  "install_package", "remove_package", "update_package", "package_restore",
-  "task_snapshot", "task_rollback",
-  "set_workspace", "get_workspace"
-] as const;
-
-export type ToolName = typeof TOOL_NAMES[number];
-export type ToolRisk = "low" | "medium" | "high" | "critical";
-export const TOOL_CATEGORIES = [
-  "Read actions","Write actions","Execute & Git","Packages","Task Engine","Context & Memory",
-] as const;
-export type ToolCategory = (typeof TOOL_CATEGORIES)[number];
-
-export const TOOL_CATEGORY_MAP: Record<string, ToolCategory> = {
-  get_system_info:"Read actions",agent_metrics:"Read actions",list_directory:"Read actions",read_file:"Read actions",
-  search_files:"Read actions",get_workspace:"Read actions",git_status:"Read actions",git_diff:"Read actions",git_log:"Read actions",
-  task_get:"Read actions",task_list:"Read actions",task_report:"Read actions",task_links:"Read actions",task_step_risks:"Read actions",
-  project_list:"Read actions",project_get:"Read actions",memory_list:"Read actions",memory_get:"Read actions",
-  write_file:"Write actions",create_file:"Write actions",modify_file:"Write actions",delete_file:"Write actions",restore_file:"Write actions",
-  set_workspace:"Write actions",remove_workspace_root:"Write actions",add_workspace_roots:"Write actions",task_append_steps:"Write actions",
-  task_link:"Write actions",project_save:"Write actions",project_delete:"Write actions",project_archive:"Write actions",
-  execute_command:"Execute & Git",git_clone:"Execute & Git",git_commit:"Execute & Git",git_branch:"Execute & Git",git_checkout:"Execute & Git",
-  git_add:"Execute & Git",git_init:"Execute & Git",task_snapshot:"Execute & Git",task_rollback:"Execute & Git",
-  install_package:"Packages",remove_package:"Packages",update_package:"Packages",package_restore:"Packages",
-  task_create:"Task Engine",task_run:"Task Engine",task_approve:"Task Engine",task_resume:"Task Engine",task_replay:"Task Engine",task_cancel:"Task Engine",
-  memory_add:"Context & Memory",memory_delete:"Context & Memory",
-};
-
-export interface ToolCapability {
-  readonly risk: ToolRisk;
-  readonly capabilities: readonly string[];
-  readonly requiredArguments: readonly string[];
-}
-
-export const TOOL_CAPABILITIES: Record<ToolName, ToolCapability> = {
-  get_system_info:{risk:"low",capabilities:["system","information","inspect"],requiredArguments:[]},
-  agent_metrics:{risk:"low",capabilities:["metrics","observability","dashboard","performance"],requiredArguments:[]},
-  list_directory:{risk:"low",capabilities:["list","directory","files","inspect"],requiredArguments:[]},
-  read_file:{risk:"low",capabilities:["read","inspect","file","project","source"],requiredArguments:["path"]},
-  write_file:{risk:"medium",capabilities:["implement","write","replace","file","changes"],requiredArguments:["path","content"]},
-  create_file:{risk:"medium",capabilities:["create","new","file"],requiredArguments:["path","content"]},
-  modify_file:{risk:"medium",capabilities:["modify","edit","replace","file"],requiredArguments:["path","search","replacement"]},
-  delete_file:{risk:"high",capabilities:["delete","remove","file"],requiredArguments:["path"]},
-  restore_file:{risk:"medium",capabilities:["restore","recover","backup","file"],requiredArguments:["backupId"]},
-  search_files:{risk:"low",capabilities:["search","find","grep","files"],requiredArguments:["query"]},
-  execute_command:{risk:"high",capabilities:["execute","run","verify","test","build","command"],requiredArguments:["command"]},
-  git_status:{risk:"low",capabilities:["git","status"],requiredArguments:[]},
-  git_diff:{risk:"low",capabilities:["git","diff","changes"],requiredArguments:[]},
-  git_clone:{risk:"high",capabilities:["git","clone"],requiredArguments:["url","path"]},
-  git_commit:{risk:"high",capabilities:["git","commit"],requiredArguments:["message"]},
-  git_branch:{risk:"high",capabilities:["git","branch"],requiredArguments:["name"]},
-  git_checkout:{risk:"high",capabilities:["git","checkout","switch"],requiredArguments:["name"]},
-  git_add:{risk:"high",capabilities:["git","add","stage"],requiredArguments:["paths"]},
-  git_init:{risk:"medium",capabilities:["git","init"],requiredArguments:["path"]},
-  git_log:{risk:"low",capabilities:["git","log","history"],requiredArguments:[]},
-  install_package:{risk:"critical",capabilities:["package","install","dependency"],requiredArguments:["manager","name"]},
-  remove_package:{risk:"critical",capabilities:["package","remove","uninstall","dependency"],requiredArguments:["manager","name"]},
-  update_package:{risk:"critical",capabilities:["package","update","upgrade","dependency"],requiredArguments:["manager","name"]},
-  package_restore:{risk:"high",capabilities:["package","restore","rollback","snapshot"],requiredArguments:["snapshotId"]},
-  task_snapshot:{risk:"medium",capabilities:["task","snapshot","git","capture"],requiredArguments:["cwd"]},
-  task_rollback:{risk:"critical",capabilities:["task","rollback","restore","git","reset"],requiredArguments:["snapshotId","cwd"]},
-  set_workspace:{risk:"medium",capabilities:["workspace","directory","path","config"],requiredArguments:["path"]},
-  get_workspace:{risk:"low",capabilities:["workspace","directory","path","info"],requiredArguments:[]},
-};
-
+/** Legacy import facade: R2.01 metadata is sourced only from the exhaustive operation catalog.
+ * Runtime gateway and approval cutover remain R2.02-R2.09. */
+import { TOOL_NAMES, TOOL_CAPABILITIES } from "./operation-catalog.js";
+import type { ToolName, ToolCapability } from "./operation-catalog.js";
+import type { ToolRisk } from "../../domain/tool/tool-descriptor.js";
+export { TOOL_NAMES, TOOL_CATEGORIES, TOOL_CATEGORY_MAP, TOOL_CAPABILITIES, ALL_REGISTERED_TOOLS } from "./operation-catalog.js";
+export type { ToolName, ToolCategory, ToolCapability } from "./operation-catalog.js";
+export type { ToolRisk } from "../../domain/tool/tool-descriptor.js";
 const TOOL_SET = new Set<string>(TOOL_NAMES);
-export const ALL_REGISTERED_TOOLS = [
-  ...TOOL_NAMES,
-  "task_create","task_get","task_list","task_run","task_approve","task_resume","task_report","task_reconcile","task_replay","task_cancel",
-  "task_append_steps","task_link","task_links","task_step_risks",
-  "project_save","project_get","project_delete","project_archive","project_list",
-  "memory_add","memory_list","memory_get","memory_delete","add_workspace_roots","remove_workspace_root",
-] as const;
 const RISK_RANK: Record<ToolRisk,number>={low:0,medium:1,high:2,critical:3};
 
 export interface LegacyToolStep { readonly action: string; readonly tool?: ToolName; readonly id?: number; readonly status?: string; readonly arguments?: unknown; readonly dependsOn?: readonly number[]; }

@@ -1,7 +1,9 @@
 import fs from "node:fs/promises";
+import fsSync from "node:fs";
 import path from "node:path";
 import { randomUUID, createHash } from "node:crypto";
-import { validateWorkspace } from "../../security/workspace-guard.js";
+import { validateWorkspace, getActiveWorkspace } from "../../security/workspace-guard.js";
+import { isSensitivePath } from "../../application/services/sensitive-path-policy.js";
 import { policyDecisionPoint } from "../../core/governance/policy-decision-point.js";
 import { logFileAction } from "../../memory/file-audit.js";
 import { resolveCorrelationId } from "../../core/runtime/correlation-id.js";
@@ -19,31 +21,25 @@ const IGNORED_DIRECTORIES = new Set([".git", "node_modules", "dist", "coverage",
  * must never read, write, or exfiltrate via read_file/search_files. Blocking at
  * the service layer so both direct MCP calls and task steps are covered.
  */
-const SENSITIVE_BASENAMES = new Set([
-  ".token", ".env", ".env.local", ".env.development", ".env.production",
-  ".env.staging", ".env.test", "id_rsa", "id_ecdsa", "id_ed25519", "id_dsa",
-  ".npmrc", ".pypirc", ".netrc", ".htpasswd", "credentials.json",
-  "secrets.json", "secrets.yaml", "secrets.yml",
-]);
-const SENSITIVE_EXTENSIONS = new Set([".pem", ".key", ".pfx", ".p12", ".kdbx"]);
-const SENSITIVE_DIRS = [".ssh", ".gnupg", ".aws", ".azure"];
-
-function isSensitivePath(filePath: string): boolean {
-  const normalized = filePath.replace(/\\/g, "/").toLowerCase();
-  const basename = normalized.slice(normalized.lastIndexOf("/") + 1);
-  if (SENSITIVE_BASENAMES.has(basename)) return true;
-  const segments = normalized.split("/").filter(Boolean);
-  if (segments.some((segment) => SENSITIVE_DIRS.includes(segment))) return true;
-  const dot = basename.lastIndexOf(".");
-  if (dot > 0 && SENSITIVE_EXTENSIONS.has(basename.slice(dot))) return true;
-  // .env.* (e.g. .env.docker)
-  if (basename.startsWith(".env.")) return true;
-  return false;
+function isSensitiveCanonicalPath(filePath: string): boolean {
+  // In-workspace symlinks may point at sensitive files under innocuous aliases.
+  if (isSensitivePath(filePath)) return true;
+  let existing = path.resolve(filePath);
+  while (!fsSync.existsSync(existing)) {
+    const parent = path.dirname(existing);
+    if (parent === existing) return true;
+    existing = parent;
+  }
+  try {
+    const actual = fsSync.realpathSync(existing);
+    return isSensitivePath(path.resolve(actual, path.relative(existing, filePath)));
+  } catch {
+    return true;
+  }
 }
-
 function assertNotSensitive(filePath: string): void {
-  if (isSensitivePath(filePath)) {
-    throw new Error(`Access denied: ${filePath} matches the sensitive-file denylist (credentials, keys, or tokens)`);
+  if (isSensitiveCanonicalPath(filePath)) {
+    throw new Error("Access denied: sensitive-file denylist");
   }
 }
 
@@ -333,6 +329,7 @@ export async function restoreWorkspaceFile(backupId: string, correlationId?: str
     let filePath: string;
     try {
       filePath = validateWorkspace(backup.path);
+      assertNotSensitive(filePath);
     } catch {
       throw new Error(
         `Access denied: backup ${backupId} targets '${backup.path}' which is outside the active workspace. ` +
@@ -384,8 +381,6 @@ export async function listWorkspaceDirectory(targetPath: string, correlationId?:
 export interface SearchMatch {
   /** File path relative to the search root */
   path: string;
-  /** Absolute file path */
-  absolutePath: string;
   /** 1-based line number */
   line: number;
   /** Matching line text */
@@ -405,6 +400,7 @@ export async function searchWorkspaceFiles(targetPath: string, query: string, co
     policyDecisionPoint.assertAllowed({ tool: "search_files", arguments: { path: targetPath, query }, correlationId });
     if (!query) throw new Error("Search query must not be empty");
     const root = validateWorkspace(targetPath);
+    assertNotSensitive(root);
     const matches: SearchMatch[] = [];
     let truncated = false;
     let scannedFiles = 0;
@@ -413,7 +409,11 @@ export async function searchWorkspaceFiles(targetPath: string, query: string, co
       const entries = await fs.readdir(validateWorkspace(current), { withFileTypes: true });
       for (const entry of entries) {
         if (truncated) return;
-        const fullPath = validateWorkspace(path.join(current, entry.name));
+        const candidatePath = path.join(current, entry.name);
+        // Exclude a sensitive directory BEFORE traversing or stat-ing children.
+        if (isSensitivePath(candidatePath)) continue;
+        const fullPath = validateWorkspace(candidatePath);
+        if (isSensitiveCanonicalPath(fullPath)) continue;
         if (entry.isDirectory()) {
           if (!IGNORED_DIRECTORIES.has(entry.name)) await walk(fullPath);
           continue;
@@ -431,7 +431,6 @@ export async function searchWorkspaceFiles(targetPath: string, query: string, co
           if (lines[i].includes(query)) {
             matches.push({
               path: path.relative(root, fullPath).replace(/\\/g, "/"),
-              absolutePath: fullPath.replace(/\\/g, "/"),
               line: i + 1,
               // Cap per-line output so a huge single-line file cannot amplify
               // the result payload to megabytes per match.
@@ -448,6 +447,11 @@ export async function searchWorkspaceFiles(targetPath: string, query: string, co
       }
     }
     await walk(root);
-    return { query, root: root.replace(/\\/g, "/"), matches, totalMatches: matches.length, truncated };
+    const selectedWorkspace = getActiveWorkspace();
+    const relativeRoot = selectedWorkspace ? path.relative(selectedWorkspace, root) : "";
+    // Search results are unprivileged; never serialize host absolute paths.
+    const safeRoot = relativeRoot && !relativeRoot.startsWith("..") && !path.isAbsolute(relativeRoot)
+      ? relativeRoot.replace(/\\/g, "/") : ".";
+    return { query, root: safeRoot, matches, totalMatches: matches.length, truncated };
   });
 }

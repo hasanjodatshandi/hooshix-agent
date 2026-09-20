@@ -22,7 +22,7 @@ afterEach(() => {
 });
 
 describe("R0 real MCP and Task workspace/security contracts", () => {
-  it.fails("HIGH-01: a direct MCP client cannot add a new persistent root without principal-bound authorization", async () => {
+  it("HIGH-01: a direct MCP client cannot add a new persistent root without principal-bound authorization", async () => {
     fixture = createDisposableFixture("scope");
     const mcp = await connectInProcessMcp();
     try {
@@ -70,6 +70,8 @@ describe("R0 real MCP and Task workspace/security contracts", () => {
       const result = json(response) as { matches: Array<{ path: string; text: string }> };
       expect(result.matches.map((x) => x.path.replace(/\\/g, "/"))).toEqual(["normal.txt"]);
       expect(result.matches.map((x) => x.text)).toEqual([key]);
+      expect(JSON.stringify(result)).not.toContain(fixture.root.replace(/\\/g, "/"));
+      expect(result.matches.every((x) => !("absolutePath" in x))).toBe(true);
     } finally { await mcp.close(); }
   });
 
@@ -89,5 +91,6 @@ describe("R0 real MCP and Task workspace/security contracts", () => {
     const output = runtime.get(plan.id)?.steps[0].output;
     expect(JSON.stringify(output)).toContain("normal.txt");
     expect(JSON.stringify(output)).not.toContain(".env");
+    expect(JSON.stringify(output)).not.toContain(fixture.root.replace(/\\/g, "/"));
   });
 });

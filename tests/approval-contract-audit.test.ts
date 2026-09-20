@@ -25,13 +25,12 @@ const METADATA_MUTATIONS = TOOL_NAMES.filter((tool) => {
 const APPROVAL_EXPECTED = new Set([
   "delete_file", "git_clone", "git_commit", "git_branch", "git_checkout",
   "git_add", "git_init", "install_package", "remove_package", "update_package",
-  "task_rollback",
+  "task_rollback", "package_restore", "add_workspace_roots", "remove_workspace_root",
 ]);
 
 // Deliberate carve-outs: governed by other, stronger mechanisms.
 const CARVE_OUTS = new Set([
   "execute_command", // command-permission engine + cwd classification + approval for code exec
-  "package_restore", // restores manifests from a prior snapshot; reversible by design
 ]);
 
 describe("approval contract audit: metadata vs policy engine", () => {
@@ -69,6 +68,7 @@ describe("approval contract audit: metadata vs policy engine", () => {
     // pin it as a conscious exception so it cannot silently become ungated.
     const restore = policyDecisionPoint.evaluate({ tool: "package_restore", arguments: { snapshotId: "550e8400-e29b-41d4-a716-446655440000" } });
     expect(restore.allowed).toBe(true);
+    expect(restore.requiresApproval).toBe(true);
   });
 
   it("read-only tools never require approval", () => {

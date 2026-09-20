@@ -60,20 +60,21 @@ describe("R1 domain pure policies and fake application composition",()=>{
  it("never dispatches unknown tools, malformed input, mutations or unauthorized principals",async()=>{
   const c=composition();
   const scope=baseTask([step(1)]).executionScope;
+  const taskContext=(workspaceScope:typeof scope)=>({taskId:"r1-task" as TaskId,stepId:requireStepId(1),workspaceScope});
   const principal={id:principalId,permission:"READ" as const,scopes:[]};
-  expect((await c.executeTool.execute({principal,descriptorId:"missing" as ToolId,arguments:{},scope})).kind).toBe("blocked");
-  expect((await c.executeTool.execute({principal,descriptorId:toolId,arguments:"bad",scope})).kind).toBe("blocked");
-  expect((await c.executeTool.execute({principal:{...principal,id:"other" as PrincipalId},descriptorId:toolId,arguments:{},scope})).kind).toBe("blocked");
+  expect((await c.executeTool.execute({principal,descriptorId:"missing" as ToolId,arguments:{},taskContext:taskContext(scope)})).kind).toBe("blocked");
+  expect((await c.executeTool.execute({principal,descriptorId:toolId,arguments:"bad",taskContext:taskContext(scope)})).kind).toBe("blocked");
+  expect((await c.executeTool.execute({principal:{...principal,id:"other" as PrincipalId},descriptorId:toolId,arguments:{},taskContext:taskContext(scope)})).kind).toBe("blocked");
   const ungranted={...scope,root:"/outside"};
-  expect((await c.executeTool.execute({principal,descriptorId:toolId,arguments:{},scope:ungranted})).kind).toBe("blocked");
+  expect((await c.executeTool.execute({principal,descriptorId:toolId,arguments:{},taskContext:taskContext(ungranted)})).kind).toBe("blocked");
   expect(c.tools.calls).toHaveLength(0);
   const mutating=composition("non_idempotent_mutation");
-  expect((await mutating.executeTool.execute({principal,descriptorId:toolId,arguments:{},scope})).kind).toBe("approval_required");
+  expect((await mutating.executeTool.execute({principal,descriptorId:toolId,arguments:{},taskContext:taskContext(scope)})).kind).toBe("approval_required");
   expect(mutating.tools.calls).toHaveLength(0);
  });
  it("dispatches a permitted read through fake ports without MCP, SQLite, Node FS, or process",async()=>{
   const c=composition();
-  const r=await c.executeTool.execute({principal:{id:principalId,permission:"READ",scopes:[]},descriptorId:toolId,arguments:{path:"fixture"},scope:baseTask([step(1)]).executionScope});
+  const r=await c.executeTool.execute({principal:{id:principalId,permission:"READ",scopes:[]},descriptorId:toolId,arguments:{path:"fixture"},taskContext:{taskId:"r1-task" as TaskId,stepId:requireStepId(1),workspaceScope:baseTask([step(1)]).executionScope}});
   expect(r).toMatchObject({kind:"succeeded",output:{message:"fake only"}});
   expect(c.tools.calls).toHaveLength(1);
  });

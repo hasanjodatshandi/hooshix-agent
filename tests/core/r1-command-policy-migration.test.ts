@@ -18,8 +18,8 @@ describe("R1 pure command/governance migration", () => {
     expect(oldGovernance.assertGovernance).toBe(actionPolicy.assertGovernance);
   });
 
-  it("does not silently fix R2 command authorization defects during R1", () => {
+  it("uses the single corrected R2 command authorization policy through legacy aliases", () => {
     expect(commandPolicy.evaluateCommandPermission("git", ["diff", "--no-index", "a", "b"]))
-      .toEqual({ risk: "low", decision: "allow" });
+      .toEqual({ risk: "high", decision: "blocked" });
   });
 });

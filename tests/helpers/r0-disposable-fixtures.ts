@@ -63,7 +63,7 @@ export function createDisposableFixture(name = "test"): DisposableFixture {
           fs.lstatSync(marker).isSymbolicLink() || fs.readFileSync(marker, "utf8") !== identity) {
         throw new Error("R0 fixture ownership marker has changed; refusing cleanup");
       }
-      fs.rmSync(root, { recursive: true, force: true });
+      fs.rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
     },
   };
 }

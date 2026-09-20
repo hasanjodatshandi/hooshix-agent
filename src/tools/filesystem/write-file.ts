@@ -12,13 +12,15 @@ export function registerWriteFileTool(server: McpServer) {
     inputSchema: z.object({
       path: z.string(),
       content: z.string().max(1024 * 1024),
+      ifMatchSha256: z.string().regex(/^[a-fA-F0-9]{64}$/).optional(),
+      idempotencyKey: z.string().min(1).max(200).optional(),
       correlationId: z.string().min(1).optional(),
       taskId: z.string().optional()
     })
-  }, async ({ path, content, correlationId, taskId }) => {
+  }, async ({ path, content, ifMatchSha256, idempotencyKey, correlationId, taskId }) => {
     const traceId = resolveCorrelationId(correlationId);
     return auditToolCall("write_file", traceId, taskId, async () => {
-      const result = await writeWorkspaceFile(path, content, traceId);
+      const result = await writeWorkspaceFile(path, content, traceId, { ifMatchSha256, idempotencyKey });
       const flat = { path, ...result };
       return { ...flat, content: [{ type: "text" as const, text: JSON.stringify(flat) }], _meta: { correlationId: traceId } };
     });

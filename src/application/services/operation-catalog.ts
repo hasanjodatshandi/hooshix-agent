@@ -1,0 +1,102 @@
+import type { ToolId } from "../../domain/shared/ids.js";
+import type { ToolDescriptor, ToolRisk } from "../../domain/tool/tool-descriptor.js";
+
+/** R2.01 canonical metadata only. Enforcement/cutover is separately gated by R2.02-R2.09. */
+export const TOOL_NAMES = [
+  "get_system_info", "agent_metrics", "list_directory", "read_file", "write_file", "create_file",
+  "modify_file", "delete_file", "restore_file", "search_files", "execute_command",
+  "git_status", "git_diff", "git_clone", "git_commit", "git_branch", "git_checkout",
+  "git_add", "git_init", "git_log",
+  "install_package", "remove_package", "update_package", "package_restore",
+  "task_snapshot", "task_rollback",
+  "set_workspace", "get_workspace", "add_workspace_roots", "remove_workspace_root"
+] as const;
+
+
+export type ToolName = typeof TOOL_NAMES[number];
+export const CONTROL_TOOL_NAMES = ["task_create","task_get","task_list","task_run","task_approve","task_resume","task_report","task_reconcile","task_replay","task_cancel","task_append_steps","task_link","task_links","task_step_risks","project_save","project_get","project_delete","project_archive","project_list","memory_add","memory_list","memory_get","memory_delete"] as const;
+export const ALL_REGISTERED_TOOLS = [...TOOL_NAMES, ...CONTROL_TOOL_NAMES] as const;
+export type OperationName = typeof ALL_REGISTERED_TOOLS[number];
+export const TOOL_CATEGORIES = ["Read actions","Write actions","Execute & Git","Packages","Task Engine","Context & Memory"] as const;
+export type ToolCategory = typeof TOOL_CATEGORIES[number];
+export type SecurityClass = "read" | "workspace_scope" | "file_mutation" | "process" | "git_mutation" | "package_mutation" | "task_control" | "authorization" | "monitoring";
+export interface OperationDescriptor extends ToolDescriptor {
+  readonly securityClass: SecurityClass;
+  readonly category: ToolCategory;
+  readonly requiredArguments: readonly string[];
+}
+export interface ToolCapability {
+  readonly risk: ToolRisk;
+  readonly capabilities: readonly string[];
+  readonly requiredArguments: readonly string[];
+}
+/** One canonical descriptor per externally registered operation, including the control plane. */
+export const OPERATION_CATALOG: Readonly<Record<OperationName, OperationDescriptor>> = Object.freeze({
+  get_system_info: Object.freeze({id:"get_system_info" as ToolId,requiredPermission:"READ",risk:"low",approval:"never",effect:"read_only",workspaceScope:"none",securityClass:"read",supportsIdempotency:false,category:"Read actions",...{capabilities:["system","information","inspect"],requiredArguments:[]}}),
+  agent_metrics: Object.freeze({id:"agent_metrics" as ToolId,requiredPermission:"READ",risk:"low",approval:"never",effect:"read_only",workspaceScope:"none",securityClass:"monitoring",supportsIdempotency:false,category:"Read actions",...{capabilities:["metrics","observability","dashboard","performance"],requiredArguments:[]}}),
+  list_directory: Object.freeze({id:"list_directory" as ToolId,requiredPermission:"READ",risk:"low",approval:"never",effect:"read_only",workspaceScope:"read",securityClass:"file_mutation",supportsIdempotency:false,category:"Read actions",...{capabilities:["list","directory","files","inspect"],requiredArguments:[]}}),
+  read_file: Object.freeze({id:"read_file" as ToolId,requiredPermission:"READ",risk:"low",approval:"never",effect:"read_only",workspaceScope:"read",securityClass:"file_mutation",supportsIdempotency:false,category:"Read actions",...{capabilities:["read","inspect","file","project","source"],requiredArguments:["path"]}}),
+  write_file: Object.freeze({id:"write_file" as ToolId,requiredPermission:"PROJECT_ACCESS",risk:"medium",approval:"on-risk",effect:"non_idempotent_mutation",workspaceScope:"write",securityClass:"file_mutation",supportsIdempotency:false,category:"Write actions",...{capabilities:["implement","write","replace","file","changes"],requiredArguments:["path","content"]}}),
+  create_file: Object.freeze({id:"create_file" as ToolId,requiredPermission:"PROJECT_ACCESS",risk:"medium",approval:"on-risk",effect:"idempotent_mutation",workspaceScope:"write",securityClass:"file_mutation",supportsIdempotency:true,category:"Write actions",...{capabilities:["create","new","file"],requiredArguments:["path","content"]}}),
+  modify_file: Object.freeze({id:"modify_file" as ToolId,requiredPermission:"PROJECT_ACCESS",risk:"medium",approval:"on-risk",effect:"non_idempotent_mutation",workspaceScope:"write",securityClass:"file_mutation",supportsIdempotency:false,category:"Write actions",...{capabilities:["modify","edit","replace","file"],requiredArguments:["path","search","replacement"]}}),
+  delete_file: Object.freeze({id:"delete_file" as ToolId,requiredPermission:"PROJECT_ACCESS",risk:"high",approval:"always",effect:"non_idempotent_mutation",workspaceScope:"write",securityClass:"file_mutation",supportsIdempotency:false,category:"Write actions",...{capabilities:["delete","remove","file"],requiredArguments:["path"]}}),
+  restore_file: Object.freeze({id:"restore_file" as ToolId,requiredPermission:"PROJECT_ACCESS",risk:"medium",approval:"on-risk",effect:"non_idempotent_mutation",workspaceScope:"write",securityClass:"file_mutation",supportsIdempotency:false,category:"Write actions",...{capabilities:["restore","recover","backup","file"],requiredArguments:["backupId"]}}),
+  search_files: Object.freeze({id:"search_files" as ToolId,requiredPermission:"READ",risk:"low",approval:"never",effect:"read_only",workspaceScope:"read",securityClass:"file_mutation",supportsIdempotency:false,category:"Read actions",...{capabilities:["search","find","grep","files"],requiredArguments:["query"]}}),
+  execute_command: Object.freeze({id:"execute_command" as ToolId,requiredPermission:"DEVELOPER",risk:"high",approval:"on-risk",effect:"non_idempotent_mutation",workspaceScope:"process",securityClass:"process",supportsIdempotency:false,category:"Execute & Git",...{capabilities:["execute","run","verify","test","build","command"],requiredArguments:["command"]}}),
+  git_status: Object.freeze({id:"git_status" as ToolId,requiredPermission:"READ",risk:"low",approval:"never",effect:"read_only",workspaceScope:"read",securityClass:"git_mutation",supportsIdempotency:false,category:"Read actions",...{capabilities:["git","status"],requiredArguments:[]}}),
+  git_diff: Object.freeze({id:"git_diff" as ToolId,requiredPermission:"READ",risk:"low",approval:"never",effect:"read_only",workspaceScope:"read",securityClass:"git_mutation",supportsIdempotency:false,category:"Read actions",...{capabilities:["git","diff","changes"],requiredArguments:[]}}),
+  git_clone: Object.freeze({id:"git_clone" as ToolId,requiredPermission:"DEVELOPER",risk:"high",approval:"always",effect:"non_idempotent_mutation",workspaceScope:"process",securityClass:"git_mutation",supportsIdempotency:false,category:"Execute & Git",...{capabilities:["git","clone"],requiredArguments:["url","path"]}}),
+  git_commit: Object.freeze({id:"git_commit" as ToolId,requiredPermission:"DEVELOPER",risk:"high",approval:"always",effect:"non_idempotent_mutation",workspaceScope:"process",securityClass:"git_mutation",supportsIdempotency:false,category:"Execute & Git",...{capabilities:["git","commit"],requiredArguments:["message"]}}),
+  git_branch: Object.freeze({id:"git_branch" as ToolId,requiredPermission:"DEVELOPER",risk:"high",approval:"always",effect:"non_idempotent_mutation",workspaceScope:"process",securityClass:"git_mutation",supportsIdempotency:false,category:"Execute & Git",...{capabilities:["git","branch"],requiredArguments:["name"]}}),
+  git_checkout: Object.freeze({id:"git_checkout" as ToolId,requiredPermission:"DEVELOPER",risk:"high",approval:"always",effect:"non_idempotent_mutation",workspaceScope:"process",securityClass:"git_mutation",supportsIdempotency:false,category:"Execute & Git",...{capabilities:["git","checkout","switch"],requiredArguments:["name"]}}),
+  git_add: Object.freeze({id:"git_add" as ToolId,requiredPermission:"DEVELOPER",risk:"high",approval:"always",effect:"non_idempotent_mutation",workspaceScope:"process",securityClass:"git_mutation",supportsIdempotency:false,category:"Execute & Git",...{capabilities:["git","add","stage"],requiredArguments:["paths"]}}),
+  git_init: Object.freeze({id:"git_init" as ToolId,requiredPermission:"DEVELOPER",risk:"medium",approval:"always",effect:"non_idempotent_mutation",workspaceScope:"process",securityClass:"git_mutation",supportsIdempotency:false,category:"Execute & Git",...{capabilities:["git","init"],requiredArguments:["path"]}}),
+  git_log: Object.freeze({id:"git_log" as ToolId,requiredPermission:"READ",risk:"low",approval:"never",effect:"read_only",workspaceScope:"read",securityClass:"git_mutation",supportsIdempotency:false,category:"Read actions",...{capabilities:["git","log","history"],requiredArguments:[]}}),
+  install_package: Object.freeze({id:"install_package" as ToolId,requiredPermission:"DEVELOPER",risk:"critical",approval:"always",effect:"non_idempotent_mutation",workspaceScope:"process",securityClass:"package_mutation",supportsIdempotency:false,category:"Packages",...{capabilities:["package","install","dependency"],requiredArguments:["manager","name"]}}),
+  remove_package: Object.freeze({id:"remove_package" as ToolId,requiredPermission:"DEVELOPER",risk:"critical",approval:"always",effect:"non_idempotent_mutation",workspaceScope:"process",securityClass:"package_mutation",supportsIdempotency:false,category:"Packages",...{capabilities:["package","remove","uninstall","dependency"],requiredArguments:["manager","name"]}}),
+  update_package: Object.freeze({id:"update_package" as ToolId,requiredPermission:"DEVELOPER",risk:"critical",approval:"always",effect:"non_idempotent_mutation",workspaceScope:"process",securityClass:"package_mutation",supportsIdempotency:false,category:"Packages",...{capabilities:["package","update","upgrade","dependency"],requiredArguments:["manager","name"]}}),
+  package_restore: Object.freeze({id:"package_restore" as ToolId,requiredPermission:"DEVELOPER",risk:"high",approval:"always",effect:"non_idempotent_mutation",workspaceScope:"process",securityClass:"package_mutation",supportsIdempotency:false,category:"Packages",...{capabilities:["package","restore","rollback","snapshot"],requiredArguments:["snapshotId"]}}),
+  task_snapshot: Object.freeze({id:"task_snapshot" as ToolId,requiredPermission:"DEVELOPER",risk:"medium",approval:"on-risk",effect:"non_idempotent_mutation",workspaceScope:"process",securityClass:"git_mutation",supportsIdempotency:false,category:"Execute & Git",...{capabilities:["task","snapshot","git","capture"],requiredArguments:["cwd"]}}),
+  task_rollback: Object.freeze({id:"task_rollback" as ToolId,requiredPermission:"DEVELOPER",risk:"critical",approval:"always",effect:"non_idempotent_mutation",workspaceScope:"process",securityClass:"git_mutation",supportsIdempotency:false,category:"Execute & Git",...{capabilities:["task","rollback","restore","git","reset"],requiredArguments:["snapshotId","cwd"]}}),
+  set_workspace: Object.freeze({id:"set_workspace" as ToolId,requiredPermission:"DEVELOPER",risk:"medium",approval:"on-risk",effect:"non_idempotent_mutation",workspaceScope:"scope_mutation",securityClass:"workspace_scope",supportsIdempotency:false,category:"Write actions",...{capabilities:["workspace","directory","path","config"],requiredArguments:["path"]}}),
+  get_workspace: Object.freeze({id:"get_workspace" as ToolId,requiredPermission:"READ",risk:"low",approval:"never",effect:"read_only",workspaceScope:"none",securityClass:"read",supportsIdempotency:false,category:"Read actions",...{capabilities:["workspace","directory","path","info"],requiredArguments:[]}}),
+  task_create: Object.freeze({id:"task_create" as ToolId,requiredPermission:"PROJECT_ACCESS",risk:"medium",approval:"on-risk",effect:"non_idempotent_mutation",workspaceScope:"none",securityClass:"task_control",supportsIdempotency:false,category:"Task Engine",...{capabilities:["task","create","task"],requiredArguments:[]}}),
+  task_get: Object.freeze({id:"task_get" as ToolId,requiredPermission:"READ",risk:"low",approval:"never",effect:"read_only",workspaceScope:"none",securityClass:"task_control",supportsIdempotency:false,category:"Read actions",...{capabilities:["task","get","task"],requiredArguments:[]}}),
+  task_list: Object.freeze({id:"task_list" as ToolId,requiredPermission:"READ",risk:"low",approval:"never",effect:"read_only",workspaceScope:"none",securityClass:"task_control",supportsIdempotency:false,category:"Read actions",...{capabilities:["task","list","task"],requiredArguments:[]}}),
+  task_run: Object.freeze({id:"task_run" as ToolId,requiredPermission:"DEVELOPER",risk:"high",approval:"always",effect:"non_idempotent_mutation",workspaceScope:"none",securityClass:"task_control",supportsIdempotency:false,category:"Task Engine",...{capabilities:["task","run","task"],requiredArguments:[]}}),
+  task_approve: Object.freeze({id:"task_approve" as ToolId,requiredPermission:"DEVELOPER",risk:"high",approval:"always",effect:"non_idempotent_mutation",workspaceScope:"none",securityClass:"task_control",supportsIdempotency:false,category:"Task Engine",...{capabilities:["task","approve","task"],requiredArguments:[]}}),
+  task_resume: Object.freeze({id:"task_resume" as ToolId,requiredPermission:"DEVELOPER",risk:"high",approval:"always",effect:"non_idempotent_mutation",workspaceScope:"none",securityClass:"task_control",supportsIdempotency:false,category:"Task Engine",...{capabilities:["task","resume","task"],requiredArguments:[]}}),
+  task_report: Object.freeze({id:"task_report" as ToolId,requiredPermission:"READ",risk:"low",approval:"never",effect:"read_only",workspaceScope:"none",securityClass:"task_control",supportsIdempotency:false,category:"Read actions",...{capabilities:["task","report","task"],requiredArguments:[]}}),
+  task_reconcile: Object.freeze({id:"task_reconcile" as ToolId,requiredPermission:"DEVELOPER",risk:"high",approval:"always",effect:"non_idempotent_mutation",workspaceScope:"none",securityClass:"task_control",supportsIdempotency:false,category:"Task Engine",...{capabilities:["task","reconcile","task"],requiredArguments:[]}}),
+  task_replay: Object.freeze({id:"task_replay" as ToolId,requiredPermission:"DEVELOPER",risk:"high",approval:"always",effect:"non_idempotent_mutation",workspaceScope:"none",securityClass:"task_control",supportsIdempotency:false,category:"Task Engine",...{capabilities:["task","replay","task"],requiredArguments:[]}}),
+  task_cancel: Object.freeze({id:"task_cancel" as ToolId,requiredPermission:"PROJECT_ACCESS",risk:"medium",approval:"on-risk",effect:"idempotent_mutation",workspaceScope:"none",securityClass:"task_control",supportsIdempotency:true,category:"Task Engine",...{capabilities:["task","cancel","task"],requiredArguments:[]}}),
+  task_append_steps: Object.freeze({id:"task_append_steps" as ToolId,requiredPermission:"DEVELOPER",risk:"high",approval:"always",effect:"non_idempotent_mutation",workspaceScope:"none",securityClass:"task_control",supportsIdempotency:false,category:"Write actions",...{capabilities:["task","append","steps","task"],requiredArguments:[]}}),
+  task_link: Object.freeze({id:"task_link" as ToolId,requiredPermission:"DEVELOPER",risk:"medium",approval:"on-risk",effect:"non_idempotent_mutation",workspaceScope:"none",securityClass:"task_control",supportsIdempotency:false,category:"Write actions",...{capabilities:["task","link","task"],requiredArguments:[]}}),
+  task_links: Object.freeze({id:"task_links" as ToolId,requiredPermission:"READ",risk:"low",approval:"never",effect:"read_only",workspaceScope:"none",securityClass:"task_control",supportsIdempotency:false,category:"Read actions",...{capabilities:["task","links","task"],requiredArguments:[]}}),
+  task_step_risks: Object.freeze({id:"task_step_risks" as ToolId,requiredPermission:"READ",risk:"low",approval:"never",effect:"read_only",workspaceScope:"none",securityClass:"task_control",supportsIdempotency:false,category:"Read actions",...{capabilities:["task","step","risks","task"],requiredArguments:[]}}),
+  project_save: Object.freeze({id:"project_save" as ToolId,requiredPermission:"PROJECT_ACCESS",risk:"medium",approval:"on-risk",effect:"non_idempotent_mutation",workspaceScope:"none",securityClass:"authorization",supportsIdempotency:false,category:"Write actions",...{capabilities:["project","save"],requiredArguments:[]}}),
+  project_get: Object.freeze({id:"project_get" as ToolId,requiredPermission:"READ",risk:"low",approval:"never",effect:"read_only",workspaceScope:"none",securityClass:"read",supportsIdempotency:false,category:"Read actions",...{capabilities:["project","get"],requiredArguments:[]}}),
+  project_delete: Object.freeze({id:"project_delete" as ToolId,requiredPermission:"PROJECT_ACCESS",risk:"high",approval:"always",effect:"non_idempotent_mutation",workspaceScope:"none",securityClass:"authorization",supportsIdempotency:false,category:"Write actions",...{capabilities:["project","delete"],requiredArguments:[]}}),
+  project_archive: Object.freeze({id:"project_archive" as ToolId,requiredPermission:"PROJECT_ACCESS",risk:"medium",approval:"on-risk",effect:"non_idempotent_mutation",workspaceScope:"none",securityClass:"authorization",supportsIdempotency:false,category:"Write actions",...{capabilities:["project","archive"],requiredArguments:[]}}),
+  project_list: Object.freeze({id:"project_list" as ToolId,requiredPermission:"READ",risk:"low",approval:"never",effect:"read_only",workspaceScope:"none",securityClass:"read",supportsIdempotency:false,category:"Read actions",...{capabilities:["project","list"],requiredArguments:[]}}),
+  memory_add: Object.freeze({id:"memory_add" as ToolId,requiredPermission:"PROJECT_ACCESS",risk:"medium",approval:"on-risk",effect:"non_idempotent_mutation",workspaceScope:"none",securityClass:"authorization",supportsIdempotency:false,category:"Context & Memory",...{capabilities:["memory","add"],requiredArguments:[]}}),
+  memory_list: Object.freeze({id:"memory_list" as ToolId,requiredPermission:"READ",risk:"low",approval:"never",effect:"read_only",workspaceScope:"none",securityClass:"read",supportsIdempotency:false,category:"Read actions",...{capabilities:["memory","list"],requiredArguments:[]}}),
+  memory_get: Object.freeze({id:"memory_get" as ToolId,requiredPermission:"READ",risk:"low",approval:"never",effect:"read_only",workspaceScope:"none",securityClass:"read",supportsIdempotency:false,category:"Read actions",...{capabilities:["memory","get"],requiredArguments:[]}}),
+  memory_delete: Object.freeze({id:"memory_delete" as ToolId,requiredPermission:"PROJECT_ACCESS",risk:"high",approval:"always",effect:"non_idempotent_mutation",workspaceScope:"none",securityClass:"authorization",supportsIdempotency:false,category:"Context & Memory",...{capabilities:["memory","delete"],requiredArguments:[]}}),
+  add_workspace_roots: Object.freeze({id:"add_workspace_roots" as ToolId,requiredPermission:"DEVELOPER",risk:"high",approval:"always",effect:"non_idempotent_mutation",workspaceScope:"scope_mutation",securityClass:"workspace_scope",supportsIdempotency:false,category:"Write actions",...{capabilities:["add","workspace","roots"],requiredArguments:["paths"]}}),
+  remove_workspace_root: Object.freeze({id:"remove_workspace_root" as ToolId,requiredPermission:"DEVELOPER",risk:"medium",approval:"on-risk",effect:"non_idempotent_mutation",workspaceScope:"scope_mutation",securityClass:"workspace_scope",supportsIdempotency:false,category:"Write actions",...{capabilities:["remove","workspace","root"],requiredArguments:["path"]}}),
+});
+export const TOOL_CAPABILITIES: Readonly<Record<ToolName, ToolCapability>> = Object.freeze(
+  Object.fromEntries(TOOL_NAMES.map(name => [name, Object.freeze({
+    risk: OPERATION_CATALOG[name].risk,
+    capabilities: OPERATION_CATALOG[name].capabilities,
+    requiredArguments: OPERATION_CATALOG[name].requiredArguments,
+  })])) as Record<ToolName, ToolCapability>,
+);
+export const TOOL_CATEGORY_MAP: Readonly<Record<string, ToolCategory>> = Object.freeze(
+  Object.fromEntries(ALL_REGISTERED_TOOLS.map(name => [name, OPERATION_CATALOG[name].category])) as Record<string, ToolCategory>,
+);
+export function getOperationDescriptor(id: string): OperationDescriptor | null {
+  return Object.hasOwn(OPERATION_CATALOG, id) ? OPERATION_CATALOG[id as OperationName] : null;
+}
+export const operationDescriptorPort = Object.freeze({ get(id: ToolId): OperationDescriptor | null { return getOperationDescriptor(id); } });

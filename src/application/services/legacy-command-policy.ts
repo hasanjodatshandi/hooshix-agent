@@ -18,8 +18,9 @@ const BLOCKED_PATTERNS: readonly RegExp[] = [
   /\bdd\s+if=/i,
   /\b(shred|sdelete)\b/i,
 ];
-const SAFE_GIT_SUBCOMMANDS = new Set(["status", "diff", "log", "show", "branch", "rev-parse"]);
-const SAFE_GH_PREFIXES = ["pr list", "pr view", "pr checks", "issue list", "issue view", "issue status", "repo view", "auth status", "config get", "config list"];
+const SAFE_GIT_SUBCOMMANDS = new Set(["status", "diff", "log"]);
+const EXACT_SAFE_GH_COMMANDS = new Set(["pr list", "pr view", "pr checks", "issue list", "issue view", "issue status", "repo view", "auth status", "config get", "config list"]);
+
 
 export function validateCommand(command: string, args: readonly string[] = []): true {
   if (!ALLOWED_COMMANDS.has(command.toLowerCase()) || command.includes("/") || command.includes("\\")) {
@@ -32,9 +33,8 @@ export function validateCommand(command: string, args: readonly string[] = []): 
 }
 
 /**
- * Compatibility command policy. R2 will close HIGH-03 and replace this with
- * canonical path-aware command authorization. R1 deliberately preserves the
- * current decision table, including its known RED regression.
+ * R2.07 fail-closed generic command policy. Dedicated Git tools can offer
+ * narrower validated read operations; unrecognized argv is NEVER auto-allowed.
  */
 export function evaluateCommandPermission(command: string, args: readonly string[] = []): { risk: CommandRisk; decision: PermissionDecision } {
   const rendered = [command, ...args].join(" ");
@@ -45,17 +45,24 @@ export function evaluateCommandPermission(command: string, args: readonly string
     return { risk: "high", decision: "approval_required" };
   }
   if (command === "npm" || command === "pnpm") {
-    if (args[0] === "--version" || args[0] === "-v") return { risk: "low", decision: "allow" };
+    if (args.length === 1 && ["--version", "-v"].includes(args[0])) return { risk: "low", decision: "allow" };
     return { risk: "high", decision: "approval_required" };
   }
   if (command === "gh") {
     const sub = args.join(" ").toLowerCase();
-    if (SAFE_GH_PREFIXES.some((prefix) => sub === prefix || sub.startsWith(prefix + " "))) return { risk: "low", decision: "allow" };
+    const numericResourceView = args.length === 3 &&
+      (args[0] === "pr" || args[0] === "issue") &&
+      (args[1] === "view" || (args[0] === "pr" && args[1] === "checks")) &&
+      /^[1-9][0-9]*$/.test(args[2]);
+    if ((EXACT_SAFE_GH_COMMANDS.has(sub) && args.every(arg => !arg.startsWith("-") && !/[\\/]/.test(arg))) || numericResourceView)
+      return { risk: "low", decision: "allow" };
     return { risk: "high", decision: "approval_required" };
   }
-  if (command === "git" && SAFE_GIT_SUBCOMMANDS.has(args[0] ?? "")) return { risk: "low", decision: "allow" };
-  if (command === "git" && args[0] === "--version") return { risk: "low", decision: "allow" };
-  if (command === "git" && args[0] === "config" && ["--get", "--list", "-l"].includes(args[1] ?? "")) return { risk: "low", decision: "allow" };
+  if (command === "git" && args[0] === "diff" && args.some(arg => arg === "--no-index" || arg.startsWith("--no-index="))) return { risk: "high", decision: "blocked" };
+  if (command === "git" && args.length === 1 && SAFE_GIT_SUBCOMMANDS.has(args[0])) return { risk: "low", decision: "allow" };
+  if (command === "git" && args.length === 1 && args[0] === "--version") return { risk: "low", decision: "allow" };
+  // git config, diff pathspecs, log/show revisions, -c/--git-dir and all
+  // path-bearing/option-bearing generic Git forms require governed approval.
   if (command === "powershell") return { risk: "high", decision: "approval_required" };
   return { risk: "medium", decision: "approval_required" };
 }

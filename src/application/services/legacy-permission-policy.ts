@@ -1,66 +1,10 @@
-export type LegacyPermissionLevel =
-  | "READ_ONLY"
-  | "PROJECT_ACCESS"
-  | "DEVELOPER_MODE"
-  | "ADMIN_MODE";
-
-const rank: Readonly<Record<LegacyPermissionLevel, number>> = {
-  READ_ONLY: 0,
-  PROJECT_ACCESS: 1,
-  DEVELOPER_MODE: 2,
-  ADMIN_MODE: 3,
-};
-
-const requiredLevel: Readonly<Record<string, LegacyPermissionLevel>> = {
-  read_file: "READ_ONLY",
-  list_directory: "READ_ONLY",
-  search_files: "READ_ONLY",
-  get_system_info: "READ_ONLY",
-  agent_metrics: "READ_ONLY",
-  git_status: "READ_ONLY",
-  git_diff: "READ_ONLY",
-  git_log: "READ_ONLY",
-  task_get: "READ_ONLY",
-  task_list: "READ_ONLY",
-  task_report: "READ_ONLY",
-  task_links: "READ_ONLY",
-  task_step_risks: "READ_ONLY",
-  task_replay: "DEVELOPER_MODE",
-  task_cancel: "PROJECT_ACCESS",
-  task_snapshot: "DEVELOPER_MODE",
-  task_rollback: "DEVELOPER_MODE",
-  task_append_steps: "DEVELOPER_MODE",
-  task_link: "DEVELOPER_MODE",
-  package_restore: "DEVELOPER_MODE",
-  git_add: "DEVELOPER_MODE",
-  git_init: "DEVELOPER_MODE",
-  project_list: "READ_ONLY",
-  memory_list: "READ_ONLY",
-  get_workspace: "READ_ONLY",
-  set_workspace: "DEVELOPER_MODE",
-  remove_workspace_root: "DEVELOPER_MODE",
-  add_workspace_roots: "DEVELOPER_MODE",
-  write_file: "PROJECT_ACCESS",
-  create_file: "PROJECT_ACCESS",
-  modify_file: "PROJECT_ACCESS",
-  delete_file: "PROJECT_ACCESS",
-  restore_file: "PROJECT_ACCESS",
-  task_create: "PROJECT_ACCESS",
-  project_save: "PROJECT_ACCESS",
-  memory_add: "PROJECT_ACCESS",
-  execute_command: "DEVELOPER_MODE",
-  git_clone: "DEVELOPER_MODE",
-  git_commit: "DEVELOPER_MODE",
-  git_branch: "DEVELOPER_MODE",
-  git_checkout: "DEVELOPER_MODE",
-  package_manage: "DEVELOPER_MODE",
-  task_run: "DEVELOPER_MODE",
-  task_resume: "DEVELOPER_MODE",
-  task_approve: "DEVELOPER_MODE",
-};
-
+import { getOperationDescriptor } from "./operation-catalog.js";
+export type LegacyPermissionLevel = "READ_ONLY" | "PROJECT_ACCESS" | "DEVELOPER_MODE" | "ADMIN_MODE";
+const rank: Readonly<Record<LegacyPermissionLevel, number>> = { READ_ONLY:0, PROJECT_ACCESS:1, DEVELOPER_MODE:2, ADMIN_MODE:3 };
+const compatibleLevel = { READ:"READ_ONLY", PROJECT_ACCESS:"PROJECT_ACCESS", DEVELOPER:"DEVELOPER_MODE", ADMIN:"ADMIN_MODE" } as const;
 export function assertLegacyToolPermission(tool: string, level: LegacyPermissionLevel): true {
-  const required = requiredLevel[tool] ?? "ADMIN_MODE";
+  const descriptor = getOperationDescriptor(tool === "package_manage" ? "install_package" : tool);
+  const required: LegacyPermissionLevel = descriptor ? compatibleLevel[descriptor.requiredPermission] : "ADMIN_MODE";
   if (rank[level] < rank[required]) {
     throw new Error(`${tool} requires ${required}; current level is ${level}`);
   }

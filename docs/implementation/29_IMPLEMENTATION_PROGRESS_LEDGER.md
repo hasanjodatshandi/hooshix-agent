@@ -2,7 +2,7 @@
 
 **Project:** `D:/workspace/hooshix-agent`  
 **Program:** Full Hexagonal/Clean redesign + complete consolidated-audit remediation  
-**Status:** R0 GATE_PASSED; R1 GATE_PASSED — G1 PASS (architecture boundary); R2 NOT_STARTED
+**Status:** R0 GATE_PASSED; R1 GATE_PASSED — G1 PASS (architecture boundary); R2 IN_PROGRESS (R2.01 VERIFIED; R2.02/03/05/09 not yet complete; G2 OPEN)
 **Owner directive:** all 13 HIGH, 29 MEDIUM, 12 LOW findings must be fixed and verified.
 
 This file is intentionally a live execution ledger. The implementing assistant updates it during implementation. Do not erase previous evidence; append/update status while preserving history.
@@ -37,7 +37,7 @@ Notes on pre-existing dirty changes: none at R0 baseline; source hardening alrea
 |---|---|---|---|---|---|
 | R0 Baseline + regressions | GATE_PASSED | G0 PASS — all HIGH pre-fix contracts encoded; none resolved | 2026-09-19 | 2026-09-19 | 103 files / 492 passing / 18 expected failures; real two-process lease fixture; see R0_G0_COMPLETION_2026-09-19.md |
 | R1 Architecture + MCP v2 foundation | GATE_PASSED | G1 PASS — strict 166-source-file inventory zero candidates; new-tree dependency/in-memory adapter and composition tests pass; SDK v2 upgrade belongs to R5 | 2026-09-19 | 2026-09-20 | Full suite 119 files / 542 PASS + 18 expected RED; standalone/full typecheck and build PASS; see R1_G1_COMPLETION_2026-09-20.md |
-| R2 Unified tool/auth/workspace | NOT_STARTED | — | | | |
+| R2 Unified tool/auth/workspace | IN_PROGRESS | G2 OPEN — R2.01 VERIFIED; R2.04 session isolation tested; R2.06/07/08 security fixes validated; R2.02/03/05/09 runtime cutover outstanding | 2026-09-20 | | 128 files / 572 PASS + 15 expected RED; Typecheck, Build, G1 (168 files/0 candidates) PASS; HIGH-02/03, MED-04, LOW-01 VERIFIED_CLOSED; see latest R2 worklog below |
 | R3 Task/recovery/idempotency/lease | NOT_STARTED | — | | | |
 | R4 Data integrity/compensation | NOT_STARTED | — | | | |
 | R5 HTTP/OAuth/MCP modern | NOT_STARTED | — | | | |
@@ -55,10 +55,10 @@ Allowed phase status: `NOT_STARTED`, `IN_PROGRESS`, `BLOCKED`, `GATE_FAILED`, `G
 
 | Severity | Total | OPEN | TEST_ENCODED | IMPLEMENTING | IMPLEMENTED | VERIFIED_CLOSED | DEFERRED_BY_OWNER |
 |---|---:|---:|---:|---:|---:|---:|---:|
-| HIGH | 13 | 0 | 13 | 0 | 0 | 0 | 0 |
-| MEDIUM | 29 | 19 | 10 | 0 | 0 | 0 | 0 |
-| LOW | 12 | 12 | 0 | 0 | 0 | 0 | 0 |
-| **TOTAL** | **54** | **31** | **23** | **0** | **0** | **0** | **0** |
+| HIGH | 13 | 0 | 11 | 0 | 0 | 2 | 0 |
+| MEDIUM | 29 | 19 | 9 | 0 | 0 | 1 | 0 |
+| LOW | 12 | 11 | 0 | 0 | 0 | 1 | 0 |
+| **TOTAL** | **54** | **30** | **20** | **0** | **0** | **4** | **0** |
 
 The detailed source is `20_FINDINGS_TRACEABILITY_MATRIX.md`; keep totals consistent.
 
@@ -67,16 +67,16 @@ The detailed source is `20_FINDINGS_TRACEABILITY_MATRIX.md`; keep totals consist
 ## 4. Current task
 
 ```text
-Task ID (e.g. R2-07): R2.01 — unified exhaustive Tool Catalog (NOT_STARTED)
-Finding IDs: HIGH-01/HIGH-02/HIGH-03, MED-04/MED-06/MED-28 (R2 candidates; none closed)
-Status: NOT_STARTED — R1 G1 PASS; R2 Gateway/authorization migration remains unimplemented and separately gated
-Goal: develop R2.01 ToolDescriptor catalog and then R2.02 shared MCP/Task gateway under G2 regression rules; retain G1 zero-candidate protection
+Task ID (e.g. R2-07): R2.02 — shared ExecuteToolUseCase for direct MCP + Task (IN_PROGRESS)
+Finding IDs: HIGH-01/MED-06/MED-28 remain dependent on complete common gateway; HIGH-02/03, MED-04, LOW-01 separately VERIFIED_CLOSED with direct/Task regressions
+Status: IN_PROGRESS — R2.01 descriptor catalog VERIFIED; isolated R2.02 app-level direct/Task scope resolution and R2.03 pure authorization policy implemented and tested, but production runtime gateway and effective authorization wiring remain unimplemented and separately gated
+Goal: implement and wire R2.02 shared MCP/Task gateway under G2 regression rules without breaking the R2.01 canonical catalog or G1 zero-candidate protection
 Files/modules planned: src/application/use-cases/tools/**, src/domain/tool/**, src/adapters/inbound/mcp/** and legacy src/tools/**/src/core/** call paths; validate complete catalog and retain R1 boundaries
 Architecture layer(s): R1 Domain/Application and global static G1 boundaries PASS; R2/G2 direct legacy tool/service paths remain and are not authorized by G1
 Tests to add first: exhaustive catalog parity, direct MCP/Task shared authorization and R0 HIGH-01/02/03 regression conversion only after actual R2 fixes
 External docs rechecked (if version-sensitive): SDK v2 NOT selected or migrated in R1; existing SDK v1 remains only in legacy inbound paths; verify actual v2 packages/spec before R5 migration
-Start timestamp: 2026-09-19
-Notes: final R1 architecture evidence docs/implementation/R1_G1_COMPLETION_2026-09-20.md; 18 expected failures and 54 findings remain OPEN/TEST_ENCODED, none VERIFIED_CLOSED
+Start timestamp: 2026-09-20
+Notes: R1 G1 PASSED; latest R2 run 15 expected failures; 4 findings VERIFIED_CLOSED; 50 unresolved. R2/G2 remains OPEN; no live gateway production cutover
 ```
 
 ---
@@ -491,3 +491,39 @@ Finding IDs: architectural G1; no HIGH/MED/LOW finding independently closed.
   and its removal remains planned for R2/G2 and R9/G9.
 - R2 is NOT_STARTED at this handoff. No merge, push, tag, service restart,
   primary SQLite migration or public deployment was performed in R1.
+---
+
+## R2.01 verified leaf — 2026-09-20
+
+- Task: R2.01 Canonical Tool Catalog. Status: **VERIFIED** as a bounded leaf; overall R2 **IN_PROGRESS**, G2 **OPEN**.
+- Independent branch: `feature/r2-unified-tool-gateway-2026-09-20`, branched from clean R1 G1 commit `b452683`. No merge, push, tag, service restart, deployment or live SQLite migration.
+- Scope: a single application-owned `operation-catalog.ts` containing 53 exhaustive metadata descriptors (28 step-executable and 25 control-plane/management operations). Each descriptor specifies permission, risk, approval policy, effect class, workspace scope behavior, security class, capabilities and idempotency availability. Unknown names are denied by catalog lookup.
+- The prior legacy orchestrator exports now project the canonical catalog. The legacy four-level permission adapter reads the same descriptors, preserving unknown-operation ADMIN fail-closed behavior and package-manage compatibility until R2 runtime cutover. The pure R1 principal/authorization type now models PROJECT_ACCESS explicitly.
+- Tests: `tests/core/r2-operation-catalog.test.ts`, five PASS. Fake MCP registration inventory proves exactly 53 unique descriptor/registration names, with no unknown/prototype-key fallback; old exports are identical projections; four-level permission smoke tests pass.
+- `pnpm run typecheck`: PASS (standalone Domain/Application and full project). `pnpm run build`: PASS. Full `pnpm exec vitest run`: **120 files / 547 PASS + 18 expected pre-fix RED** (565 total), no unexpected failures. `node scripts/verify-g1-global.mjs --strict`: PASS, 167 source files, zero candidates. `git diff --check`: exit code 0; Windows LF/CRLF warnings are not whitespace failures.
+- Recovery: one intermediate combined diagnostic task used the Task engine's default 30s step timeout, returning outcome_unknown during a long test run; it was not treated as a PASS. The full suite was independently re-executed with explicit 115s step timeout and completed successfully. No side-effecting step was retried or reconciled as succeeded without evidence.
+- Critical residual: production MCP callbacks and durable Task handlers still execute via old distinct routes. Descriptor presence is not authorization/cutover proof. No HIGH/MED/LOW finding was marked VERIFIED_CLOSED; no G2 pass or R2.02–R2.09 implementation claimed.
+- Next dependent work: complete **R2.02** live MCP/Task gateway wiring and **R2.03** real principal/server-ceiling authorization integration; then R2.04–R2.09 according to the unchanged backlog.
+---
+
+## R2.02/R2.03 isolated application foundation — 2026-09-20
+
+- **Status: IN_PROGRESS, not VERIFIED as the whole leaf, G2 OPEN.** The application gateway now accepts exactly one trusted direct-session, captured Task, or R1 test-only scope input. A direct call resolves scope by principal/session via a repository port; Task mode uses the supplied immutable captured scope. Unknown tool, forged session, missing/mismatched principal and invalid arguments fail before invoking the injected fake tool port. Effectful operations remain `approval_required`, not dispatched.
+- Introduced `createAuthorizationService` as a separately wired R2 policy with explicit local_stdio/http_oauth principal origin, four-level principal/server ceiling, OAuth scope reduction, workspace root checks, and fail-closed unrestricted (ADMIN + server flag) check. Existing R1 fake policy remains for compatibility. No caller may create a verified approval by supplying an arbitrary fingerprint. **Exact, persisted task-bound approval verification and runtime composition are not implemented in this slice.**
+- Regression first: `tests/core/r2-execute-tool-gateway.test.ts` was run RED (3 contract failures before gateway implementation); `tests/core/r2-effective-authorization.test.ts` was run RED (5 failures before the new policy existed). These are now green in isolated fake-adapter tests; no live end-to-end authorization assertion is made.
+- Focused R2.01/R2.02/R2.03 tests: 3 files / 16 PASS on current code. Standalone Domain/Application and complete-project TypeScript PASS; production build PASS; strict G1 source scanner PASS (167 files, zero candidates). Full new combined regression results to be recorded after final run.
+- Residual: inbound MCP callbacks and legacy Task executor still call their own concrete execution paths; HTTP does not yet construct and pass an authenticated scoped Principal into this new service; Task approval consumption is still legacy; authorization and Workspace root state remain distributed. Until actual source cutover and G2 tests pass, **no HIGH/MED/LOW finding may be called closed, no actual unified live gateway may be claimed, and R2.02/R2.03 remain incomplete.**
+- No database schema migration, live service restart, push, merge, tag, deployment or real user-file mutation.
+---
+
+## R2 security remediation evidence and remaining G2 boundary — 2026-09-20
+
+- **Status:** R2 IN_PROGRESS; G2 OPEN. This record supersedes the older R2 test-count/closure snapshots above without changing the planned R0–R10 phase count or declaring gateway cutover.
+- **HIGH-02 VERIFIED_CLOSED (limited to sensitive read/search disclosure):** `src/application/services/sensitive-path-policy.ts` and `src/services/filesystem/filesystem-service.ts` block sensitive direct reads and prune sensitive files and directories before traversal/read. Nearest-existing realpath and alias checks reject symlink/junction indirection. Actual direct in-process MCP and durable Task search regressions remain green; `tests/security/r2-sensitive-path-alias.test.ts` spies on filesystem reads and proves no secret or aliased secret was read in the disposable fixture. Sensitive search root paths are rejected. Remaining full unified authorization cutover is a separate G2 condition.
+- **MED-04 VERIFIED_CLOSED (cwd authorization):** Generic read-classified git command forms including `git diff --no-index` are restricted, with HIGH-03 separately VERIFIED_CLOSED. In `src/core/governance/policy-decision-point.ts`, `HOOSHIX_DIRECT_AUTO_APPROVE=1` cannot authorize a direct subprocess with an out-of-workspace cwd. `tests/security/r2-command-cwd-bypass.test.ts` demonstrated the bypass RED before the fix and two tests GREEN after, including legitimate explicitly approved Task behavior. `tests/security/r0-medium-boundary-contracts.test.ts`, shell and workspace tests remain green.
+- **LOW-01 VERIFIED_CLOSED:** `searchWorkspaceFiles` no longer serializes match `absolutePath` nor an absolute search `root`: root is now relative to the effective workspace (or `.` when out of scope). `tests/search-files.test.ts` and direct MCP + Task search assertions verify that neither response exposes the underlying host path. The pre-existing `matches[].path` remains relative to the search root.
+- **R2.04 partial safety fix:** Both direct MCP `set_workspace` and durable Task system-handler selection now enforce the server's configured permission ceiling before changing the active selection. `tests/security/r2-workspace-selection-permission.test.ts` was RED before fix (READ_ONLY switched to another pre-authorized root) and GREEN afterward with no selection side effect. HTTP per-session workspace isolation continues to pass process-level E2E tests. Complete principal-bound, persistent Task-scope and operation authorization cutover is still outstanding.
+- **R2.01/R2.02/R2.03 status unchanged:** exhaustive 53-entry catalog and isolated, fail-closed application use-case/policy tests are green. The use case now rejects ad-hoc caller-supplied workspace scopes; descriptor metadata forgery is denied. However production MCP and durable Task still execute through separate legacy dispatch paths. No claim that an exhaustive shared runtime gateway, exact persisted Task approval binding, or unrestricted ADMIN+approval workflow exists.
+- **Full validation:** `pnpm exec vitest run` 128 test files / 572 PASS / 15 expected pre-fix RED (587 total); no unexpected failure. `pnpm run typecheck` PASS (standalone and complete TypeScript); `pnpm run build` PASS; `node scripts/verify-g1-global.mjs --strict` PASS (168 source files, zero candidates). Task evidence ID: `8b831f1c-3404-43b2-9471-c37d044dc512`. Focused coverage additionally includes direct-file schema parity and fake gateway/authorization tests.
+- **Migration/rollback:** no SQL migration, deployment, service restart, push, merge, live user-file mutation, or destructive Git cleanup. Changes remain on `feature/r2-unified-tool-gateway-2026-09-20`; no production cutover implied.
+- **Remaining leaf dependency:** R2.02 real direct MCP + durable Task shared gateway, R2.03 actual authenticated principal/server-ceiling/scope/request authorization, R2.05 exact approval and unrestricted-capability controls, R2.09 remove alternate execution paths, then run the complete G2 matrix. Do not mark G2 passed or begin R3 on the basis of this bounded remediation.

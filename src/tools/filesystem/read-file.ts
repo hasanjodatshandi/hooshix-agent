@@ -11,16 +11,18 @@ export function registerReadFileTool(server: McpServer) {
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true },
     inputSchema: z.object({
       path: z.string(),
+      includeSha256: z.boolean().optional(),
       correlationId: z.string().min(1).optional(),
       taskId: z.string().optional()
     })
-  }, async ({ path, correlationId, taskId }) => {
+  }, async ({ path, includeSha256, correlationId, taskId }) => {
     const traceId = resolveCorrelationId(correlationId);
     return auditToolCall("read_file", traceId, taskId, async () => {
-      const result = await readWorkspaceFile(path, traceId);
+      const result = await readWorkspaceFile(path, traceId, { includeSha256 });
       const fileContent = typeof result === "string" ? result : result.content;
       return {
         path, text: fileContent, length: fileContent.length,
+        ...(typeof result !== "string" ? { sha256: result.sha256 } : {}),
         content: [{ type: "text" as const, text: fileContent }],
         _meta: { correlationId: traceId }
       };

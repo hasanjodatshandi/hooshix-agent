@@ -18,7 +18,7 @@ afterEach(() => {
 });
 
 describe("HIGH-03 real git --no-index outside-path disclosure regression", () => {
-  it.fails("a read-classified git diff cannot disclose a file outside the active workspace", async () => {
+  it("a read-classified git diff cannot disclose a file outside the active workspace", async () => {
     // Both files belong to this disposable fixture. The outside file is a
     // synthetic marker, NEVER a user file or a real credential.
     fixture = createDisposableFixture("noindex");
@@ -33,8 +33,9 @@ describe("HIGH-03 real git --no-index outside-path disclosure regression", () =>
     active = inside;
     addWorkspaceRoots([inside]);
     setActiveWorkspace(inside);
-    const result = await executeShellCommand("git", ["diff", "--no-index", source, target], inside);
-    // This is RED today: cwd validation alone misses path-bearing argv.
-    expect(result.stdout).not.toContain(sentinel);
+    await expect(executeShellCommand("git", ["diff", "--no-index", source, target], inside))
+      .rejects.toThrow(/blocked|approval required/i);
+    // The generic command must be rejected before spawning a process or reading either path.
+    expect(fs.readFileSync(target, "utf8")).toContain(sentinel);
   }, 20000);
 });

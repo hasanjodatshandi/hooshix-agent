@@ -1,7 +1,8 @@
 import { McpServer } from "../adapters/inbound/mcp/legacy-sdk-bridge.js";
 import { StreamableHTTPServerTransport } from "../adapters/inbound/mcp/legacy-sdk-bridge.js";
 import { registerTools } from "./registry.js";
-import { TOOL_CAPABILITIES, TOOL_CATEGORIES, TOOL_CATEGORY_MAP, ALL_REGISTERED_TOOLS, type ToolName } from "../application/services/legacy-tool-orchestrator.js";
+import { TOOL_CATEGORIES, TOOL_CATEGORY_MAP, ALL_REGISTERED_TOOLS, type ToolName } from "../application/services/legacy-tool-orchestrator.js";
+import { getOperationDescriptor } from "../application/services/operation-catalog.js";
 import { OAuthProvider } from "./oauth.js";
 import { mcpMetrics } from "./metrics.js";
 import { createMetricsServer } from "./metrics-server.js";
@@ -12,6 +13,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { readLegacyHttpServerSettings, readLegacyHttpAccessToken } from "../infrastructure/config/legacy-http-server.js";
+import { createSessionWorkspaceContext, runWithSessionWorkspace, type SessionWorkspaceContext } from "../security/workspace-guard.js";
 
 const { port: PORT, publicBaseUrl: PUBLIC_BASE_URL } = readLegacyHttpServerSettings();
 
@@ -49,6 +51,8 @@ const SESSION_GRACE_MS = 5 * 60 * 1000; // 5 minutes
 interface SessionEntry {
   transport: StreamableHTTPServerTransport;
   server: McpServer;
+  readonly workspace: SessionWorkspaceContext;
+  readonly principalBinding: string;
   closedAt?: number; // timestamp when transport closed (grace period starts)
 }
 
@@ -250,6 +254,18 @@ async function handleRequest(
     return;
   }
 
+  // Bind session ID to the credential that initialized it. A second valid
+  // credential must not reuse someone else's workspace/session state.
+  const principalBinding = crypto.createHash("sha256")
+    .update(req.headers.authorization ?? "")
+    .digest("hex");
+  const requestedSessionId = req.headers["mcp-session-id"] as string | undefined;
+  if (requestedSessionId && sessions.has(requestedSessionId) &&
+      sessions.get(requestedSessionId)!.principalBinding !== principalBinding) {
+    sendJSON(res, 403, {error:"session_principal_mismatch"});
+    return;
+  }
+
   // DELETE — close session
   if (method === "DELETE") {
     const sessionId = req.headers["mcp-session-id"] as string | undefined;
@@ -279,7 +295,7 @@ async function handleRequest(
         .filter(Boolean)
         .join(", ");
     }
-    await entry.transport.handleRequest(req, res);
+    await runWithSessionWorkspace(entry.workspace, () => entry.transport.handleRequest(req, res));
     return;
   }
 
@@ -315,7 +331,7 @@ async function handleRequest(
           .filter(Boolean)
           .join(", ");
       }
-      await entry.transport.handleRequest(req, res);
+      await runWithSessionWorkspace(entry.workspace, () => entry.transport.handleRequest(req, res));
       return;
     }
 
@@ -328,7 +344,7 @@ async function handleRequest(
       enableJsonResponse: true,
     });
 
-    sessions.set(sessionId, { transport, server });
+    sessions.set(sessionId, { transport, server, workspace: createSessionWorkspaceContext(), principalBinding });
 
     await server.connect(transport);
 
@@ -340,8 +356,9 @@ async function handleRequest(
         .join(", ");
     }
 
-    // Forward the initial request
-    await transport.handleRequest(req, res);
+    // Forward the initial request under its new, isolated workspace selection.
+    const entry = sessions.get(sessionId)!;
+    await runWithSessionWorkspace(entry.workspace, () => transport.handleRequest(req, res));
 
     // Log session creation after transport processes the body
     mcpMetrics.recordSessionCreated(sessionId);
@@ -474,7 +491,7 @@ function toolsList(): ToolInfo[] {
   // step-executable and therefore absent from TOOL_NAMES).
   const allNames = ALL_REGISTERED_TOOLS;
   return allNames.map((name) => {
-    const cap = TOOL_CAPABILITIES[name as ToolName];
+    const cap = getOperationDescriptor(name);
     return {
       name,
       description: getToolDescription(name as ToolName),

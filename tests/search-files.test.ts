@@ -13,6 +13,10 @@ describe("search files service", () => {
       expect(result.query).toBe("unique-search-value");
       expect(result.matches).toHaveLength(1);
       expect(result.matches[0].path).toBe("match.txt");
+      // LOW-01: the output must not disclose the agent host's absolute filesystem paths.
+      expect(result.root).toBe("tests/runtime-files/search");
+      expect("absolutePath" in result.matches[0]).toBe(false);
+      expect(JSON.stringify(result)).not.toContain(process.cwd().replace(/\\/g, "/"));
       expect(result.matches[0].line).toBe(1);
       expect(result.matches[0].text).toBe("unique-search-value");
       expect(result.truncated).toBe(false);

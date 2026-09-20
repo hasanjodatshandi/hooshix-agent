@@ -12,8 +12,8 @@ Status values: `OPEN`, `TEST_ENCODED`, `IMPLEMENTING`, `IMPLEMENTED`, `VERIFIED_
 | ID | Short title | Primary phase | Primary specs | Mandatory closure evidence | Current status |
 |---|---|---|---|---|---|
 | HIGH-01 | Workspace authorization/scope expansion gap | R2 | 02, 08, 09 | actual MCP + Task regression; ADMIN+approval unrestricted; no bypass path | TEST_ENCODED |
-| HIGH-02 | `search_files` sensitive denylist bypass | R2 | 08, 09, 14, 16 | fake `.env/.token/.ssh` regression; no read occurs | TEST_ENCODED |
-| HIGH-03 | `git diff --no-index` outside disclosure | R2 | 08, 09, 16 | PoC regression blocked/approval-required; no output disclosure | TEST_ENCODED |
+| HIGH-02 | `search_files` sensitive denylist bypass | R2 | 08, 09, 14, 16 | fake `.env/.token/.ssh` regression; no read occurs | VERIFIED_CLOSED |
+| HIGH-03 | `git diff --no-index` outside disclosure | R2 | 08, 09, 16 | PoC regression blocked/approval-required; no output disclosure | VERIFIED_CLOSED |
 | HIGH-04 | OAuth expiry not enforced | R5 | 10, 13, 16, 31 | fake-clock expiry, distinct token, rotated refresh, wrong-resource/scope tests | TEST_ENCODED |
 | HIGH-05 | Timeout finalizes before termination | R3 | 06, 11, 16 | cancellation race/termination-grace tests; no overlapping retry | TEST_ENCODED |
 | HIGH-06 | Crash recovery replays uncertain effects | R3 | 11, 13, 16 | crash-after-marker test -> unknown, no duplicate marker | TEST_ENCODED |
@@ -34,7 +34,7 @@ Status values: `OPEN`, `TEST_ENCODED`, `IMPLEMENTING`, `IMPLEMENTED`, `VERIFIED_
 | MED-01 | Bearer token in query string | R5 | 10,16 | query token rejected; header token accepted | TEST_ENCODED |
 | MED-02 | Separate-arg secret redaction leak | R6 | 15,16 | opaque `--token VALUE` regression | TEST_ENCODED |
 | MED-03 | No rate/concurrency limits | R5/R6 | 10,14,16 | 429/budget/concurrency tests | OPEN |
-| MED-04 | Shell cwd not workspace-authorized | R2 | 06,08,09,16 | outside cwd rejected for auto-approved path | TEST_ENCODED |
+| MED-04 | Shell cwd not workspace-authorized | R2 | 06,08,09,16 | outside cwd rejected for auto-approved path | VERIFIED_CLOSED |
 | MED-05 | Audit failure masks successful effect | R3/R6 | 11,15,16 | effect succeeds + sink fails -> success/degraded, no retry | TEST_ENCODED |
 | MED-06 | Direct MCP hides CAS/idempotency | R2 | 06,08,12,16 | direct/task parity tests | OPEN |
 | MED-07 | Project identity non-canonical | R4 | 12,13,16 | equivalent path one identity; collision migration test | TEST_ENCODED |
@@ -65,20 +65,20 @@ Status values: `OPEN`, `TEST_ENCODED`, `IMPLEMENTING`, `IMPLEMENTED`, `VERIFIED_
 
 ## LOW / hygiene findings
 
-| ID | Short title | Phase | Closure |
-|---|---|---|---|
-| LOW-01 | `search_files` absolutePath leak | R2/R9 | return workspace-relative/safe path metadata unless privileged diagnostic explicitly requests otherwise |
-| LOW-02 | Silent schema-drift catches | R6/R9 | remove catch-ignore schema evolution; startup/migration fails explicitly |
-| LOW-03 | Dual audit/legacy recovery layers | R9 | one port-based signal/recovery implementation; legacy dead paths removed |
-| LOW-04 | Fragile git log flag interpolation | R2/R9 | validated typed numeric argument construction; regression/static check |
-| LOW-05 | Dead `config/config.json` | R7/R9 | removed; typed config loader only |
-| LOW-06 | Repo runtime-data noise | R9 | tracked runtime noise removed/ignored without deleting user data blindly |
-| LOW-07 | Token file mode hardening | R5/R7 | POSIX 0600 create/verify test; Windows ACL expectation documented |
-| LOW-08 | No persistent fuzz/property suite | R8 | targeted deterministic property suite committed |
-| LOW-09 | `lint` is typecheck alias only | R8 | architecture/static rules + optional ESLint chosen through evidence; scripts named truthfully |
-| LOW-10 | Whitespace/line-ending churn | R9 | `.gitattributes`/editor policy + diff check; cleanup isolated from security changes |
-| LOW-11 | README tool inventory incomplete | R9 | generated `docs/TOOLS.md`; README links only |
-| LOW-12 | Documentation/repo authority unclear | R9/R10 | final docs hierarchy, clean intended change set, release provenance recorded |
+| ID | Short title | Phase | Closure | Status |
+|---|---|---|---|---|
+| LOW-01 | `search_files` absolutePath leak | R2/R9 | return workspace-relative/safe path metadata unless privileged diagnostic explicitly requests otherwise | VERIFIED_CLOSED |
+| LOW-02 | Silent schema-drift catches | R6/R9 | remove catch-ignore schema evolution; startup/migration fails explicitly | OPEN |
+| LOW-03 | Dual audit/legacy recovery layers | R9 | one port-based signal/recovery implementation; legacy dead paths removed | OPEN |
+| LOW-04 | Fragile git log flag interpolation | R2/R9 | validated typed numeric argument construction; regression/static check | OPEN |
+| LOW-05 | Dead `config/config.json` | R7/R9 | removed; typed config loader only | OPEN |
+| LOW-06 | Repo runtime-data noise | R9 | tracked runtime noise removed/ignored without deleting user data blindly | OPEN |
+| LOW-07 | Token file mode hardening | R5/R7 | POSIX 0600 create/verify test; Windows ACL expectation documented | OPEN |
+| LOW-08 | No persistent fuzz/property suite | R8 | targeted deterministic property suite committed | OPEN |
+| LOW-09 | `lint` is typecheck alias only | R8 | architecture/static rules + optional ESLint chosen through evidence; scripts named truthfully | OPEN |
+| LOW-10 | Whitespace/line-ending churn | R9 | `.gitattributes`/editor policy + diff check; cleanup isolated from security changes | OPEN |
+| LOW-11 | README tool inventory incomplete | R9 | generated `docs/TOOLS.md`; README links only | OPEN |
+| LOW-12 | Documentation/repo authority unclear | R9/R10 | final docs hierarchy, clean intended change set, release provenance recorded | OPEN |
 
 ---
 

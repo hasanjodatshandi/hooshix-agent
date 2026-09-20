@@ -27,7 +27,7 @@ export interface PolicyDecision {
 const APPROVAL_TOOLS = new Set<ToolName>([
   "delete_file", "git_clone", "git_commit", "git_branch", "git_checkout",
   "git_add", "git_init", "install_package", "remove_package", "update_package",
-  "task_rollback"
+  "task_rollback", "package_restore", "add_workspace_roots", "remove_workspace_root"
 ]);
 const approvedTool = new AsyncLocalStorage<ToolName>();
 
@@ -100,9 +100,16 @@ export class PolicyDecisionPoint {
       if (storeValue !== undefined && storeValue !== validateToolName(request.tool)) {
         throw new Error(`Approval required: ${request.tool} must run through an approved task step`);
       }
+      // A global compatibility toggle must never authorize command execution
+      // with an out-of-workspace cwd: only a specifically approved Task may do so.
+      if (storeValue === undefined && request.tool === "execute_command" && request.arguments?.cwdOutsideWorkspace === true)
+        throw new Error("Approval required: outside workspace cwd must run through an approved Task step");
       // Direct MCP call (no task context) — requires explicit opt-in via
       // HOOSHIX_DIRECT_AUTO_APPROVE=1 because the caller and the approver
       // are the same principal in that case.
+      // A direct auto-approve toggle must never enlarge or remove persistent roots.
+      if (storeValue === undefined && (request.tool === "add_workspace_roots" || request.tool === "remove_workspace_root"))
+        throw new Error("Approval required: workspace root changes must run through a governed Task step");
       if (storeValue === undefined && !isDirectApprovalBypassEnabled()) {
         throw new Error(`Approval required: ${request.tool} must run through an approved task step (set HOOSHIX_DIRECT_AUTO_APPROVE=1 to allow direct calls)`);
       }

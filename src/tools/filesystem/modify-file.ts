@@ -13,13 +13,14 @@ export function registerModifyFileTool(server: McpServer) {
       path: z.string(),
       search: z.string().min(1).max(1024 * 1024),
       replacement: z.string().max(1024 * 1024),
+      ifMatchSha256: z.string().regex(/^[a-fA-F0-9]{64}$/).optional(),
       correlationId: z.string().min(1).optional(),
       taskId: z.string().optional()
     })
-  }, async ({ path, search, replacement, correlationId, taskId }) => {
+  }, async ({ path, search, replacement, ifMatchSha256, correlationId, taskId }) => {
     const traceId = resolveCorrelationId(correlationId);
     return auditToolCall("modify_file", traceId, taskId, async () => {
-      const result = await modifyWorkspaceFile(path, search, replacement, traceId);
+      const result = await modifyWorkspaceFile(path, search, replacement, traceId, { ifMatchSha256 });
       const flat = { path, ...result };
       return { ...flat, content: [{ type: "text" as const, text: JSON.stringify(flat) }], _meta: { correlationId: traceId } };
     });

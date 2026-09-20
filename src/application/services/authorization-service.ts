@@ -1,11 +1,12 @@
 import type { Principal } from "../../domain/auth/principal.js";
+import { getOperationDescriptor } from "./operation-catalog.js";
 import type { ToolDescriptor, PermissionLevel } from "../../domain/tool/tool-descriptor.js";
 import type { WorkspaceScope } from "../../domain/workspace/workspace-scope.js";
 export type AuthorizationDecision =
   | { readonly kind: "allowed" }
   | { readonly kind: "approval_required"; readonly reason: string }
   | { readonly kind: "blocked"; readonly reason: string };
-const PERMISSION_ORDER: Readonly<Record<PermissionLevel,number>> = { READ: 0, DEVELOPER: 1, ADMIN: 2 };
+const PERMISSION_ORDER: Readonly<Record<PermissionLevel,number>> = { READ: 0, PROJECT_ACCESS: 1, DEVELOPER: 2, ADMIN: 3 };
 export interface AuthorizationService { decide(input: { readonly principal: Principal; readonly descriptor: ToolDescriptor; readonly scope: WorkspaceScope; readonly approvedActionFingerprint?: string }): AuthorizationDecision; }
 /** R1 minimal fail-closed authorization. R2 will add effective scope and exact-action binding. */
 export function createR1AuthorizationService(): AuthorizationService {
@@ -17,4 +18,49 @@ export function createR1AuthorizationService(): AuthorizationService {
      return { kind: "approval_required", reason: "r1_no_mutation_or_scope_expansion_dispatch" };
    return { kind: "allowed" };
  } };
+}
+/**
+ * R2 application policy; takes server ceiling from validated infrastructure config.
+ * An inbound transport must establish principal.origin and may only supply its
+ * authenticated scopes; a claimed descriptor/approval fingerprint is not a grant.
+ */
+export function createAuthorizationService(settings: {
+  readonly serverCeiling: PermissionLevel;
+  readonly allowUnrestricted: boolean;
+}): AuthorizationService {
+  function blocked(reason: string): AuthorizationDecision { return {kind:"blocked", reason}; }
+  const ceilingRank=PERMISSION_ORDER[settings.serverCeiling];
+  return { decide({principal,descriptor,scope}) {
+    if (!principal?.id || !scope || scope.principalId!==principal.id) return blocked("principal_scope_mismatch");
+    if (principal.origin!=="local_stdio" && principal.origin!=="http_oauth") return blocked("untrusted_principal_origin");
+    const canonical=getOperationDescriptor(descriptor.id);
+    if (!canonical) return blocked("unknown_operation");
+    if (descriptor.requiredPermission !== canonical.requiredPermission || descriptor.effect !== canonical.effect || descriptor.approval !== canonical.approval || descriptor.workspaceScope !== canonical.workspaceScope || descriptor.risk !== canonical.risk) return blocked("descriptor_metadata_mismatch");
+    if (PERMISSION_ORDER[principal.permission]===undefined || ceilingRank===undefined) return blocked("invalid_permission_level");
+    if (PERMISSION_ORDER[canonical.requiredPermission]>ceilingRank) return blocked("server_permission_ceiling");
+    if (PERMISSION_ORDER[canonical.requiredPermission]>PERMISSION_ORDER[principal.permission]) return blocked("principal_permission_insufficient");
+
+    if (principal.origin==="http_oauth") {
+      const requiredScope=canonical.securityClass==="monitoring"?"hooshix:monitoring:read"
+        :canonical.securityClass==="workspace_scope"?"hooshix:workspace:manage"
+        :canonical.securityClass==="task_control"?"hooshix:task:manage"
+        :canonical.securityClass==="process" || canonical.securityClass==="git_mutation" || canonical.securityClass==="package_mutation"?"hooshix:execute"
+        :canonical.effect==="read_only"?"hooshix:read":"hooshix:project:write";
+      if (!principal.scopes.includes(requiredScope)) return blocked("principal_scope_insufficient");
+    }
+
+    if (scope.unrestricted) {
+      if (!settings.allowUnrestricted || PERMISSION_ORDER[principal.permission]<PERMISSION_ORDER.ADMIN || ceilingRank<PERMISSION_ORDER.ADMIN)
+        return blocked("unrestricted_requires_server_allow_and_admin");
+    }
+    if (canonical.workspaceScope!=="none" && canonical.workspaceScope!=="scope_mutation") {
+      if (!scope.root || !scope.allowedRoots.includes(scope.root)) return blocked("workspace_missing_or_ungranted");
+    }
+
+    // No unverified external input (including approvedActionFingerprint) can grant
+    // a mutation. R2.05 will introduce a task-bound, consumed approval verifier.
+    if (canonical.approval!=="never" || canonical.effect!=="read_only" || canonical.workspaceScope==="scope_mutation")
+      return {kind:"approval_required",reason:"verified_task_approval_required"};
+    return {kind:"allowed"};
+  }};
 }

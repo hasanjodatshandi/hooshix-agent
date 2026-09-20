@@ -20,6 +20,15 @@ let workspaceRoots: string[] = [];
 let activeWorkspace: string | null = null;
 let initialized = false;
 const workspaceScope = new AsyncLocalStorage<string | null>();
+/** Mutable per-HTTP-session active selection, never shared across sessions. */
+export interface SessionWorkspaceContext { activeRoot: string | null; }
+const sessionWorkspace = new AsyncLocalStorage<SessionWorkspaceContext>();
+export function createSessionWorkspaceContext(): SessionWorkspaceContext {
+  return { activeRoot: getWorkspaceRoot() };
+}
+export function runWithSessionWorkspace<T>(context: SessionWorkspaceContext, action: () => T): T {
+  return sessionWorkspace.run(context, action);
+}
 
 /**
  * Canonical identity for a workspace-root/path comparison. On Windows (and
@@ -90,7 +99,10 @@ function initWorkspaceRoots(): string[] {
  */
 export function getWorkspaceRoot(): string | null {
   initWorkspaceRoots();
-  return activeWorkspace;
+  const session = sessionWorkspace.getStore();
+  const selected = session ? session.activeRoot : activeWorkspace;
+  // Root removal immediately invalidates existing session selections.
+  return selected && workspaceRoots.some(root => sameRootIdentity(root, selected)) ? selected : null;
 }
 
 /** Run an operation with a validated task workspace, without changing global state. */
@@ -105,7 +117,7 @@ function getEffectiveWorkspace(): string | null {
 
 /** Alias with a self-documenting name for scope checks (null = no active workspace). */
 export function getActiveWorkspace(): string | null {
-  return getWorkspaceRoot();
+  return getEffectiveWorkspace();
 }
 
 /**
@@ -128,8 +140,10 @@ export function setActiveWorkspace(rootPath: string): { resolved: string; previo
       `Add it first with add_workspace_roots. Allowed: ${workspaceRoots.length > 0 ? workspaceRoots.join(", ") : "(none — the pool is empty)"}`
     );
   }
-  const previous = activeWorkspace;
-  activeWorkspace = real;
+  const previous = getWorkspaceRoot();
+  const session = sessionWorkspace.getStore();
+  if (session) session.activeRoot = real;
+  else activeWorkspace = real;
   // NOTE: unrestricted mode is NOT enabled implicitly — enabling it is a
   // separate, explicit decision (HOOSHIX_UNRESTRICTED at boot; no runtime
   // elevation path exists anymore).
@@ -139,7 +153,7 @@ export function setActiveWorkspace(rootPath: string): { resolved: string; previo
 /** List all configured workspace roots with existence metadata */
 export function listWorkspaceRoots(): Array<{ path: string; exists: boolean; active: boolean; persistent: boolean }> {
   initWorkspaceRoots();
-  const active = activeWorkspace;
+  const active = getWorkspaceRoot();
   return workspaceRoots.map((root) => ({
     path: root,
     exists: fs.existsSync(root),
@@ -155,7 +169,9 @@ export function listWorkspaceRoots(): Array<{ path: string; exists: boolean; act
  */
 export function removeWorkspaceRoot(rootPath: string): boolean {
   initWorkspaceRoots();
-  if (activeWorkspace !== null && sameRootIdentity(rootPath, activeWorkspace)) {
+  const activeForCaller = getWorkspaceRoot();
+  if ((activeWorkspace !== null && sameRootIdentity(rootPath, activeWorkspace)) ||
+      (activeForCaller !== null && sameRootIdentity(rootPath, activeForCaller))) {
     throw new Error("Cannot remove the active workspace — use set_workspace to select another allowed root first.");
   }
   const index = workspaceRoots.findIndex((r) => sameRootIdentity(r, rootPath));
@@ -192,8 +208,10 @@ export function addWorkspaceRoots(paths: string[]): Array<{ path: string; added:
     results.push({ path: real, added: true });
   }
   // When the pool was empty and we just added the first root, activate it.
-  if (wasEmpty && workspaceRoots.length > 0 && activeWorkspace === null) {
-    activeWorkspace = workspaceRoots[0];
+  if (wasEmpty && workspaceRoots.length > 0) {
+    const session = sessionWorkspace.getStore();
+    if (session && session.activeRoot === null) session.activeRoot = workspaceRoots[0];
+    else if (!session && activeWorkspace === null) activeWorkspace = workspaceRoots[0];
   }
   return results;
 }

@@ -1,5 +1,5 @@
 import type { ToolId } from "../shared/ids.js";
-export type PermissionLevel = "READ" | "DEVELOPER" | "ADMIN";
+export type PermissionLevel = "READ" | "PROJECT_ACCESS" | "DEVELOPER" | "ADMIN";
 export type ToolRisk = "low" | "medium" | "high" | "critical";
 export type ToolEffect = "read_only" | "idempotent_mutation" | "non_idempotent_mutation";
 export type ToolWorkspaceClass = "none" | "read" | "write" | "scope_mutation" | "process";

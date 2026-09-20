@@ -9,11 +9,11 @@ export function registerDeleteFileTool(server: McpServer) {
     title: "Delete File",
     description: "🗑️ DELETE — Delete a file after saving a recoverable backup. Requires approval (task step). Sensitive files and files >1MB rejected.\n\nExample: { \"path\": \"old-file.ts\" } → { backupId } — undo with restore_file.",
     annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false },
-    inputSchema: z.object({ path: z.string(), correlationId: z.string().min(1).optional(), taskId: z.string().optional() })
-  }, async ({ path, correlationId, taskId }) => {
+    inputSchema: z.object({ path: z.string(), idempotencyKey: z.string().min(1).max(200).optional(), correlationId: z.string().min(1).optional(), taskId: z.string().optional() })
+  }, async ({ path, idempotencyKey, correlationId, taskId }) => {
     const traceId = resolveCorrelationId(correlationId);
     return auditToolCall("delete_file", traceId, taskId, async () => {
-      const result = await deleteWorkspaceFile(path, traceId);
+      const result = await deleteWorkspaceFile(path, traceId, { idempotencyKey });
       const flat = { path, deleted: true, ...result };
       return { ...flat, content: [{ type: "text" as const, text: JSON.stringify(flat) }], _meta: { correlationId: traceId } };
     });

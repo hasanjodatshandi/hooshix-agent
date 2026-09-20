@@ -19,7 +19,7 @@ export function createR1FakeComposition(input: { readonly descriptor: ToolDescri
    createTask:createCreateTaskUseCase({tasks,workspace,clock:input.clock,ids:input.ids}),
    getTask:createGetTaskUseCase(tasks),
    getWorkspace:createGetWorkspaceUseCase(workspace),
-   executeTool:createExecuteToolUseCase({...tools,authorization:createR1AuthorizationService()}),
+   executeTool:createExecuteToolUseCase({...tools,workspace,authorization:createR1AuthorizationService()}),
  };
 }
 /** Explicit adapter construction; no service locator and no process/env/global IO. */
