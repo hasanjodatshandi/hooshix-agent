@@ -5,7 +5,7 @@ import { validateWorkspace } from "../../security/workspace-guard.js";
 import { policyDecisionPoint } from "../../core/governance/policy-decision-point.js";
 import { logFileAction } from "../../memory/file-audit.js";
 import { resolveCorrelationId } from "../../core/runtime/correlation-id.js";
-import { withAgentDatabase } from "../../core/memory/database.js";
+import { persistFileBackup, persistAbsentFileBackup, getStoredIdempotentResponse, persistIdempotentResponse, getStoredFileBackup, markFileBackupRestored } from "../../adapters/outbound/persistence/sqlite/repositories/file-backup-idempotency.adapter.js";
 
 const MAX_FILE_BYTES = 1024 * 1024;
 const MAX_SEARCH_RESULTS = 1000;
@@ -146,19 +146,7 @@ async function backupFile(filePath: string, _targetPath: string, correlationId: 
   // at restore time — materializing the file in the WRONG workspace
   // (defect FS-01, a workspace-isolation break).
   const canonical = validateWorkspace(filePath);
-  withAgentDatabase((db) => {
-    try {
-      db.prepare(`
-        INSERT INTO file_backups(id, correlation_id, path, content, created_at, file_revision)
-        VALUES (?, ?, ?, ?, ?, ?)
-      `).run(id, correlationId, canonical, content, new Date().toISOString(), sha256);
-    } catch {
-      // Fallback if file_revision column doesn't exist yet
-      db.prepare(`
-        INSERT INTO file_backups(id, correlation_id, path, content, created_at) VALUES (?, ?, ?, ?, ?)
-      `).run(id, correlationId, canonical, content, new Date().toISOString());
-    }
-  });
+  persistFileBackup(id, correlationId, canonical, content, sha256);
   return id;
 }
 
@@ -179,23 +167,14 @@ function normalizeRequest(...parts: unknown[]): string {
  * Returns the cached response if found, undefined otherwise.
  */
 function getIdempotentResponse(idempotencyKey: string, operation: string, requestHash: string): unknown | undefined {
-  return withAgentDatabase((db) => {
-    const row = db.prepare(
-      "SELECT response FROM idempotency_responses WHERE id = ? AND operation = ? AND request_hash = ?"
-    ).get(idempotencyKey, operation, requestHash) as { response: string } | undefined;
-    return row ? JSON.parse(row.response) as unknown : undefined;
-  });
+  return getStoredIdempotentResponse(idempotencyKey, operation, requestHash);
 }
 
 /**
  * Store an idempotent response for future deduplication.
  */
 function storeIdempotentResponse(idempotencyKey: string, operation: string, requestHash: string, response: unknown): void {
-  withAgentDatabase((db) => {
-    db.prepare(
-      "INSERT OR IGNORE INTO idempotency_responses(id, operation, request_hash, response, created_at) VALUES (?, ?, ?, ?, ?)"
-    ).run(idempotencyKey, operation, requestHash, JSON.stringify(response), new Date().toISOString());
-  });
+  persistIdempotentResponse(idempotencyKey, operation, requestHash, response);
 }
 
 export async function readWorkspaceFile(targetPath: string, correlationId?: string, options?: { includeSha256?: boolean }): Promise<string | { content: string; sha256: string }> {
@@ -230,13 +209,7 @@ async function saveAbsentSnapshot(targetPath: string, correlationId: string): Pr
   // a relative snapshot path would re-resolve against the active workspace at
   // restore time and materialize in the wrong workspace.
   const canonical = validateWorkspace(targetPath);
-  withAgentDatabase((db) => db.prepare(`
-    INSERT INTO file_backups(id, correlation_id, path, content, created_at) VALUES (?, ?, ?, ?, ?)
-  `).run(id, correlationId, canonical, Buffer.alloc(0), new Date().toISOString()));
-  // Mark this backup as an absent-state snapshot
-  withAgentDatabase((db) => db.prepare(
-    "UPDATE file_backups SET restored_at = 'absent' WHERE id = ?"
-  ).run(id));
+  persistAbsentFileBackup(id, correlationId, canonical);
   return id;
 }
 
@@ -349,9 +322,7 @@ export async function deleteWorkspaceFile(targetPath: string, correlationId?: st
 export async function restoreWorkspaceFile(backupId: string, correlationId?: string): Promise<FileMutationResult> {
   return audit("restore", backupId, correlationId, async (traceId) => {
     policyDecisionPoint.assertAllowed({ tool: "restore_file", arguments: { backupId }, correlationId });
-    const backup = withAgentDatabase((db) => db.prepare(`
-      SELECT id, path, content, restored_at FROM file_backups WHERE id = ?
-    `).get(backupId) as { id: string; path: string; content: Buffer; restored_at: string | null } | undefined);
+    const backup = getStoredFileBackup(backupId);
     if (!backup) throw new Error("Backup not found");
     // Workspace isolation (defect FS-01): the stored path is canonical and
     // absolute, but it was captured in a DIFFERENT active workspace. Re-validating
@@ -388,14 +359,14 @@ export async function restoreWorkspaceFile(backupId: string, correlationId?: str
       // stays possible — previously this rm'd the current file with no backup.
       const displacedBackupId = await fs.access(filePath).then(() => backupFile(filePath, backup.path, traceId), () => undefined);
       await fs.rm(filePath, { force: true });
-      withAgentDatabase((db) => db.prepare("UPDATE file_backups SET restored_at=? WHERE id=?").run(new Date().toISOString(), backupId));
+      markFileBackupRestored(backupId);
       return { backupId, displacedBackupId, path: backup.path, restored: true, previousState: "absent" };
     }
 
     // Normal restore — write the backed-up content
     const displacedBackupId = await fs.access(filePath).then(() => backupFile(filePath, backup.path, traceId), () => undefined);
     await atomicWrite(filePath, backup.content);
-    withAgentDatabase((db) => db.prepare("UPDATE file_backups SET restored_at=? WHERE id=?").run(new Date().toISOString(), backupId));
+    markFileBackupRestored(backupId);
     return { backupId, displacedBackupId, path: backup.path, restored: true, previousState: "present" };
   });
 }

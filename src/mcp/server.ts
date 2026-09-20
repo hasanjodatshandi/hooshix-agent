@@ -1,5 +1,5 @@
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { McpServer } from "../adapters/inbound/mcp/legacy-sdk-bridge.js";
+import { StdioServerTransport } from "../adapters/inbound/mcp/legacy-sdk-bridge.js";
 import { registerTools } from "./registry.js";
 
 export async function startMcpServer(){

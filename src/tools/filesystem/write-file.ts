@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { McpServer } from "../../adapters/inbound/mcp/legacy-sdk-bridge.js";
 import { writeWorkspaceFile } from "../../services/filesystem/filesystem-service.js";
 import { resolveCorrelationId } from "../../core/runtime/correlation-id.js";
 import { auditToolCall } from "../../core/memory/tool-audit.js";

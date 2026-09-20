@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { McpServer } from "../../adapters/inbound/mcp/legacy-sdk-bridge.js";
 import { gitAdd, gitBranch, gitCheckout, gitClone, gitCommit, gitDiff, gitHasIdentity, gitInit, gitLog, gitStatus } from "../../services/git/git-service.js";
 import { auditToolCall } from "../../core/memory/tool-audit.js";
 import { resolveCorrelationId } from "../../core/runtime/correlation-id.js";

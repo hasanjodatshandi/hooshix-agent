@@ -1,4 +1,4 @@
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { McpServer } from "../adapters/inbound/mcp/legacy-sdk-bridge.js";
 import { registerSystemInfoTool } from "../tools/system/system-info.js";
 import {
   registerReadFileTool,

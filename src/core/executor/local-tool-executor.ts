@@ -1,7 +1,7 @@
 import type { TaskStep } from "../../application/dto/legacy-task-plan.js";
 import { validateToolName, type ToolName } from "../../application/services/legacy-tool-orchestrator.js";
 import { auditToolCall } from "../memory/tool-audit.js";
-import { dispatchToHandler } from "./handlers/index.js";
+import { dispatchToHandler } from "../../infrastructure/composition/legacy-tool-handler-composition.js";
 import { resolveTaskWorkspace } from "../../security/task-workspace.js";
 import { runWithWorkspaceScope } from "../../security/workspace-guard.js";
 

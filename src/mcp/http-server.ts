@@ -1,12 +1,12 @@
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
+import { McpServer } from "../adapters/inbound/mcp/legacy-sdk-bridge.js";
+import { StreamableHTTPServerTransport } from "../adapters/inbound/mcp/legacy-sdk-bridge.js";
 import { registerTools } from "./registry.js";
 import { TOOL_CAPABILITIES, TOOL_CATEGORIES, TOOL_CATEGORY_MAP, ALL_REGISTERED_TOOLS, type ToolName } from "../application/services/legacy-tool-orchestrator.js";
 import { OAuthProvider } from "./oauth.js";
 import { mcpMetrics } from "./metrics.js";
 import { createMetricsServer } from "./metrics-server.js";
 import { getAgentMetrics } from "../core/trace/metrics-service.js";
-import { withAgentDatabase } from "../core/memory/database.js";
+import { getRecordedToolNames } from "../adapters/outbound/persistence/sqlite/repositories/dashboard-tool-names.adapter.js";
 import http from "node:http";
 import crypto from "node:crypto";
 import fs from "node:fs";
@@ -705,10 +705,7 @@ interface DashboardFilters {
 
 function getDistinctToolNames(): string[] {
   try {
-    return withAgentDatabase((db) => {
-      const rows = db.prepare("SELECT DISTINCT tool FROM tool_calls ORDER BY tool").all() as Array<{ tool: string }>;
-      return rows.map((r) => r.tool);
-    });
+    return getRecordedToolNames();
   } catch {
     return [];
   }

@@ -32,7 +32,13 @@ for (const file of files) {
   if (/\bprocess\s*\.\s*env\b/.test(code) && !(relative.startsWith("infrastructure/config/") || relative.startsWith("bootstrap/"))) {
     record(file, "env_outside_config", "Direct environment access outside config/bootstrap");
   }
-  if (sql.test(code) && !(relative.startsWith("adapters/outbound/persistence/sqlite/") || /(?:^|\/)migrations?\//.test(relative) || /(?:^|\/)database\/migrations\.ts$/.test(relative))) {
+  // Two legacy tool descriptions use the English sentence "Select the active
+  // workspace from the allowed roots pool". Do not mistake that exact prose
+  // for a SQL SELECT statement. Examine each lexical match separately: a
+  // genuine SQL statement in the same file must still block G1.
+  const executableSqlCandidate = [...code.matchAll(new RegExp(sql.source, "gi"))]
+    .some(match => !/^select\s+the\s+active\s+workspace\s+from$/i.test(match[0].trim()));
+  if (executableSqlCandidate && !(relative.startsWith("adapters/outbound/persistence/sqlite/") || /(?:^|\/)migrations?\//.test(relative) || /(?:^|\/)database\/migrations\.ts$/.test(relative))) {
     record(file, "sql_outside_sqlite_adapter", "SQL-like source text outside canonical SQLite adapter/migrations");
   }
   const importPattern = /\b(?:import|export)\s+(?:(?:type\s+)?[\s\S]*?\s+from\s+)?["']([^"']+)["']/g;

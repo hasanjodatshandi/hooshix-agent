@@ -239,3 +239,16 @@ crossing into the mass-migration work assigned to R2–R9.
   allocated R2/R5/R6/R9 gateway, adapter and legacy-cutover work. Mere
   export-path rewrites would create a misleading architecture gate and are
   not used to claim completion.
+
+## Historical report superseded by verified R1 completion — 2026-09-20
+
+The preceding dated blockers reflect intermediate source snapshots. The later
+real SQLite adapter extraction, SDK v1 inbound bridge import cleanup and
+legacy handler-constructor relocation are documented, including their final
+successful full regression, in `R1_G1_COMPLETION_2026-09-20.md`.
+Current architecture phase status is **R1 GATE_PASSED / G1 PASS** within the
+official R1 architecture acceptance scope. The production unified tool/auth
+execution boundary (R2/G2), SDK v2 and OAuth modernization (R5), and legacy
+shortcut removal (R9) are **not** implied by this result. The official live
+status is `29_IMPLEMENTATION_PROGRESS_LEDGER.md`; do not reuse the historical
+intermediate SQL/SDK file counts above as today's state.

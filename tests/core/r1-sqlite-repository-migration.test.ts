@@ -15,6 +15,10 @@ import * as connectionFacade from "../../src/core/memory/database/connection.js"
 import * as connectionAdapter from "../../src/adapters/outbound/persistence/sqlite/connection.adapter.js";
 import * as traceFacade from "../../src/core/memory/execution-trace.js";
 import * as traceAdapter from "../../src/adapters/outbound/persistence/sqlite/repositories/execution-trace.adapter.js";
+import * as taskRepoFacade from "../../src/core/memory/task-repository.js";
+import * as taskRepoAdapter from "../../src/adapters/outbound/persistence/sqlite/repositories/task-repository.adapter.js";
+import * as metricFacade from "../../src/core/trace/metrics-service.js";
+import * as metricAdapter from "../../src/adapters/outbound/persistence/sqlite/repositories/agent-metrics-query.adapter.js";
 
 /**
  * R1/R6 migration contract: existing imports must resolve to identical
@@ -30,6 +34,8 @@ describe("SQLite repository legacy compatibility", () => {
     ["resume", resumeFacade, resumeAdapter],
     ["execution memory", memoryFacade, memoryAdapter],
     ["execution trace", traceFacade, traceAdapter],
+    ["task repository", taskRepoFacade, taskRepoAdapter],
+    ["agent metrics query", metricFacade, metricAdapter],
   ] as const;
   for (const [name, legacy, canonical] of exportsToCompare) {
     it(`${name}: original public exports retain referential identity`, () => {

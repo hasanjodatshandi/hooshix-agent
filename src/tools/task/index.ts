@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { McpServer } from "../../adapters/inbound/mcp/legacy-sdk-bridge.js";
 import { createTaskRuntimeService } from "../../core/runtime/composition-root.js";
 import { auditToolCall } from "../../core/memory/tool-audit.js";
 import { resolveCorrelationId } from "../../core/runtime/correlation-id.js";
@@ -12,6 +12,7 @@ import { TOOL_NAMES, validateToolName } from "../../application/services/legacy-
 import { ReplayExecutor } from "../../core/trace/replay-executor.js";
 import { recordTaskReconciliation } from "../../core/recovery/task-reconciliation.js";
 import { AgentError } from "../../core/errors.js";
+import { persistAppendedTaskSteps, persistTaskLink, getPersistedTaskLinks } from "../../adapters/outbound/persistence/sqlite/repositories/task-tool-persistence.adapter.js";
 
 const runtime = createTaskRuntimeService();
 const traceSchema = { correlationId: z.string().min(1).optional() };
@@ -177,18 +178,8 @@ export function registerTaskTools(server: McpServer) {
         dependsOn: step.dependsOn && step.dependsOn.length > 0 ? step.dependsOn : (i === 0 && lastStepId > 0 ? [lastStepId] : []),
         status: "pending" as const,
       }));
-      // Persist the new steps via task repository
-      const { withAgentDatabase } = await import("../../core/memory/database.js");
-      withAgentDatabase((db) => {
-        const stmt = db.prepare(
-          `INSERT INTO task_steps(task_id, step_id, step_order, action, tool, input, dependencies, status, run_when, step_timeout_ms, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-        );
-        const now = new Date().toISOString();
-        newSteps.forEach((s, i) => {
-          stmt.run(taskId, s.id, plan.steps.length + i, s.action, s.tool ?? null, JSON.stringify(s.arguments ?? {}), JSON.stringify(s.dependsOn ?? []), s.status, s.runWhen ?? "success", s.timeout ?? null, now, now);
-        });
-      });
+      // Legacy append SQL is contained in the outbound persistence adapter.
+      persistAppendedTaskSteps(taskId, plan.steps.length, newSteps);
       // Transition the task from terminal state to planning (runnable)
       const { saveTaskPlan } = await import("../../core/memory/task-repository.js");
       plan.state = "planning";
@@ -208,10 +199,7 @@ export function registerTaskTools(server: McpServer) {
   server.registerTool("task_link", { title: "Link Tasks", description: "🗂️ TASK — Record a causal link between two tasks. Relations: repair, recovery, follow_up, validation, replay, rollback.\n\nExample: { \"sourceTaskId\": \"uuid\", \"targetTaskId\": \"uuid\", \"relation\": \"repair\" }", annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false }, inputSchema: z.object({ sourceTaskId: z.string().uuid(), targetTaskId: z.string().uuid(), relation: z.enum(["repair", "recovery", "follow_up", "validation", "replay", "rollback"]), ...traceSchema }) }, async ({ sourceTaskId, targetTaskId, relation, correlationId }) => {
     assertToolPermission("task_run"); const traceId = resolveCorrelationId(correlationId);
     return auditToolCall("task_link", traceId, sourceTaskId, async () => {
-      const { withAgentDatabase } = await import("../../core/memory/database.js");
-      withAgentDatabase((db) => db.prepare(
-        "INSERT INTO task_links(source_task_id, target_task_id, relation, created_at) VALUES (?, ?, ?, ?)"
-      ).run(sourceTaskId, targetTaskId, relation, new Date().toISOString()));
+      persistTaskLink(sourceTaskId, targetTaskId, relation);
       return response({ sourceTaskId, targetTaskId, relation, linked: true }, traceId);
     });
   });
@@ -219,13 +207,7 @@ export function registerTaskTools(server: McpServer) {
   server.registerTool("task_links", { title: "Get Task Links", description: "🗂️ TASK (read) — Show a task's causal links: upstream (what triggered it) and downstream (what it triggered).\n\nExample: { \"taskId\": \"uuid\" }", annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true }, inputSchema: z.object({ taskId: z.string().uuid(), ...traceSchema }) }, async ({ taskId, correlationId }) => {
     assertToolPermission("task_list"); const traceId = resolveCorrelationId(correlationId);
     return auditToolCall("task_links", traceId, taskId, async () => {
-      const { withAgentDatabase } = await import("../../core/memory/database.js");
-      const upstream = withAgentDatabase((db) => db.prepare(
-        "SELECT source_task_id, relation, created_at FROM task_links WHERE target_task_id = ?"
-      ).all(taskId)) as Array<{ source_task_id: string; relation: string; created_at: string }>;
-      const downstream = withAgentDatabase((db) => db.prepare(
-        "SELECT target_task_id, relation, created_at FROM task_links WHERE source_task_id = ?"
-      ).all(taskId)) as Array<{ target_task_id: string; relation: string; created_at: string }>;
+      const { upstream, downstream } = getPersistedTaskLinks(taskId);
       return response({ taskId, upstream, downstream }, traceId);
     });
   });

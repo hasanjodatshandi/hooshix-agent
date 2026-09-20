@@ -5,7 +5,7 @@
  * Non-invasive: tools register normally, metrics are collected transparently.
  */
 
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { McpServer } from "../adapters/inbound/mcp/legacy-sdk-bridge.js";
 import { mcpMetrics } from "./metrics.js";
 
 /**

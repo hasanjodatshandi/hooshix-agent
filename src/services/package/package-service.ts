@@ -7,7 +7,7 @@ import { resolveCorrelationId } from "../../core/runtime/correlation-id.js";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
-import { withAgentDatabase } from "../../core/memory/database.js";
+import { insertPackageSnapshot, updateStoredPackageSnapshot, findPackageSnapshot } from "../../adapters/outbound/persistence/sqlite/repositories/package-snapshot.adapter.js";
 import { assertCwdExists, describeExecaFailure } from "../execa-result.js";
 
 /**
@@ -219,13 +219,10 @@ async function createPackageSnapshot(manager: PackageManager, action: PackageAct
     const matched = entries.filter((e) => matchesGlob(e, entry)).slice(0, MAX_GLOB_MATCHES);
     for (const file of matched) await captureSnapshotFile(cwd, file, files, bytes);
   }
-  withAgentDatabase((db) => db.prepare(`
-    INSERT INTO package_snapshots(id, correlation_id, manager, action, package_name, cwd, snapshot, status, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, 'created', ?)
-  `).run(id, correlationId, manager, action, name, cwd, JSON.stringify({
-    files,
-    environment: { platform: process.platform, architecture: process.arch, nodeVersion: process.version, manager }
-  }), new Date().toISOString()));
+  insertPackageSnapshot({
+    id, correlationId, manager, action, packageName: name, cwd,
+    snapshot: { files, environment: { platform: process.platform, architecture: process.arch, nodeVersion: process.version, manager } },
+  });
   return { id, files };
 }
 
@@ -244,8 +241,7 @@ async function restorePackageSnapshot(snapshot: PackageSnapshot, cwd: string): P
 }
 
 function updateSnapshot(id: string, status: "committed" | "rolled_back" | "rollback_failed"): void {
-  withAgentDatabase((db) => db.prepare("UPDATE package_snapshots SET status=?, restored_at=? WHERE id=?")
-    .run(status, status === "committed" ? null : new Date().toISOString(), id));
+  updateStoredPackageSnapshot(id, status);
 }
 
 export function validatePackageName(name: string): string {
@@ -372,9 +368,7 @@ export async function managePackage(input: { manager: PackageManager; action: Pa
 export async function restorePackage(snapshotId: string, correlationId?: string) {
   const traceId = resolveCorrelationId(correlationId);
   policyDecisionPoint.assertAllowed({ tool: "package_restore", arguments: { snapshotId }, correlationId: traceId });
-  const row = withAgentDatabase((db) => db.prepare(
-    "SELECT id, cwd, snapshot, status FROM package_snapshots WHERE id = ?"
-  ).get(snapshotId) as { id: string; cwd: string; snapshot: string; status: string } | undefined);
+  const row = findPackageSnapshot(snapshotId);
   if (!row) throw new Error(`Package snapshot not found: ${snapshotId}`);
   if (row.status === "rolled_back") throw new Error(`Package snapshot ${snapshotId} was already restored`);
   const snapshot: PackageSnapshot = { id: row.id, ...JSON.parse(row.snapshot) };
