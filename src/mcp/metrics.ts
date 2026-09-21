@@ -50,6 +50,7 @@ interface MetricsSnapshot {
 class McpMetrics {
   private toolCalls: ToolCallRecord[] = [];
   private sessions = new Map<string, SessionRecord>();
+  private lifetimeSessions = 0;
   private peakConcurrent = 0;
   private startTime = Date.now();
   private maxRecentCalls = 100;
@@ -86,6 +87,7 @@ class McpMetrics {
 
   /** Record session creation */
   recordSessionCreated(sessionId: string, clientInfo?: string): void {
+    if (!this.sessions.has(sessionId)) this.lifetimeSessions++;
     this.sessions.set(sessionId, {
       sessionId,
       createdAt: new Date().toISOString(),
@@ -102,8 +104,13 @@ class McpMetrics {
   /** Record session closure */
   recordSessionClosed(sessionId: string): void {
     const session = this.sessions.get(sessionId);
-    if (session) {
-      session.closedAt = new Date().toISOString();
+    if (session) session.closedAt = new Date().toISOString();
+    // Keep active sessions and only the most recent completed sessions.
+    // Older metrics must not retain an unlimited number of session objects.
+    if (this.sessions.size > 512) {
+      const active = [...this.sessions].filter(([, item]) => !item.closedAt);
+      const completed = [...this.sessions].filter(([, item]) => item.closedAt);
+      this.sessions = new Map([...active, ...completed.slice(-Math.max(0, 512 - active.length))]);
     }
   }
 
@@ -156,7 +163,7 @@ class McpMetrics {
 
     // Active sessions (exclude closed ones from recent 100)
     const activeSessions = this.getActiveSessionCount();
-    const totalSessions = this.sessions.size;
+    const totalSessions = this.lifetimeSessions;
 
     // Recent calls (last 50)
     const recentCalls = this.toolCalls.slice(-50).reverse();
