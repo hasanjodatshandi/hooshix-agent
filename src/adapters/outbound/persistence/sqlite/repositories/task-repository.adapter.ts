@@ -1,7 +1,7 @@
 import type { TaskPlan, TaskStep, TaskStepStatus, TaskExecutionContext, StepAttempt } from "../../../../../application/dto/legacy-task-plan.js";
 import type { TaskState } from "../../../../../core/state/task-state-machine.js";
 import { withAgentDatabase } from "../../../../../core/memory/database.js";
-import path from "node:path";
+import { canonicalProjectPath } from "../../../../../infrastructure/project-path-identity.js";
 import type Database from "better-sqlite3";
 import {assertTaskLeaseWrite} from "./task-lease.adapter.js";
 import type { ExecutionReceipt } from "../../../../../domain/task/execution-outcome.js";
@@ -432,20 +432,7 @@ export function listMemoryItems(input: { taskId?: string; projectId?: string; ki
  * Canonicalize a project path for identity comparisons.
  * Normalizes separators, removes trailing slashes, lowercases on Windows.
  */
-export function canonicalizePath(p: string): string {
-  let resolved = path.resolve(p);
-  resolved = path.normalize(resolved);
-  // Remove trailing separator (but not root like D:\)
-  if (resolved.length > 1 && (resolved.endsWith("/") || resolved.endsWith("\\"))) {
-    resolved = resolved.slice(0, -1);
-  }
-  // Windows: case-insensitive
-  if (process.platform === "win32") {
-    resolved = resolved.toLowerCase();
-  }
-  return resolved;
-}
-
+export function canonicalizePath(p: string): string { return canonicalProjectPath(p); }
 export function saveProject(input: { id?: string; name: string; path: string; description?: string; lastAction?: string; nextAction?: string }): string {
   ensureExtraColumns();
   return withAgentDatabase((db) => {
@@ -456,12 +443,12 @@ export function saveProject(input: { id?: string; name: string; path: string; de
 
     if (input.id) {
       // UPDATE by ID — reject if not found
-      const existing = db.prepare("SELECT id, path, name FROM projects WHERE id = ?").get(input.id) as { id: string; path: string; name: string } | undefined;
+      const existing = db.prepare("SELECT id, path, canonical_path, name FROM projects WHERE id = ?").get(input.id) as { id: string; path: string; canonical_path: string; name: string } | undefined;
       if (!existing) throw new Error(`Project not found: ${input.id}`);
       // If path changed, check no other project owns the new canonical path
-      const existingCanonical = canonicalizePath(existing.path);
+      const existingCanonical = existing.canonical_path;
       if (existingCanonical !== canonical) {
-        const conflict = db.prepare("SELECT id FROM projects WHERE path = ? AND id != ?").get(canonical, input.id) as { id: string } | undefined;
+        const conflict = db.prepare("SELECT id FROM projects WHERE canonical_path = ? AND id != ?").get(canonical, input.id) as { id: string } | undefined;
         if (conflict) throw new Error(`Path already registered to project ${conflict.id}`);
       }
       // If name changed (case-insensitive on Windows), check for duplicate name
@@ -471,14 +458,14 @@ export function saveProject(input: { id?: string; name: string; path: string; de
         if (nameConflict) throw new Error(`Project name already registered to project ${nameConflict.id}`);
       }
       db.prepare(`
-        UPDATE projects SET name=?, path=?, description=?, last_action=?, next_action=?, updated_at=?
+        UPDATE projects SET name=?, path=?, canonical_path=?, display_path=?, description=?, last_action=?, next_action=?, updated_at=?
         WHERE id=?
-      `).run(input.name, canonical, input.description ?? null, input.lastAction ?? null, input.nextAction ?? null, now, input.id);
+      `).run(input.name, canonical, canonical, input.path, input.description ?? null, input.lastAction ?? null, input.nextAction ?? null, now, input.id);
       return input.id;
     }
 
     // CREATE — check if canonical path already exists
-    const existingByPath = db.prepare("SELECT id FROM projects WHERE path = ?").get(canonical) as { id: string } | undefined;
+    const existingByPath = db.prepare("SELECT id FROM projects WHERE canonical_path = ?").get(canonical) as { id: string } | undefined;
     if (existingByPath) {
       throw new Error(`Path already registered to project ${existingByPath.id}`);
     }
@@ -488,9 +475,9 @@ export function saveProject(input: { id?: string; name: string; path: string; de
 
     const id = crypto.randomUUID();
     db.prepare(`
-      INSERT INTO projects(id, name, path, description, last_action, next_action, created_at, updated_at, status)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active')
-    `).run(id, input.name, canonical, input.description ?? null, input.lastAction ?? null, input.nextAction ?? null, now, now);
+      INSERT INTO projects(id, name, path, canonical_path, display_path, description, last_action, next_action, created_at, updated_at, status)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active')
+    `).run(id, input.name, canonical, canonical, input.path, input.description ?? null, input.lastAction ?? null, input.nextAction ?? null, now, now);
     return id;
   });
 }

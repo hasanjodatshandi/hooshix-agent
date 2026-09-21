@@ -1,6 +1,7 @@
 import type Database from "better-sqlite3";
 import {createHash} from "node:crypto";
 import path from "node:path";
+import { canonicalProjectPath } from "../../../infrastructure/project-path-identity.js";
 
 const SAFE_IDENTIFIER = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
 
@@ -254,5 +255,37 @@ export function runMigrations(db: Database.Database): void {
       "(OLD.post_mutation_revision IS NULL AND NEW.post_mutation_revision IS NOT NULL "+
       "AND OLD.post_mutation_state IS NULL))"+
       ") BEGIN SELECT RAISE(ABORT,'immutable_file_backup_snapshot'); END");
+  });
+
+  // R4.04: preserve project ownership without guessing which colliding ID
+  // owns memory or Task history. The entire migration rolls back on collision.
+  migrate(db,15,"r4-canonical-project-identity",()=>{
+    ensureColumn(db,"projects","canonical_path","TEXT");
+    ensureColumn(db,"projects","display_path","TEXT");
+    const projects=db.prepare("SELECT id,path FROM projects ORDER BY id")
+      .all() as Array<{id:string;path:string}>;
+    const identities=new Map<string,string>();
+    const normalized:Array<{id:string;canonical:string;display:string}>=[];
+    for(const project of projects){
+      if(!path.isAbsolute(project.path))
+        throw new Error(`PROJECT_PATH_UNVERIFIED: ${project.id}`);
+      const canonical=canonicalProjectPath(project.path);
+      const owner=identities.get(canonical);
+      if(owner && owner!==project.id)
+        throw new Error(`PROJECT_CANONICAL_COLLISION: ${owner} / ${project.id} -> ${canonical}. Resolve ownership explicitly before migrating.`);
+      identities.set(canonical,project.id);
+      normalized.push({id:project.id,canonical,display:project.path});
+    }
+    const update=db.prepare("UPDATE projects SET canonical_path=?,display_path=? WHERE id=?");
+    for(const item of normalized) update.run(item.canonical,item.display,item.id);
+    db.exec(`
+      CREATE UNIQUE INDEX idx_projects_canonical_identity ON projects(canonical_path);
+      CREATE TRIGGER projects_canonical_required_insert BEFORE INSERT ON projects
+      WHEN NEW.canonical_path IS NULL OR NEW.canonical_path=''
+      BEGIN SELECT RAISE(ABORT,'project_canonical_identity_required'); END;
+      CREATE TRIGGER projects_canonical_required_update BEFORE UPDATE ON projects
+      WHEN NEW.canonical_path IS NULL OR NEW.canonical_path=''
+      BEGIN SELECT RAISE(ABORT,'project_canonical_identity_required'); END;
+    `);
   });
 }

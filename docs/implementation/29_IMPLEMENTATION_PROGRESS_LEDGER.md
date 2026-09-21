@@ -2,7 +2,7 @@
 
 **Project:** `D:/workspace/hooshix-agent`  
 **Program:** Full Hexagonal/Clean redesign + complete consolidated-audit remediation  
-**Status:** R0 GATE_PASSED; R1 GATE_PASSED (G1 PASS); R2 GATE_PASSED (G2 PASS on isolated feature branch); R3 GATE_PASSED (G3 PASS on isolated feature branch, 2026-09-21). R4 IN_PROGRESS (R4.01–R4.03 VERIFIED; G4 OPEN). R5–R10 NOT_STARTED.
+**Status:** R0 GATE_PASSED; R1 GATE_PASSED (G1 PASS); R2 GATE_PASSED (G2 PASS on isolated feature branch); R3 GATE_PASSED (G3 PASS on isolated feature branch, 2026-09-21). R4 IN_PROGRESS (R4.01–R4.04 VERIFIED; G4 OPEN). R5–R10 NOT_STARTED.
 **Owner directive:** all 13 HIGH, 29 MEDIUM, 12 LOW findings must be fixed and verified.
 
 This file is intentionally a live execution ledger. The implementing assistant updates it during implementation. Do not erase previous evidence; append/update status while preserving history.
@@ -39,7 +39,7 @@ Notes on pre-existing dirty changes: none at R0 baseline; source hardening alrea
 | R1 Architecture + MCP v2 foundation | GATE_PASSED | G1 PASS — strict 166-source-file inventory zero candidates; new-tree dependency/in-memory adapter and composition tests pass; SDK v2 upgrade belongs to R5 | 2026-09-19 | 2026-09-20 | Full suite 119 files / 542 PASS + 18 expected RED; standalone/full typecheck and build PASS; see R1_G1_COMPLETION_2026-09-20.md |
 | R2 Unified tool/auth/workspace | GATE_PASSED | G2 PASS — shared Direct MCP/Task gateway, exact approval, scope controls and retired alternate inbound handlers | 2026-09-20 | 2026-09-20 | Commit e641b6d; 133 files / 589 PASS + 15 expected RED, Typecheck, Build, G1 PASS; R2 G2 closure worklog below |
 | R3 Task/recovery/idempotency/lease | GATE_PASSED | G3 PASS — R3.01–R3.10 VERIFIED on isolated branch; no release/deployment claim | 2026-09-20 | 2026-09-21 | 142 files / 639 PASS + 11 expected RED; Typecheck, Build, strict G1 183/0 candidates, live-owner crash-recovery and real 2-process lease proofs PASS; see G3 completion record |
-| R4 Data integrity/compensation | IN_PROGRESS | G4 OPEN — R4.01–R4.03 VERIFIED; R4.04–R4.07 outstanding | 2026-09-21 | | R4.03 145 files / 655 PASS + 9 expected RED; Typecheck, Build and G1 PASS |
+| R4 Data integrity/compensation | IN_PROGRESS | G4 OPEN — R4.01–R4.04 VERIFIED; R4.05–R4.07 outstanding | 2026-09-21 | | R4.04 146 files / 659 PASS + 9 expected RED; Typecheck, Build and G1 PASS |
 | R5 HTTP/OAuth/MCP modern | NOT_STARTED | — | | | |
 | R6 Persistence/perf/observability | NOT_STARTED | — | | | |
 | R7 Config/deployment/CI | NOT_STARTED | — | | | |
@@ -56,9 +56,9 @@ Allowed phase status: `NOT_STARTED`, `IN_PROGRESS`, `BLOCKED`, `GATE_FAILED`, `G
 | Severity | Total | OPEN | TEST_ENCODED | IMPLEMENTING | IMPLEMENTED | VERIFIED_CLOSED | DEFERRED_BY_OWNER |
 |---|---:|---:|---:|---:|---:|---:|---:|
 | HIGH | 13 | 0 | 6 | 0 | 0 | 7 | 0 |
-| MEDIUM | 29 | 17 | 3 | 0 | 0 | 9 | 0 |
+| MEDIUM | 29 | 17 | 2 | 0 | 0 | 10 | 0 |
 | LOW | 12 | 11 | 0 | 0 | 0 | 1 | 0 |
-| **TOTAL** | **54** | **28** | **9** | **0** | **0** | **17** | **0** |
+| **TOTAL** | **54** | **28** | **8** | **0** | **0** | **18** | **0** |
 
 The detailed source is `20_FINDINGS_TRACEABILITY_MATRIX.md`; keep totals consistent.
 
@@ -68,8 +68,8 @@ The detailed source is `20_FINDINGS_TRACEABILITY_MATRIX.md`; keep totals consist
 
 ```text
 Completed phase: R3.01–R3.10 (G3 VERIFIED PASS); completed leaves R4.01 immutable file backup schema and R4.02 revision-guarded restore (VERIFIED, feature branch)
-Next pending leaf: R4.04 — canonical project identity (NOT_STARTED)
-Findings: HIGH-05/06/07/13 and MED-05/08/09 VERIFIED_CLOSED with G3 evidence; MED-11/12 VERIFIED_CLOSED with R4.02, MED-10 with R4.03; 17/54 total closed. Other findings retain their statuses.
+Next pending leaf: R4.05 — Git snapshot contract (NOT_STARTED)
+Findings: HIGH-05/06/07/13 and MED-05/08/09 VERIFIED_CLOSED with G3 evidence; MED-11/12 VERIFIED_CLOSED with R4.02, MED-10 with R4.03; 18/54 total closed. Other findings retain their statuses.
 Gate: G3 PASS on isolated branch. R4 IN_PROGRESS, G4 OPEN; HooshiX is NOT release-ready.
 Workspace: D:/workspace/hooshix-agent; isolated feature/r2-unified-tool-gateway-2026-09-20 branch.
 No live database migration, deployment, restart, push, merge, reset or removal of unrelated user files.
@@ -629,3 +629,13 @@ Finding IDs: architectural G1; no HIGH/MED/LOW finding independently closed.
 - **Safety:** An unrelated later edit after a prior restore remains a revision conflict, never a second overwrite. Present/absent previous-state variants remain immutable independently of restoration history. Historical snapshots lacking observed post-mutation evidence remain fail-closed.
 - **Evidence:** `tests/core/r4-repeated-restore.test.ts` (3 new passing cases), existing MED-10/11/12 and R4.02 regressions (14 focused tests PASS). Task `11d5257b-ae16-4867-9e0d-2d35b3fd84c3` full suite: 145 files, 655 PASS + 9 expected failing other-phase contracts (664 total), source/test TypeScript, build, G1 strict (183 files, 0 candidates) PASS. MED-10 -> VERIFIED_CLOSED; 17/54 findings closed.
 - **Scope:** No additional DB schema, no live DB migration, no external deployment, no unrelated EAAP folder modification. R4.04 canonical project identity is next.
+
+---
+
+## R4.04 — canonical project identity — 2026-09-21
+
+- **Decision:** VERIFIED on isolated feature branch. R4.05 Git snapshot is next; G4 OPEN. MED-07 changed to VERIFIED_CLOSED; 18/54 findings closed.
+- **Implementation:** One shared `canonicalProjectPath` helper used by both runtime project repository and migration; absolute normalized identity with existing symlink/junction resolution and Windows case-folding. Project writes persist `canonical_path` and `display_path`, reject equivalent identity on create or update, preserve IDs. SQLite migration 15 preflights every existing project and fails atomically with both project IDs on canonical collisions; it never guesses memory or Task ownership. UNIQUE identity index and not-null insert/update triggers protect the DB boundary.
+- **Migration evidence:** `tests/core/r4-project-canonical-identity.test.ts` covers duplicate lexical/case identity, existing symlink alias, copied-v14 project upgrade retaining ID/path, missing canonical rejection, and copied-v14 collision rollback proving schema/version/rows unchanged. No production DB migration was manually applied.
+- **Verification:** Focused task `c63e2fc4-fbed-4d36-a89b-7498712af81d`: 9 tests PASS plus source/test typecheck PASS after two test-only TypeScript diagnostics were corrected. Full task `91f7ad79-2bc2-4241-ad1e-e50c7e7a7c18`: 146 files / 659 PASS + 9 expected RED in other phases, TypeScript, build, strict G1 PASS (184 scanned source files / 0 candidates).
+- **Scope:** Only project identity, migration schema, focused test, migration-version assertion, finding matrix and ledger. No live DB, deployment, push, merge, reset or unrelated untracked EAAP file mutation.

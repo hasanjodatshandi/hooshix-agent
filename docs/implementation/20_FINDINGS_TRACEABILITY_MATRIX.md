@@ -37,7 +37,7 @@ Status values: `OPEN`, `TEST_ENCODED`, `IMPLEMENTING`, `IMPLEMENTED`, `VERIFIED_
 | MED-04 | Shell cwd not workspace-authorized | R2 | 06,08,09,16 | outside cwd rejected for auto-approved path | VERIFIED_CLOSED |
 | MED-05 | Audit failure masks successful effect | R3/R6 | 11,15,16 | effect succeeds + sink fails -> success/degraded, no retry | VERIFIED_CLOSED |
 | MED-06 | Direct MCP hides CAS/idempotency | R2 | 06,08,12,16 | direct/task parity tests | VERIFIED_CLOSED |
-| MED-07 | Project identity non-canonical | R4 | 12,13,16 | equivalent path one identity; collision migration test | TEST_ENCODED |
+| MED-07 | Project identity non-canonical | R4 | 12,13,16 | equivalent path one identity; collision migration test | VERIFIED_CLOSED |
 | MED-08 | Task idempotency ignores payload | R3 | 11,13,16 | same key/diff hash conflict | VERIFIED_CLOSED |
 | MED-09 | Append allows terminal tasks | R3 | 05,11,16 | completed/cancelled append rejected or explicit revision behavior | VERIFIED_CLOSED |
 | MED-10 | Absent backup reuse creates empty file | R4 | 12,13,16 | repeated restore remains absent | VERIFIED_CLOSED |
