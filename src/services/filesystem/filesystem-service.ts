@@ -145,9 +145,9 @@ async function backupFile(filePath: string, _targetPath: string, correlationId: 
   return id;
 }
 
-/** Compute SHA-256 hex digest of a string. */
-function sha256hex(data: string): string {
-  return createHash("sha256").update(data, "utf8").digest("hex");
+/** Compute SHA-256 over exact UTF-8 string bytes or a binary file buffer. */
+function sha256hex(data: string | Buffer): string {
+  return createHash("sha256").update(data).digest("hex");
 }
 
 // ─── Idempotency support for file mutations ───────────────────────
@@ -323,17 +323,21 @@ export async function deleteWorkspaceFile(targetPath: string, correlationId?: st
   });
 }
 
+/**
+ * R4.02: Normal compensation is a compare-and-restore operation, not a
+ * historical overwrite. There is deliberately no force flag on this API:
+ * historical restoration requires a distinct approval-bound contract.
+ */
 export async function restoreWorkspaceFile(backupId: string, correlationId?: string): Promise<FileMutationResult> {
   return audit("restore", backupId, correlationId, async (traceId) => {
     policyDecisionPoint.assertAllowed({ tool: "restore_file", arguments: { backupId }, correlationId });
     const backup = getStoredFileBackup(backupId);
     if (!backup) throw new Error("Backup not found");
-    // Workspace isolation (defect FS-01): the stored path is canonical and
-    // absolute, but it was captured in a DIFFERENT active workspace. Re-validating
-    // is not enough — a relative legacy row would silently re-resolve into the
-    // current workspace, and an absolute row from another root would be written
-    // outside the active scope. Fail closed: the backup's path must resolve
-    // inside the CURRENT active workspace, otherwise the restore is refused.
+    // Authorize the STORED absolute target, never a path supplied by the caller
+    // or re-anchored relative to a newly selected workspace.
+    if (!path.isAbsolute(backup.path) || backup.target_canonical_path !== backup.path) {
+      throw new Error("Access denied: backup has a non-canonical stored target. Restore refused.");
+    }
     let filePath: string;
     try {
       filePath = validateWorkspace(backup.path);
@@ -341,41 +345,83 @@ export async function restoreWorkspaceFile(backupId: string, correlationId?: str
     } catch {
       throw new Error(
         `Access denied: backup ${backupId} targets '${backup.path}' which is outside the active workspace. ` +
-        `Backups can only be restored in the workspace they were taken in — set_workspace back to the original workspace first.`
+        "Backups can only be restored in the workspace they were taken in — set_workspace back to the original workspace first."
       );
     }
-    // Defense-in-depth: a legacy row with a RELATIVE path must never be
-    // re-anchored into the current workspace. Canonical storage is absolute;
-    // if the stored path still isn't absolute, the row predates the fix and
-    // cannot be proven to belong to this workspace — reject rather than guess.
-    if (!path.isAbsolute(backup.path)) {
-      throw new Error(
-        `Access denied: backup ${backupId} has a non-canonical (relative) path and cannot be proven to belong to the active workspace. Restore refused.`
-      );
-    }
-    await fs.mkdir(path.dirname(filePath), { recursive: true });
-
-    // Immutable state is independent of mutable restoration history.
-    // Unclassified manually inserted/legacy rows have no trustworthy type.
-    if(backup.previous_state!=="absent"&&backup.previous_state!=="present")
+    if (backup.previous_state !== "absent" && backup.previous_state !== "present")
       throw new Error("backup_previous_state_unclassified");
-    const isAbsentSnapshot = backup.previous_state === "absent";
 
-    if (isAbsentSnapshot) {
-      // Restore to absent state — delete the file if it exists.
-      // IMPORTANT: back up the displaced content first so "undo of the undo"
-      // stays possible — previously this rm'd the current file with no backup.
-      const displacedBackupId = await fs.access(filePath).then(() => backupFile(filePath, backup.path, traceId), () => undefined);
-      await fs.rm(filePath, { force: true });
-      markFileBackupRestored(backupId);
-      return { backupId, displacedBackupId, path: backup.path, restored: true, previousState: "absent" };
+    // A v14 row can describe a pre-state without proving that the original
+    // external mutation completed. Such a row is NOT an authorization to
+    // overwrite the current file. Old rows have no trustworthy post-state.
+    if (backup.legacy_unversioned !== 0 ||
+        (backup.post_mutation_state !== "present" && backup.post_mutation_state !== "absent") ||
+        (backup.post_mutation_state === "present" &&
+          (backup.post_mutation_revision === null || !/^[0-9a-f]{64}$/.test(backup.post_mutation_revision))) ||
+        (backup.post_mutation_state === "absent" && backup.post_mutation_revision !== null)) {
+      throw new Error("RESTORE_POSTCONDITION_UNKNOWN: restore requires an observed post-mutation state; historical overwrite is not supported");
+    }
+    if (backup.previous_state === "present" &&
+        (!backup.previous_revision || !/^[0-9a-f]{64}$/.test(backup.previous_revision) ||
+          sha256hex(backup.content) !== backup.previous_revision ||
+          backup.content_hash !== backup.previous_revision)) {
+      throw new Error("RESTORE_BACKUP_INTEGRITY_FAILURE: previous bytes cannot be verified");
     }
 
-    // Normal restore — write the backed-up content
-    const displacedBackupId = await fs.access(filePath).then(() => backupFile(filePath, backup.path, traceId), () => undefined);
-    await atomicWrite(filePath, backup.content);
+    // Revisions describe the bytes, not mtime: an absent target has no hash.
+    // Reject directories and symlinks rather than interpreting them as files.
+    async function currentState(): Promise<{kind: "absent"} | {kind: "present"; revision: string}> {
+      let stat: fsSync.Stats;
+      try { stat = await fs.lstat(filePath); }
+      catch (error) {
+        if ((error as NodeJS.ErrnoException).code === "ENOENT") return { kind: "absent" };
+        throw error;
+      }
+      if (!stat.isFile()) throw new Error("RESTORE_REVISION_CONFLICT: target is no longer a regular file");
+      await assertReadableSize(filePath);
+      return { kind: "present", revision: sha256hex(await fs.readFile(filePath)) };
+    }
+    const matchesPrevious = (state: Awaited<ReturnType<typeof currentState>>): boolean =>
+      backup.previous_state === state.kind &&
+      (state.kind === "absent" || state.revision === backup.previous_revision);
+    const matchesPost = (state: Awaited<ReturnType<typeof currentState>>): boolean =>
+      backup.post_mutation_state === state.kind &&
+      (state.kind === "absent" || state.revision === backup.post_mutation_revision);
+
+    const observed = await currentState();
+    // R4.01's absent-state repeat restore stays a safe no-op; do not overwrite
+    // a later *different* revision simply because this backup was used once.
+    if (matchesPrevious(observed)) {
+      markFileBackupRestored(backupId);
+      return {backupId, path: backup.path, restored: true, previousState: backup.previous_state};
+    }
+    if (!matchesPost(observed))
+      throw new Error("RESTORE_REVISION_CONFLICT: target no longer matches the recorded post-mutation state");
+
+    // Capture displaced bytes before the mutation (undo of the undo).
+    // Check the state again after backup: if another writer changed it during
+    // the backup, refuse restore rather than overwriting the detected change.
+    const displacedBackupId = observed.kind === "present"
+      ? await backupFile(filePath, backup.path, traceId) : undefined;
+    if (!matchesPost(await currentState()))
+      throw new Error("RESTORE_REVISION_CONFLICT: target changed while preparing restore");
+
+    if (backup.previous_state === "absent") {
+      await fs.unlink(filePath);
+    } else {
+      await fs.mkdir(path.dirname(filePath), {recursive: true});
+      validateWorkspace(path.dirname(filePath));
+      await atomicWrite(filePath, backup.content);
+    }
+    // Do not record a successful restoration or an observed displaced-backup
+    // postcondition until the on-disk result is independently verified.
+    if (!matchesPrevious(await currentState()))
+      throw new Error("RESTORE_VERIFICATION_FAILED: restored target does not match previous snapshot state");
+    if (displacedBackupId)
+      recordFileBackupPostcondition(displacedBackupId, backup.previous_state,
+        backup.previous_state === "present" ? backup.previous_revision! : undefined);
     markFileBackupRestored(backupId);
-    return { backupId, displacedBackupId, path: backup.path, restored: true, previousState: "present" };
+    return { backupId, displacedBackupId, path: backup.path, restored: true, previousState: backup.previous_state };
   });
 }
 

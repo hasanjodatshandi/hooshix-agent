@@ -42,7 +42,7 @@ describe("R0 MED-07/10/11/12 disposable data-integrity contracts", () => {
     expect(fs.existsSync(file)).toBe(false);
   });
 
-  it.fails("MED-11: restore must reject a stale revision rather than overwrite another writer's edit", async () => {
+  it("MED-11: restore must reject a stale revision rather than overwrite another writer's edit", async () => {
     fixture = createDisposableFixture("revision");
     scope(fixture.root);
     const file = path.join(fixture.root, "revision.txt");

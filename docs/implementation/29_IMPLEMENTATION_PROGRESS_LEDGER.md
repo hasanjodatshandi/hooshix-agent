@@ -2,7 +2,7 @@
 
 **Project:** `D:/workspace/hooshix-agent`  
 **Program:** Full Hexagonal/Clean redesign + complete consolidated-audit remediation  
-**Status:** R0 GATE_PASSED; R1 GATE_PASSED (G1 PASS); R2 GATE_PASSED (G2 PASS on isolated feature branch); R3 GATE_PASSED (G3 PASS on isolated feature branch, 2026-09-21). R4 IN_PROGRESS (R4.01 VERIFIED; G4 OPEN). R5–R10 NOT_STARTED.
+**Status:** R0 GATE_PASSED; R1 GATE_PASSED (G1 PASS); R2 GATE_PASSED (G2 PASS on isolated feature branch); R3 GATE_PASSED (G3 PASS on isolated feature branch, 2026-09-21). R4 IN_PROGRESS (R4.01–R4.02 VERIFIED; G4 OPEN). R5–R10 NOT_STARTED.
 **Owner directive:** all 13 HIGH, 29 MEDIUM, 12 LOW findings must be fixed and verified.
 
 This file is intentionally a live execution ledger. The implementing assistant updates it during implementation. Do not erase previous evidence; append/update status while preserving history.
@@ -39,7 +39,7 @@ Notes on pre-existing dirty changes: none at R0 baseline; source hardening alrea
 | R1 Architecture + MCP v2 foundation | GATE_PASSED | G1 PASS — strict 166-source-file inventory zero candidates; new-tree dependency/in-memory adapter and composition tests pass; SDK v2 upgrade belongs to R5 | 2026-09-19 | 2026-09-20 | Full suite 119 files / 542 PASS + 18 expected RED; standalone/full typecheck and build PASS; see R1_G1_COMPLETION_2026-09-20.md |
 | R2 Unified tool/auth/workspace | GATE_PASSED | G2 PASS — shared Direct MCP/Task gateway, exact approval, scope controls and retired alternate inbound handlers | 2026-09-20 | 2026-09-20 | Commit e641b6d; 133 files / 589 PASS + 15 expected RED, Typecheck, Build, G1 PASS; R2 G2 closure worklog below |
 | R3 Task/recovery/idempotency/lease | GATE_PASSED | G3 PASS — R3.01–R3.10 VERIFIED on isolated branch; no release/deployment claim | 2026-09-20 | 2026-09-21 | 142 files / 639 PASS + 11 expected RED; Typecheck, Build, strict G1 183/0 candidates, live-owner crash-recovery and real 2-process lease proofs PASS; see G3 completion record |
-| R4 Data integrity/compensation | IN_PROGRESS | G4 OPEN — R4.01 immutable file backup snapshots VERIFIED; R4.02–R4.07 outstanding | 2026-09-21 | | R4.01 143 files / 644 PASS + 10 expected RED; Typecheck, Build and G1 PASS |
+| R4 Data integrity/compensation | IN_PROGRESS | G4 OPEN — R4.01 immutable snapshots and R4.02 revision-guarded restore VERIFIED; R4.03–R4.07 outstanding | 2026-09-21 | | R4.02 144 files / 652 PASS + 9 expected RED; Typecheck, Build and G1 PASS |
 | R5 HTTP/OAuth/MCP modern | NOT_STARTED | — | | | |
 | R6 Persistence/perf/observability | NOT_STARTED | — | | | |
 | R7 Config/deployment/CI | NOT_STARTED | — | | | |
@@ -56,9 +56,9 @@ Allowed phase status: `NOT_STARTED`, `IN_PROGRESS`, `BLOCKED`, `GATE_FAILED`, `G
 | Severity | Total | OPEN | TEST_ENCODED | IMPLEMENTING | IMPLEMENTED | VERIFIED_CLOSED | DEFERRED_BY_OWNER |
 |---|---:|---:|---:|---:|---:|---:|---:|
 | HIGH | 13 | 0 | 6 | 0 | 0 | 7 | 0 |
-| MEDIUM | 29 | 17 | 6 | 0 | 0 | 6 | 0 |
+| MEDIUM | 29 | 17 | 4 | 0 | 0 | 8 | 0 |
 | LOW | 12 | 11 | 0 | 0 | 0 | 1 | 0 |
-| **TOTAL** | **54** | **28** | **12** | **0** | **0** | **14** | **0** |
+| **TOTAL** | **54** | **28** | **10** | **0** | **0** | **16** | **0** |
 
 The detailed source is `20_FINDINGS_TRACEABILITY_MATRIX.md`; keep totals consistent.
 
@@ -67,9 +67,9 @@ The detailed source is `20_FINDINGS_TRACEABILITY_MATRIX.md`; keep totals consist
 ## 4. Current task
 
 ```text
-Completed phase: R3.01–R3.10 (G3 VERIFIED PASS); completed leaf R4.01 — immutable file backup schema (VERIFIED, feature branch)
-Next pending leaf: R4.02 — revision-guarded restore (NOT_STARTED)
-Findings: HIGH-05/06/07/13 and MED-05/08/09 VERIFIED_CLOSED with G3 evidence; 14/54 total closed. Other findings retain their statuses.
+Completed phase: R3.01–R3.10 (G3 VERIFIED PASS); completed leaves R4.01 immutable file backup schema and R4.02 revision-guarded restore (VERIFIED, feature branch)
+Next pending leaf: R4.03 — repeated restore semantics (NOT_STARTED)
+Findings: HIGH-05/06/07/13 and MED-05/08/09 VERIFIED_CLOSED with G3 evidence; MED-11/12 VERIFIED_CLOSED with R4.02; 16/54 total closed. Other findings retain their statuses.
 Gate: G3 PASS on isolated branch. R4 IN_PROGRESS, G4 OPEN; HooshiX is NOT release-ready.
 Workspace: D:/workspace/hooshix-agent; isolated feature/r2-unified-tool-gateway-2026-09-20 branch.
 No live database migration, deployment, restart, push, merge, reset or removal of unrelated user files.
@@ -249,10 +249,11 @@ Protocol compatibility doc generated:
 ## 13. Current blockers
 
 ```text
-Code/security: HIGH-03 git diff --no-index currently auto-allowed (intentionally RED test); HIGH-10 Dockerfile falls back to non-frozen install (intentionally RED test).
-Testing: G0 needs remaining HIGH direct-entrypoint/fixture regressions; actual multi-process lease and high-load verification remain unperformed. No finding is marked deferred or closed.
-Architecture: R1 G1 PASS for measured architecture-boundary criteria; G2/G9 runtime shortcuts and MCP SDK v2 upgrade remain for R2/R5/R9.
-Operational: public HTTP and R10 blocked. No push, merge, tag, deployment or live DB migration authorized by R0.
+Code/security: R4.03–R4.07 data-integrity contracts remain open (including MED-10, HIGH-08/09 and MED-07). HIGH-10 Docker frozen-lock fallback remains TEST_ENCODED for R7; HIGH-03 is VERIFIED_CLOSED under G2.
+Testing: R4 G4 remains OPEN; no force-historical file restore has been exposed or approved. Final G8 performance/fuzz and G10 release verification have not been performed. R3 cross-process lease and recovery evidence is PASSED, not an outstanding blocker.
+Architecture: G1–G3 PASS on isolated feature branch; MCP SDK v2 and HTTP/OAuth migration remain R5, production cutover and legacy retirement remain R9/R10.
+Data-integrity concurrency: SHA-256 normal restore guard checks before and after displaced backup but cannot atomically exclude an external OS writer between last check and filesystem effect (residual TOCTOU).
+Operational/safety: public HTTP and R10 remain blocked. Do not push, merge, tag, deploy, restart, apply live DB migrations, reset or delete unrelated user work as part of R4.02.
 ```
 
 For each blocker specify whether it is:
@@ -607,3 +608,15 @@ Finding IDs: architectural G1; no HIGH/MED/LOW finding independently closed.
 - **Tests:** New `tests/core/r4-file-backup-schema.test.ts` covers present/absent snapshot and observed postcondition for write/create/modify/delete, immutable historical rows and copied-DB legacy migration. Existing now-green `MED-10` absent-state repeat restore assertion was converted from expected failure to ordinary passing regression in `tests/core/r0-data-integrity-contracts.test.ts`. The complete R4.03 repeated-restore contract and R4.02 revision-guarded restore remain pending; do not close those findings prematurely.
 - **Final validation:** Task `6974855a-5ed2-4332-8b81-87ab00e9a8a4`: `pnpm exec vitest run` 143 files, **644 PASS + 10 expected failures assigned to other leaves (654 total), zero unexpected failures**; `pnpm run typecheck` PASS, `pnpm run build` PASS, `node scripts/verify-g1-global.mjs --strict` PASS (183 source files / 0 candidates), and `git diff --check` exit 0 (Windows newline warnings only). Earlier focused R4.01 + copied-migration fixtures 9 PASS in task `a8fb8228-0984-4b51-b7c0-377c7b43da23`.
 - **Scope:** Only seven R4.01-related source, test and ledger files are eligible for this leaf's commit. Existing untracked `HooshiX_EAAP_Implementation_Package/` is unrelated and must remain untouched. No push, merge, production DB migration, deploy, service restart, destructive checkout or workspace cleanup.
+
+---
+
+## R4.02 — revision-guarded file restore — 2026-09-21
+
+- **Decision:** R4.02 VERIFIED on isolated feature branch. The normal `restore_file` path now refuses stale revisions, unknown historical postconditions and unverifiable prior bytes; G4 remains OPEN. Next leaf: R4.03 repeated-restore semantics.
+- **Restore contract:** Re-authorizes the exact stored canonical absolute target against the CURRENT active workspace and sensitivity policy, before access. For verified v14 backups, reads on-disk file state as an absent/present plus SHA-256 byte revision, verifies the observed post-mutation state, and fails with `RESTORE_REVISION_CONFLICT` before write/delete when an independent edit, deletion or recreation intervenes. A target already matching the immutable previous state is a safe no-op rather than another overwrite. Regular files only; directory/symlink substitution is rejected. A second state check after capturing the displaced backup detects intervening changes before restoration; final state is read and verified before recording restored status. The displaced backup records its actually observed post-restore state so undo-of-undo itself passes the normal revision guard.
+- **Fail-closed historical handling:** Backups with missing/unknown post-mutation evidence, legacy unversioned rows or unverifiable previous content reject restore. No force/historical overwrite flag is exposed by this API; such a distinct operation requires explicit target-bound approval and displaced-state capture, and has not been implemented or claimed as supported.
+- **Findings:** MED-11 and MED-12 moved from TEST_ENCODED to VERIFIED_CLOSED after targeted/full regression and pre-existing workspace reauthorization tests. MED-10 remains TEST_ENCODED pending the comprehensive R4.03 repeated-restore contract; R4.04–07 and G4 remain OPEN. Matrix: 16/54 closed, 28 OPEN, 10 TEST_ENCODED.
+- **Focused validation:** Task `710a0423-dd85-4f22-b7b4-a01b5b848a7c`: four relevant files / **72 tests PASS**, including seven new revision-guard tests (stale content, recreated deleted target, unexpected absence, unknown postcondition, successful present/absent restore and displaced-backup undo, stale second restore). Converted existing MED-11 expected-failing contract to passing assertion.
+- **Final full regression:** Task `49cad18b-0660-4d5a-b508-19c353269248`: `vitest run` **144 files / 652 PASS + 9 expected failures assigned to other leaves (661 total), zero unexpected failures**; source/test TypeScript, production build, strict G1 (183 files/0 violations) all PASS. The initial typecheck run found two Buffer-vs-string compile errors; corrected byte-exact hashing then repeated the entire gate. The first full-run wrapper's 30-second orchestration timeout was diagnosed; final run used an explicit 120-second step timeout and completed.
+- **Data/scope:** No schema change beyond accepted v14, no production DB migration or workspace cleanup. Changed only filesystem restore service, MED-11 contract, new focused tests, traceability matrix and this ledger. Existing unrelated untracked `HooshiX_EAAP_Implementation_Package/` left untouched. No push, merge, deploy, restart or reset. External-process modification between the final check and the filesystem effect is not a transactional CAS operation; this residual concurrency risk is not claimed solved by the SHA-256 guard.
