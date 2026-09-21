@@ -2,7 +2,7 @@
 
 **Project:** `D:/workspace/hooshix-agent`  
 **Program:** Full Hexagonal/Clean redesign + complete consolidated-audit remediation  
-**Status:** R0 GATE_PASSED; R1 GATE_PASSED (G1 PASS); R2 GATE_PASSED (G2 PASS on isolated feature branch); R3 GATE_PASSED (G3 PASS on isolated feature branch, 2026-09-21). R4 IN_PROGRESS (R4.01–R4.04 VERIFIED; G4 OPEN). R5–R10 NOT_STARTED.
+**Status:** R0 GATE_PASSED; R1 GATE_PASSED (G1 PASS); R2 GATE_PASSED (G2 PASS on isolated feature branch); R3 GATE_PASSED (G3 PASS on isolated feature branch, 2026-09-21). R4 GATE_PASSED (R4.01–R4.07 VERIFIED; G4 PASS on isolated feature branch, 2026-09-21). R5–R10 NOT_STARTED.
 **Owner directive:** all 13 HIGH, 29 MEDIUM, 12 LOW findings must be fixed and verified.
 
 This file is intentionally a live execution ledger. The implementing assistant updates it during implementation. Do not erase previous evidence; append/update status while preserving history.
@@ -39,7 +39,7 @@ Notes on pre-existing dirty changes: none at R0 baseline; source hardening alrea
 | R1 Architecture + MCP v2 foundation | GATE_PASSED | G1 PASS — strict 166-source-file inventory zero candidates; new-tree dependency/in-memory adapter and composition tests pass; SDK v2 upgrade belongs to R5 | 2026-09-19 | 2026-09-20 | Full suite 119 files / 542 PASS + 18 expected RED; standalone/full typecheck and build PASS; see R1_G1_COMPLETION_2026-09-20.md |
 | R2 Unified tool/auth/workspace | GATE_PASSED | G2 PASS — shared Direct MCP/Task gateway, exact approval, scope controls and retired alternate inbound handlers | 2026-09-20 | 2026-09-20 | Commit e641b6d; 133 files / 589 PASS + 15 expected RED, Typecheck, Build, G1 PASS; R2 G2 closure worklog below |
 | R3 Task/recovery/idempotency/lease | GATE_PASSED | G3 PASS — R3.01–R3.10 VERIFIED on isolated branch; no release/deployment claim | 2026-09-20 | 2026-09-21 | 142 files / 639 PASS + 11 expected RED; Typecheck, Build, strict G1 183/0 candidates, live-owner crash-recovery and real 2-process lease proofs PASS; see G3 completion record |
-| R4 Data integrity/compensation | IN_PROGRESS | G4 OPEN — R4.01–R4.04 VERIFIED; R4.05–R4.07 outstanding | 2026-09-21 | | R4.04 146 files / 659 PASS + 9 expected RED; Typecheck, Build and G1 PASS |
+| R4 Data integrity/compensation | GATE_PASSED | G4 PASS — immutable file restore, canonical project identity, clean Git snapshots/rollback and truthful package manifest compensation VERIFIED on isolated feature branch | 2026-09-21 | 2026-09-21 | 148 files / 673 PASS + 7 expected RED assigned to R5–R10; Typecheck, Build and strict G1 PASS; no live migration or deployment |
 | R5 HTTP/OAuth/MCP modern | NOT_STARTED | — | | | |
 | R6 Persistence/perf/observability | NOT_STARTED | — | | | |
 | R7 Config/deployment/CI | NOT_STARTED | — | | | |
@@ -55,10 +55,10 @@ Allowed phase status: `NOT_STARTED`, `IN_PROGRESS`, `BLOCKED`, `GATE_FAILED`, `G
 
 | Severity | Total | OPEN | TEST_ENCODED | IMPLEMENTING | IMPLEMENTED | VERIFIED_CLOSED | DEFERRED_BY_OWNER |
 |---|---:|---:|---:|---:|---:|---:|---:|
-| HIGH | 13 | 0 | 6 | 0 | 0 | 7 | 0 |
+| HIGH | 13 | 0 | 4 | 0 | 0 | 9 | 0 |
 | MEDIUM | 29 | 17 | 2 | 0 | 0 | 10 | 0 |
 | LOW | 12 | 11 | 0 | 0 | 0 | 1 | 0 |
-| **TOTAL** | **54** | **28** | **8** | **0** | **0** | **18** | **0** |
+| **TOTAL** | **54** | **28** | **6** | **0** | **0** | **20** | **0** |
 
 The detailed source is `20_FINDINGS_TRACEABILITY_MATRIX.md`; keep totals consistent.
 
@@ -67,10 +67,10 @@ The detailed source is `20_FINDINGS_TRACEABILITY_MATRIX.md`; keep totals consist
 ## 4. Current task
 
 ```text
-Completed phase: R3.01–R3.10 (G3 VERIFIED PASS); completed leaves R4.01 immutable file backup schema and R4.02 revision-guarded restore (VERIFIED, feature branch)
-Next pending leaf: R4.05 — Git snapshot contract (NOT_STARTED)
-Findings: HIGH-05/06/07/13 and MED-05/08/09 VERIFIED_CLOSED with G3 evidence; MED-11/12 VERIFIED_CLOSED with R4.02, MED-10 with R4.03; 18/54 total closed. Other findings retain their statuses.
-Gate: G3 PASS on isolated branch. R4 IN_PROGRESS, G4 OPEN; HooshiX is NOT release-ready.
+Completed phases: R0–R4 (G0–G4 VERIFIED PASS on isolated feature branch); R4.01–R4.07 all VERIFIED
+Next pending leaf: R5.01 — separate bootstrap secret from issued credentials (NOT_STARTED; do not start without user instruction)
+Findings: HIGH-05/06/07/13 and MED-05/08/09 VERIFIED_CLOSED with G3 evidence; MED-11/12 VERIFIED_CLOSED with R4.02, MED-10 with R4.03; 20/54 total closed. Other findings retain their statuses.
+Gate: G4 PASS on isolated branch; G5–G10 OPEN. HooshiX is NOT release-ready.
 Workspace: D:/workspace/hooshix-agent; isolated feature/r2-unified-tool-gateway-2026-09-20 branch.
 No live database migration, deployment, restart, push, merge, reset or removal of unrelated user files.
 ```
@@ -249,11 +249,11 @@ Protocol compatibility doc generated:
 ## 13. Current blockers
 
 ```text
-Code/security: R4.03–R4.07 data-integrity contracts remain open (including MED-10, HIGH-08/09 and MED-07). HIGH-10 Docker frozen-lock fallback remains TEST_ENCODED for R7; HIGH-03 is VERIFIED_CLOSED under G2.
-Testing: R4 G4 remains OPEN; no force-historical file restore has been exposed or approved. Final G8 performance/fuzz and G10 release verification have not been performed. R3 cross-process lease and recovery evidence is PASSED, not an outstanding blocker.
-Architecture: G1–G3 PASS on isolated feature branch; MCP SDK v2 and HTTP/OAuth migration remain R5, production cutover and legacy retirement remain R9/R10.
-Data-integrity concurrency: SHA-256 normal restore guard checks before and after displaced backup but cannot atomically exclude an external OS writer between last check and filesystem effect (residual TOCTOU).
-Operational/safety: public HTTP and R10 remain blocked. Do not push, merge, tag, deploy, restart, apply live DB migrations, reset or delete unrelated user work as part of R4.02.
+Code/security: G4 PASS; unresolved finding contracts belong to R5–R10 (including HIGH-10 Docker frozen-lock fallback in R7). No force-historical file restore, dirty Git recovery or full installed-package compensation is claimed.
+Testing: 7 expected failing contracts remain assigned to later phases. G5–G10 release/security/performance/fuzz and production cutover are NOT PASSED. R3 cross-process lease/recovery and R4 disposable copied-DB migration proofs PASS.
+Architecture: G1–G4 PASS on isolated feature branch. MCP SDK v2 and HTTP/OAuth migration remain R5, legacy retirement R9 and release verification R10.
+Data-integrity concurrency: SHA-256 normal restore guard does not atomically exclude external OS writers between final check and filesystem effect (residual TOCTOU).
+Operational/safety: public HTTP/release remain blocked. No push, merge, tag, deploy, restart, live DB migration, branch reset or deletion of unrelated user work was performed by R4.
 ```
 
 For each blocker specify whether it is:
@@ -639,3 +639,26 @@ Finding IDs: architectural G1; no HIGH/MED/LOW finding independently closed.
 - **Migration evidence:** `tests/core/r4-project-canonical-identity.test.ts` covers duplicate lexical/case identity, existing symlink alias, copied-v14 project upgrade retaining ID/path, missing canonical rejection, and copied-v14 collision rollback proving schema/version/rows unchanged. No production DB migration was manually applied.
 - **Verification:** Focused task `c63e2fc4-fbed-4d36-a89b-7498712af81d`: 9 tests PASS plus source/test typecheck PASS after two test-only TypeScript diagnostics were corrected. Full task `91f7ad79-2bc2-4241-ad1e-e50c7e7a7c18`: 146 files / 659 PASS + 9 expected RED in other phases, TypeScript, build, strict G1 PASS (184 scanned source files / 0 candidates).
 - **Scope:** Only project identity, migration schema, focused test, migration-version assertion, finding matrix and ledger. No live DB, deployment, push, merge, reset or unrelated untracked EAAP file mutation.
+
+---
+
+## R4.05–R4.06 — verified clean Git snapshot and destructive rollback contract — 2026-09-21
+
+- **Decision:** VERIFIED on isolated feature branch. The snapshot entrypoint refuses dirty tracked/index/untracked repositories before storing a snapshot, and refuses unverifiable status/HEAD and a non-root working directory. A valid snapshot stores the clean contract version, exact repository root, HEAD, branch and verified empty porcelain status. A dirty repository returns `GIT_DIRTY_SNAPSHOT_UNSUPPORTED`, no durable rollback capability.
+- **Rollback safety:** Requires high-risk task approval, trusted clean versioned snapshot, exact stored repository, matching current branch and existing captured commit before destructive actions. Rejects historical dirty/unversioned rows or a different workspace/repository/branch; executes Git hard reset and untracked clean only for an approved exact clean snapshot, then verifies HEAD, branch and clean worktree. Ignored files are outside the claimed reconstruction guarantee.
+- **Evidence:** `tests/core/r4-clean-git-snapshot-rollback.test.ts`: 6 isolated disposable-Git cases for staged/worktree/untracked denial, clean exact roundtrip, historical dirty rejection, repo/branch mismatch and approval. The formerly expected-failing HIGH-08 exploit assertion was converted to ordinary PASS. Focus task `2b89e90b-715c-4582-9f9f-688b927087fb`: 65 PASS + 1 then-expected HIGH-09 RED in 4 files; source and test TS PASS. No Git reset or clean ran against the actual project.
+- **Finding:** HIGH-08 VERIFIED_CLOSED; Git dirty-state restoration remains deliberately unsupported rather than claiming to recover uncaptured changes.
+
+## R4.07 — package manifest compensation and outcome truthfulness — 2026-09-21
+
+- **Decision:** VERIFIED on isolated feature branch. Application exposes `restorePackageManifest`; the MCP `package_restore` name remains a deprecated, explicitly manifest-only compatibility alias. Only captured supported regular manifest files are eligible, with bounded validated binary data, no traversal, duplicate, unexpected-manager paths, or symlink substitution; exact content/absence is verified after restoration.
+- **Outcome contract:** Result `manifest_restored` carries `restored:false`, `manifestOnly:true`, `environmentReconciliationRequired:true` and exact verified files. Managers lacking file manifests return explicit `manifest_restore_unsupported`; installed package/environment reversal is never inferred. Known operation failure may restore and verify *only* captured manifests; subprocess timeout/cancellation/unknown verification is marked `outcome_unknown` with no automatic compensation or successful restoration claim. Persistence status uses `manifest_restored`, `manifest_restore_failed`, `outcome_unknown` and `environment_reconciliation_required` instead of unqualified `rolled_back` for new operations; old rows are handled conservatively.
+- **Evidence:** `tests/core/r4-package-manifest-compensation.test.ts` (6 disposable cases: byte-exact restore with unchanged installed marker; absent manifest; winget unsupported; traversal preflight; symlink denial; timeout unknown without auto-compensation). Existing HIGH-09 expected failure was converted to ordinary PASS and package snapshot lifecycle assertions updated to truthful status. Focus task `6a33c68a-e912-4781-8b29-b531f80ea7fa`: 13 PASS and source/test TS PASS.
+- **Finding:** HIGH-09 VERIFIED_CLOSED; no real package manager install/update/remove was executed during this leaf.
+
+## R4 G4 — phase acceptance — 2026-09-21
+
+- **Decision:** PASS on isolated branch. All seven R4 leaves R4.01–R4.07 VERIFIED, no R5 work initiated. The traceability matrix now records 20/54 VERIFIED_CLOSED (HIGH 9/13, MED 10/29, LOW 1/12), 28 OPEN and 6 TEST_ENCODED for later phases.
+- **Final integration:** Task `68776e71-27bc-4d8a-b490-f7b94515a7c8`: `vitest run` 148 test files, **673 PASS + 7 expected RED belonging to later phases (680 total), zero unexpected failures**; independent source and test TypeScript, production build and strict G1 **184 scanned source files / 0 violations** PASS. `git diff --check` PASS. Tests include copied v14 migration collision rollback, immutable v14 file backups, repeat restore, revision conflict, clean/dirty Git and package outcome/manifest truthfulness.
+- **Residual limitations:** R5–R10 and seven expected RED contracts are not resolved by G4. Live user DB was not manually migrated; no release/deploy/public HTTP approval. External-process file modification between the final SHA check and filesystem effect is not protected by cross-process atomic CAS; no general dirty-Git rollback or installed package rollback is claimed.
+- **Scope/isolation:** Existing unrelated untracked `HooshiX_EAAP_Implementation_Package/` preserved and excluded. No push, merge, deployment, service restart, production DB migration, branch reset, or cleanup of unrelated user data.

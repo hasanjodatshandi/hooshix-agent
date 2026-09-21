@@ -1,9 +1,10 @@
 import { withAgentDatabase } from "../../../../../core/memory/database.js";
 
-/** Legacy package snapshot persistence. Mutation/rollback semantics remain unchanged. */
+/** Manifest snapshot persistence. Installed packages are never represented as restored here. */
 export interface StoredPackageSnapshot {
   readonly id: string;
   readonly cwd: string;
+  readonly manager: string;
   readonly snapshot: string;
   readonly status: string;
 }
@@ -23,13 +24,13 @@ export function insertPackageSnapshot(row: NewPackageSnapshotRow): void {
   `).run(row.id, row.correlationId, row.manager, row.action, row.packageName,
     row.cwd, JSON.stringify(row.snapshot), new Date().toISOString()));
 }
-export function updateStoredPackageSnapshot(id: string, status: "committed" | "rolled_back" | "rollback_failed"): void {
+export function updateStoredPackageSnapshot(id: string, status: "committed" | "manifest_restored" | "manifest_restore_failed" | "outcome_unknown" | "environment_reconciliation_required" | "rolled_back" | "rollback_failed"): void {
   withAgentDatabase(db => db.prepare(
     "UPDATE package_snapshots SET status=?, restored_at=? WHERE id=?"
-  ).run(status, status === "committed" ? null : new Date().toISOString(), id));
+  ).run(status, status === "manifest_restored" || status === "manifest_restore_failed" || status === "rolled_back" || status === "rollback_failed" ? new Date().toISOString() : null, id));
 }
 export function findPackageSnapshot(id: string): StoredPackageSnapshot | undefined {
   return withAgentDatabase(db => db.prepare(
-    "SELECT id, cwd, snapshot, status FROM package_snapshots WHERE id = ?"
+    "SELECT id, cwd, manager, snapshot, status FROM package_snapshots WHERE id = ?"
   ).get(id) as StoredPackageSnapshot | undefined);
 }

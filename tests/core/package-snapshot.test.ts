@@ -28,7 +28,7 @@ describe("package snapshot lifecycle", () => {
     expect(snapshot.package_name).toBe("zod");
   });
 
-  it("records rolled_back snapshot on verification failure", async () => {
+  it("records manifest_restored snapshot on verification failure", async () => {
     execaMock
       .mockResolvedValueOnce({ exitCode: 0, stdout: "ok", stderr: "", timedOut: false })
       .mockResolvedValueOnce({ exitCode: 1, stdout: "{}", stderr: "missing", timedOut: false });
@@ -37,7 +37,7 @@ describe("package snapshot lifecycle", () => {
 
     const snapshots = withAgentDatabase((db) => db.prepare("SELECT * FROM package_snapshots WHERE correlation_id = ?").all("snap-rollback") as any[]);
     expect(snapshots.length).toBe(1);
-    expect(snapshots[0].status).toBe("rolled_back");
+    expect(snapshots[0].status).toBe("manifest_restored");
     expect(snapshots[0].restored_at).toBeDefined();
   });
 });

@@ -177,16 +177,17 @@ const COMMANDS: Record<PackageManager, Partial<Record<PackageAction, (name: stri
   },
 };
 
-async function captureSnapshotFile(cwd: string, relative: string, files: PackageSnapshotFile[], bytes: { value: number }): Promise<void> {
-  const file = path.join(cwd, relative);
-  const content = await fs.readFile(file).catch((error: NodeJS.ErrnoException) => error.code === "ENOENT" ? undefined : Promise.reject(error));
-  if (content) {
-    bytes.value += content.byteLength;
-    if (bytes.value > MAX_SNAPSHOT_BYTES) throw new Error("Package snapshot exceeds the 8 MiB limit");
-    files.push({ path: relative, existed: true, content: content.toString("base64") });
-  } else {
-    files.push({ path: relative, existed: false });
-  }
+async function captureSnapshotFile(cwd:string,relative:string,files:PackageSnapshotFile[],bytes:{value:number}):Promise<void>{
+  const file=validateWorkspace(path.join(cwd,relative));
+  const stat=await fs.lstat(file).catch((error:NodeJS.ErrnoException)=>error.code==="ENOENT"?undefined:Promise.reject(error));
+  if(!stat){files.push({path:relative,existed:false});return;}
+  if(!stat.isFile()||stat.isSymbolicLink())
+    throw new Error("PACKAGE_MANIFEST_UNSAFE_TARGET: manifest must be a regular non-symlink file");
+  bytes.value+=stat.size;
+  if(bytes.value>MAX_SNAPSHOT_BYTES)throw new Error("Package snapshot exceeds the 8 MiB limit");
+  const content=await fs.readFile(file);
+  if(content.length!==stat.size)throw new Error("PACKAGE_MANIFEST_CHANGED_DURING_CAPTURE");
+  files.push({path:relative,existed:true,content:content.toString("base64")});
 }
 
 /** Simple top-level glob match for "*.csproj"-style patterns. */
@@ -220,22 +221,58 @@ async function createPackageSnapshot(manager: PackageManager, action: PackageAct
   return { id, files };
 }
 
-async function restorePackageSnapshot(snapshot: PackageSnapshot, cwd: string): Promise<void> {
-  for (const item of snapshot.files) {
-    const destination = path.join(cwd, item.path);
-    if (!item.existed) {
-      await fs.rm(destination, { force: true });
-      continue;
+/** Restore ONLY supported, previously captured manifest files and verify their
+ * exact bytes/absence. Never claim installed-environment reversal. */
+async function restorePackageSnapshot(snapshot:PackageSnapshot,cwd:string,manager:PackageManager):Promise<string[]>{
+  if(!Array.isArray(snapshot.files))throw new Error("PACKAGE_MANIFEST_SNAPSHOT_INVALID");
+  if(SNAPSHOT_FILES[manager].length===0)throw new Error("PACKAGE_MANIFEST_RESTORE_UNSUPPORTED: manager has no captured manifest contract");
+  const allowed=SNAPSHOT_FILES[manager];
+  const seen=new Set<string>();let totalBytes=0;
+  const entries:Array<{destination:string;existed:boolean;content?:Buffer}>=[];
+  // Fail closed before the first write/delete if any entry is malformed,
+  // unexpected for the manager, out-of-scope or a symlink.
+  for(const item of snapshot.files){
+    if(!item||typeof item.path!=="string"||item.path!==path.basename(item.path)||
+       item.path==="."||item.path===".."||/[\\/\u0000]/.test(item.path)||
+       !allowed.some(pattern=>matchesGlob(item.path,pattern))||seen.has(item.path)||
+       typeof item.existed!=="boolean")
+      throw new Error("PACKAGE_MANIFEST_SNAPSHOT_INVALID: unrecognized or unsafe manifest entry");
+    seen.add(item.path);
+    const destination=validateWorkspace(path.join(cwd,item.path));
+    const stat=await fs.lstat(destination).catch((e:NodeJS.ErrnoException)=>e.code==="ENOENT"?undefined:Promise.reject(e));
+    if(stat&&(!stat.isFile()||stat.isSymbolicLink()))
+      throw new Error("PACKAGE_MANIFEST_UNSAFE_TARGET: target is not a regular file");
+    if(item.existed){
+      if(typeof item.content!=="string"||!/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(item.content))
+        throw new Error("PACKAGE_MANIFEST_SNAPSHOT_INVALID: malformed binary content");
+      const content=Buffer.from(item.content,"base64");
+      if(content.toString("base64")!==item.content)throw new Error("PACKAGE_MANIFEST_SNAPSHOT_INVALID: invalid base64");
+      totalBytes+=content.byteLength;
+      if(totalBytes>MAX_SNAPSHOT_BYTES)throw new Error("Package snapshot exceeds the 8 MiB limit");
+      entries.push({destination,existed:true,content});
+    }else{
+      if(item.content!==undefined)throw new Error("PACKAGE_MANIFEST_SNAPSHOT_INVALID: absent entry has content");
+      entries.push({destination,existed:false});
     }
-    const temporary = `${destination}.${randomUUID()}.rollback`;
-    await fs.mkdir(path.dirname(destination), { recursive: true });
-    await fs.writeFile(temporary, Buffer.from(item.content!, "base64"), { flag: "wx" });
-    await fs.rename(temporary, destination);
   }
+  for(const entry of entries){
+    if(!entry.existed){await fs.rm(entry.destination,{force:true});continue;}
+    const temporary=`${entry.destination}.${randomUUID()}.manifest-restore`;
+    try{
+      await fs.writeFile(temporary,entry.content!,{flag:"wx"});
+      await fs.rename(temporary,entry.destination);
+    }finally{await fs.rm(temporary,{force:true}).catch(()=>{});}
+  }
+  for(const entry of entries){
+    const stat=await fs.lstat(entry.destination).catch((e:NodeJS.ErrnoException)=>e.code==="ENOENT"?undefined:Promise.reject(e));
+    if(!entry.existed){if(stat)throw new Error("PACKAGE_MANIFEST_RESTORE_VERIFICATION_FAILED");continue;}
+    if(!stat?.isFile()||stat.isSymbolicLink()||!((await fs.readFile(entry.destination)).equals(entry.content!)))
+      throw new Error("PACKAGE_MANIFEST_RESTORE_VERIFICATION_FAILED");
+  }
+  return entries.map(e=>e.destination);
 }
-
-function updateSnapshot(id: string, status: "committed" | "rolled_back" | "rollback_failed"): void {
-  updateStoredPackageSnapshot(id, status);
+function updateSnapshot(id:string,status:"committed"|"manifest_restored"|"manifest_restore_failed"|"outcome_unknown"|"environment_reconciliation_required"):void{
+  updateStoredPackageSnapshot(id,status);
 }
 
 export function validatePackageName(name: string): string {
@@ -309,28 +346,33 @@ export async function managePackage(input: { manager: PackageManager; action: Pa
   const { command, args } = commandFor(input.manager, input.action, name);
   const traceId = resolveCorrelationId(input.correlationId);
   const snapshot = await createPackageSnapshot(input.manager, input.action, name, cwd, traceId);
+  let effectOutcomeKnown=false;
   try {
     const pkgExecaOpts: Record<string, unknown> = { cwd, shell: false, reject: false, timeout: input.timeout ?? 300000, maxBuffer: 2 * 1024 * 1024 };
-    if (input.signal) pkgExecaOpts.cancelSignal = input.signal;
-    const result = await execa(command, args, pkgExecaOpts);
-    await logCommandAction({ command, args, cwd, exitCode: result.exitCode, status: result.timedOut ? "timeout" : result.exitCode === 0 ? "success" : "failed", correlationId: traceId });
-    if (result.timedOut) throw new Error("Package operation timed out");
-    if (result.exitCode !== 0) throw new Error(result.stderr || describeExecaFailure(command, result));
+    if(input.signal) pkgExecaOpts.cancelSignal=input.signal;
+    const result=await execa(command,args,pkgExecaOpts);
+    effectOutcomeKnown=!result.timedOut&&!result.isCanceled;
+    await logCommandAction({command,args,cwd,exitCode:result.exitCode,
+      status:result.timedOut?"timeout":result.exitCode===0?"success":"failed",correlationId:traceId}).catch(()=>{});
+    if(!effectOutcomeKnown)throw new Error("Package operation outcome unknown after timeout/cancellation");
+    if(result.exitCode!==0)throw new Error(result.stderr||describeExecaFailure(command,result));
 
     const verification = verificationCommandFor(input.manager, name);
     if (!verification) {
       // No post-hoc verification exists for this manager; the primary command
       // already fails loudly on any error, so exit 0 means success.
       updateSnapshot(snapshot.id, "committed");
-      return { manager: input.manager, action: input.action, name, verified: true, verificationSkipped: true, snapshotId: snapshot.id, exitCode: result.exitCode, stdout: result.stdout, stderr: result.stderr, correlationId: traceId };
+      return { manager: input.manager, action: input.action, name, verified: false, verificationSkipped: true, snapshotId: snapshot.id, exitCode: result.exitCode, stdout: result.stdout, stderr: result.stderr, correlationId: traceId };
     }
     const verifyExecaOpts: Record<string, unknown> = { cwd, shell: false, reject: false, timeout: Math.min(input.timeout ?? 300000, 120000), maxBuffer: 2 * 1024 * 1024 };
     if (input.signal) verifyExecaOpts.cancelSignal = input.signal;
     const checked = await execa(verification.command, verification.args, verifyExecaOpts);
-    if (checked.isCanceled) throw new Error(`${verification.command} verification was cancelled`);
-    if (checked.timedOut) {
-      await logCommandAction({ command: verification.command, args: verification.args, cwd, exitCode: checked.exitCode, status: "timeout", correlationId: traceId });
-      throw new Error("Package verification timed out");
+    if (checked.isCanceled) { effectOutcomeKnown=false; throw new Error(`${verification.command} verification was cancelled`); }
+    if(checked.timedOut){
+      effectOutcomeKnown=false;
+      await logCommandAction({command:verification.command,args:verification.args,cwd,
+        exitCode:checked.exitCode,status:"timeout",correlationId:traceId}).catch(()=>{});
+      throw new Error("Package verification outcome unknown after timeout");
     }
     const verificationOutput = `${checked.stdout}\n${checked.stderr}`.toLowerCase();
     const explicitlyAbsent = /no installed package|not found|0 packages/.test(verificationOutput);
@@ -339,35 +381,70 @@ export async function managePackage(input: { manager: PackageManager; action: Pa
     const comparableName = input.manager === "pip" ? expectedName.replace(/[._-]+/g, "-") : expectedName;
     const present = checked.exitCode === 0 && !explicitlyAbsent && comparableOutput.includes(comparableName);
     const verified = input.action === "remove" ? !present : present;
-    await logCommandAction({ command: verification.command, args: verification.args, cwd, exitCode: checked.exitCode, status: verified ? "success" : "failed", correlationId: traceId });
+    await logCommandAction({ command: verification.command, args: verification.args, cwd, exitCode: checked.exitCode, status: verified ? "success" : "failed", correlationId: traceId }).catch(()=>{});
     if (!verified) throw new Error(`Package ${input.action} completed but verification failed for ${name}`);
     updateSnapshot(snapshot.id, "committed");
     return { manager: input.manager, action: input.action, name, verified, snapshotId: snapshot.id, exitCode: result.exitCode, stdout: result.stdout, stderr: result.stderr, correlationId: traceId };
-  } catch (error) {
-    try {
-      await restorePackageSnapshot(snapshot, cwd);
-      updateSnapshot(snapshot.id, "rolled_back");
-    } catch {
-      updateSnapshot(snapshot.id, "rollback_failed");
-      throw new Error(`Package operation failed and rollback failed: ${error instanceof Error ? error.message : String(error)}`);
+  }catch(error){
+    // An interrupted package subprocess can have changed installed state.
+    // Do not run automatic compensation or claim an observed final outcome.
+    if(!effectOutcomeKnown){
+      updateSnapshot(snapshot.id,"outcome_unknown");
+      throw error;
     }
+    if(snapshot.files.length===0){
+      updateSnapshot(snapshot.id,"environment_reconciliation_required");
+      throw error;
+    }
+    try{
+      await restorePackageSnapshot(snapshot,cwd,input.manager);
+      updateSnapshot(snapshot.id,"manifest_restored");
+    }catch(restoreError){
+      updateSnapshot(snapshot.id,"manifest_restore_failed");
+      throw new Error(`Package operation failed; MANIFEST restoration failed. Installed environment is not restored: ${error instanceof Error?error.message:String(error)}`,{cause:restoreError});
+    }
+    // A verified manifest restore never proves installed packages are back.
     throw error;
   }
 }
 
 /**
- * Restore a package snapshot by its ID.
- * Reverts package.json, lockfile, and any other tracked files to their pre-operation state.
+ * R4.07 canonical APPLICATION contract: manifest-only compensation.
+ * The MCP package_restore name is a deprecated compatibility alias.
  */
-export async function restorePackage(snapshotId: string, correlationId?: string) {
-  const traceId = resolveCorrelationId(correlationId);
-  policyDecisionPoint.assertAllowed({ tool: "package_restore", arguments: { snapshotId }, correlationId: traceId });
-  const row = findPackageSnapshot(snapshotId);
-  if (!row) throw new Error(`Package snapshot not found: ${snapshotId}`);
-  if (row.status === "rolled_back") throw new Error(`Package snapshot ${snapshotId} was already restored`);
-  const snapshot: PackageSnapshot = { id: row.id, ...JSON.parse(row.snapshot) };
-  const cwd = validateWorkspace(row.cwd);
-  await restorePackageSnapshot(snapshot, cwd);
-  updateSnapshot(snapshotId, "rolled_back");
-  return { snapshotId, restored: true, cwd, correlationId: traceId };
+export async function restorePackageManifest(snapshotId:string,correlationId?:string){
+  const traceId=resolveCorrelationId(correlationId);
+  policyDecisionPoint.assertAllowed({tool:"package_restore",arguments:{snapshotId},correlationId:traceId});
+  const row=findPackageSnapshot(snapshotId);
+  if(!row)throw new Error(`Package snapshot not found: ${snapshotId}`);
+  if(row.status==="manifest_restored")throw new Error("PACKAGE_MANIFEST_ALREADY_RESTORED");
+  if(row.status!=="committed")throw new Error("PACKAGE_MANIFEST_RECONCILIATION_REQUIRED: prior state is not independently verified");
+  if(!Object.prototype.hasOwnProperty.call(SNAPSHOT_FILES,row.manager))
+    throw new Error("PACKAGE_MANIFEST_RESTORE_UNSUPPORTED: unknown package manager");
+  const manager=row.manager as PackageManager;
+  const cwd=validateWorkspace(row.cwd);
+  let parsed:unknown;
+  try{parsed=JSON.parse(row.snapshot);}catch{throw new Error("PACKAGE_MANIFEST_SNAPSHOT_INVALID");}
+  if(!parsed||typeof parsed!=="object"||!Array.isArray((parsed as {files?:unknown}).files))
+    throw new Error("PACKAGE_MANIFEST_SNAPSHOT_INVALID");
+  const snapshot:PackageSnapshot={id:row.id,files:(parsed as {files:PackageSnapshotFile[]}).files};
+  if(SNAPSHOT_FILES[manager].length===0||snapshot.files.length===0){
+    updateSnapshot(snapshotId,"environment_reconciliation_required");
+    return {kind:"manifest_restore_unsupported" as const,snapshotId,restored:false,manifestOnly:true,
+      environmentReconciliationRequired:true,verifiedFiles:[],cwd,correlationId:traceId};
+  }
+  try{
+    const verifiedFiles=await restorePackageSnapshot(snapshot,cwd,manager);
+    updateSnapshot(snapshotId,"manifest_restored");
+    return {kind:"manifest_restored" as const,snapshotId,restored:false,manifestOnly:true,
+      environmentReconciliationRequired:true,verifiedFiles,cwd,correlationId:traceId};
+  }catch(error){
+    updateSnapshot(snapshotId,"manifest_restore_failed");
+    throw error;
+  }
+}
+
+/** @deprecated MCP alias. Use restorePackageManifest in application code. */
+export async function restorePackage(snapshotId:string,correlationId?:string){
+  return restorePackageManifest(snapshotId,correlationId);
 }

@@ -403,12 +403,16 @@ describe("TR-11/TR-12: Non-Git snapshot rejection", () => {
     }
   });
 
-  it("task_snapshot on real Git repository succeeds", async () => {
+  it("task_snapshot captures a clean repository only, and refuses a dirty checkout", async () => {
     const { captureTaskSnapshot } = await import("../../src/core/executor/handlers/task-snapshot-handler.js");
     const result = await captureTaskSnapshot(process.cwd(), "test-correlation");
-    // Real git repo should have a valid HEAD
     expect(result.head).toMatch(/^[0-9a-f]{40}$/i);
-    expect(result.snapshotId).toBeTruthy();
+    if (result.clean) {
+      expect(result.snapshotId).toBeTruthy();
+    } else {
+      expect(result.snapshotId).toBe("");
+      expect(result.error).toBe("GIT_DIRTY_SNAPSHOT_UNSUPPORTED");
+    }
   });
 });
 

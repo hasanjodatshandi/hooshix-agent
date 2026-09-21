@@ -102,7 +102,7 @@ describe("R0 execution-reality and compensation safety contracts", () => {
     expect(discovered?.totalRunCount).toEqual(normal?.totalRunCount);
   });
 
-  it.fails("HIGH-08: dirty disposable Git repositories must be rejected before creating a rollback snapshot", async () => {
+  it("HIGH-08: dirty disposable Git repositories must be rejected before creating a rollback snapshot", async () => {
     fixture = createDisposableFixture("dirtygit");
     const cwd = fixture.initializeGit();
     allowedGitRoot = cwd;
@@ -119,7 +119,7 @@ describe("R0 execution-reality and compensation safety contracts", () => {
     expect(fs.readFileSync(path.join(cwd, "untracked-user-work.txt"), "utf8")).toBe("MUST_NOT_BE_REMOVED");
   }, 15000);
 
-  it.fails("HIGH-09: package restore must never claim environment restoration after only restoring manifests", async () => {
+  it("HIGH-09: package restore must never claim environment restoration after only restoring manifests", async () => {
     fixture = createDisposableFixture("packagerestore");
     allowedGitRoot = fixture.root;
     addWorkspaceRoots([fixture.root]);

@@ -18,8 +18,8 @@ Status values: `OPEN`, `TEST_ENCODED`, `IMPLEMENTING`, `IMPLEMENTED`, `VERIFIED_
 | HIGH-05 | Timeout finalizes before termination | R3 | 06, 11, 16 | cancellation race/termination-grace tests; no overlapping retry | VERIFIED_CLOSED |
 | HIGH-06 | Crash recovery replays uncertain effects | R3 | 11, 13, 16 | crash-after-marker test -> unknown, no duplicate marker | VERIFIED_CLOSED |
 | HIGH-07 | Crash hydration incomplete | R3 | 11, 13, 16 | all-fields Task round-trip + recovery uses canonical get | VERIFIED_CLOSED |
-| HIGH-08 | Dirty Git rollback destroys work | R4 | 12, 16 | dirty repo snapshot rejected; clean rollback verified | TEST_ENCODED |
-| HIGH-09 | Package rollback overstates guarantee | R4 | 12, 16 | manifest-only result wording + environment evidence requirement | TEST_ENCODED |
+| HIGH-08 | Dirty Git rollback destroys work | R4 | 12, 16 | dirty repo snapshot rejected; clean rollback verified | VERIFIED_CLOSED |
+| HIGH-09 | Package rollback overstates guarantee | R4 | 12, 16 | manifest-only result wording + environment evidence requirement | VERIFIED_CLOSED |
 | HIGH-10 | Docker frozen-lock fallback | R7 | 17 | static Docker assertion + real frozen build failure test | TEST_ENCODED |
 | HIGH-11 | Auth config/env/static secret drift | R7/R5 | 10, 17, 18, 19 | stale var failure, no literal secret, one config contract | TEST_ENCODED |
 | HIGH-12 | Authenticated health vs unauth probe | R7/R5 | 10, 17, 18 | container live/ready smoke without credential leakage | TEST_ENCODED |

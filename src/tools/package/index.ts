@@ -30,8 +30,8 @@ export function registerPackageTools(server: McpServer) {
 
   // Package snapshot restore
   server.registerTool("package_restore", {
-    title: "Restore Package Snapshot",
-    description: "📦 PACKAGE — Restore package.json/lockfile to their state before a package operation, from its snapshotId.\n\nExample: { \"snapshotId\": \"8812499c-...\" }",
+    title: "Restore Package Manifest Snapshot (Legacy Alias)",
+    description: "DEPRECATED alias package_restore: restore captured MANIFEST FILES ONLY from snapshotId; does NOT restore installed packages or OS environment. System managers without manifest snapshots are unsupported.\n\nExample: { \"snapshotId\": \"8812499c-...\" }",
     annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true },
     inputSchema: z.object({ snapshotId: z.string().uuid(), correlationId: z.string().min(1).optional(), taskId: z.string().optional() })
   }, async () => { throw new Error("r2_legacy_direct_callback_retired"); });
