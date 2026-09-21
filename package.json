@@ -20,15 +20,18 @@
     "release:db-rehearsal": "node scripts/release-db-rehearsal.mjs"
   },
   "dependencies": {
+    "@modelcontextprotocol/node": "2.0.0",
     "@modelcontextprotocol/sdk": "1.30.0",
+    "@modelcontextprotocol/server": "2.0.0",
     "better-sqlite3": "13.0.3",
     "execa": "10.0.1",
     "zod": "4.5.4"
   },
   "devDependencies": {
-    "@vitest/coverage-v8": "4.1.11",
+    "@modelcontextprotocol/client": "2.0.0",
     "@types/better-sqlite3": "9.6.0",
     "@types/node": "24.10.13",
+    "@vitest/coverage-v8": "4.1.11",
     "tsx": "4.23.13",
     "typescript": "7.0.2",
     "vitest": "4.1.11"

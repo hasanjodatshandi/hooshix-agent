@@ -1,299 +1,135 @@
 import crypto from "node:crypto";
+import {cleanupOAuthExpired,issueOAuthFamilyId,persistOAuthGrant,
+  revokeOAuthAccess,rotateOAuthRefresh,validateOAuthAccess,
+  registerOAuthClient,verifyOAuthClientRedirect,
+  type OAuthAccessClaims,type OAuthGrantRecord
+} from "../adapters/outbound/persistence/sqlite/repositories/oauth-token.adapter.js";
 
-const ACCESS_TOKEN_TTL_MS = 3600_000; // 1 hour
-const AUTH_CODE_TTL_MS = 300_000; // 5 minutes
-const REFRESH_TTL_MS = 30 * 24 * 3600_000; // 30 days
-const MAX_ISSUED_TOKENS = 100; // cap in-memory issued-token state
-
-interface AuthCodeEntry {
-  codeChallenge: string;
-  resource: string;
-  redirectUri: string;
-  clientId: string;
-  expiresAt: number;
+const ACCESS_TTL_MS=3_600_000;
+const REFRESH_TTL_MS=30*24*3_600_000;
+const CODE_TTL_MS=300_000;
+const MAX_PENDING_CODES=128;
+const READ_SCOPE="hooshix:read";
+const REFRESH_SCOPE="offline_access"; // Standard OAuth scope; not an HooshiX authorization permission.
+export const OAUTH_SCOPES=Object.freeze([
+  READ_SCOPE,REFRESH_SCOPE,"hooshix:project:write","hooshix:execute","hooshix:task:manage",
+  "hooshix:workspace:manage","hooshix:monitoring:read","hooshix:admin"
+] as const);
+export interface OAuthClaims extends OAuthAccessClaims {readonly kind:"issued"}
+interface CodeRecord{
+  readonly codeHash:string;readonly challenge:string;readonly resource:string;
+  readonly redirectUri:string;readonly clientId:string;readonly scopes:readonly string[];
+  readonly principalId:string;readonly expiresAt:number;
 }
-
-interface IssuedToken {
-  accessTokenHash: string; // SHA-256 — raw tokens are never stored
-  refreshTokenHash: string;
-  resource: string;
-  clientId: string;
-  accessExpiresAt: number;
-  refreshExpiresAt: number;
-  rotatedFrom: string | null; // hash of the refresh token this one replaced
-  consumed: boolean; // refresh reuse marker — revokes the chain on detection
-  createdAt: number;
+const hash=(value:string)=>crypto.createHash("sha256").update(value).digest("hex");
+function safeEqual(a:string,b:string):boolean{
+  const aa=Buffer.from(a),bb=Buffer.from(b);
+  return aa.length===bb.length && crypto.timingSafeEqual(aa,bb);
 }
-
-function sha256(value: string): string {
-  return crypto.createHash("sha256").update(value).digest("hex");
+function bearer(authorization:string|undefined):string|null{
+  if(typeof authorization!=="string" || !/^Bearer [a-zA-Z0-9._~-]{32,300}$/.test(authorization))return null;
+  return authorization.slice(7);
 }
-
-function timingSafeStringEqual(a: string, b: string): boolean {
-  const ba = Buffer.from(a);
-  const bb = Buffer.from(b);
-  if (ba.length !== bb.length) return false;
-  return crypto.timingSafeEqual(ba, bb);
+function validateRequestedScopes(requested:readonly string[]):readonly string[]{
+  const set=new Set(requested);
+  if(!set.size || [...set].some(s=>!OAUTH_SCOPES.includes(s as typeof OAUTH_SCOPES[number])))
+    throw new Error("oauth_invalid_scope");
+  return [...set];
 }
-
-export class OAuthProvider {
-  private accessToken: string; // bootstrap master token (PIN + legacy API)
-  private codes = new Map<string, AuthCodeEntry>();
-  private issued = new Map<string, IssuedToken>(); // keyed by access token hash
-  private byRefresh = new Map<string, string>(); // refresh hash → access hash
-  private cleanupInterval: ReturnType<typeof setInterval>;
-
-  constructor(accessToken: string) {
-    this.accessToken = accessToken;
-    // Clean up expired codes every minute
-    this.cleanupInterval = setInterval(() => this.cleanup(), 60_000);
+export class OAuthProvider{
+  private readonly bootstrapSecret:string;
+  private readonly pending=new Map<string,CodeRecord>();
+  private readonly cleanupInterval:ReturnType<typeof setInterval>;
+  private readonly now:()=>number;
+  constructor(bootstrapSecret:string,options:{now?:()=>number}={}){
+    if(!bootstrapSecret)throw new Error("bootstrap_secret_required");
+    this.bootstrapSecret=bootstrapSecret;
+    this.now=options.now??Date.now;
+    this.cleanupInterval=setInterval(()=>this.cleanup(),60_000);
+    this.cleanupInterval.unref?.();
+  }
+  destroy():void{clearInterval(this.cleanupInterval);}
+  /** DCR identity is persisted and bound to every accepted redirect. */
+  registerClient(redirectUris:readonly string[]):string{
+    if(redirectUris.length<1||redirectUris.length>8||
+       redirectUris.some(u=>typeof u!=="string"||u.length>2048)||
+       new Set(redirectUris).size!==redirectUris.length)
+      throw new Error("oauth_invalid_client_metadata");
+    const id="hx_client_"+crypto.randomBytes(24).toString("base64url");
+    registerOAuthClient(id,redirectUris,this.now());
+    return id;
+  }
+  isRegisteredClientRedirect(clientId:string,redirectUri:string):boolean{
+    return verifyOAuthClientRedirect(clientId,redirectUri);
   }
 
-  destroy(): void {
-    clearInterval(this.cleanupInterval);
+  /** Operator credential is permitted only at interactive operator POST flows. */
+  verifyBootstrapSecret(supplied:string):boolean{
+    return safeEqual(supplied,this.bootstrapSecret);
   }
-
-  /** Verify a Bearer token (issued token or the bootstrap master token) */
-  verifyToken(authorization: string | undefined): boolean {
-    if (!authorization) return false;
-    const token = authorization.startsWith("Bearer ")
-      ? authorization.slice(7)
-      : "";
-    if (!token) return false;
-    // Master token still verifies directly (bootstrap + local tooling).
-    if (timingSafeStringEqual(token, this.accessToken)) return true;
-    const entry = this.issued.get(sha256(token));
-    if (!entry) return false;
-    if (entry.accessExpiresAt < Date.now()) {
-      this.issued.delete(sha256(token)); // expired → drop it
-      return false;
-    }
-    return true;
+  tokenClaims(authorization:string|undefined,resource:string):OAuthClaims|null{
+    const token=bearer(authorization);
+    if(!token || !resource || safeEqual(token,this.bootstrapSecret))return null;
+    const claims=validateOAuthAccess(hash(token),resource,this.now());
+    return claims?{...claims,kind:"issued"}:null;
   }
-
-  /** Runtime-only trusted identity claims. Never derives scopes from HTTP headers. */
-  tokenClaims(authorization: string | undefined): {kind:"bootstrap"|"issued"; scopes: readonly string[] } | null {
-    if(!this.verifyToken(authorization)) return null;
-    const token=authorization!.slice(7);
-    if(timingSafeStringEqual(token,this.accessToken)) {
-      // R2 compatibility: the private bootstrap credential is the operator.
-      // R5 removes bootstrap-as-client-token entirely.
-      return {kind:"bootstrap",scopes:[
-        "hooshix:read","hooshix:project:write","hooshix:execute",
-        "hooshix:task:manage","hooshix:workspace:manage",
-        "hooshix:monitoring:read","hooshix:admin",
-      ]};
-    }
-    // R2 limits legacy issued OAuth credentials to the read scope while R5
-    // introduces persistent, principal-bound OAuth grant/scopes.
-    return {kind:"issued",scopes:["hooshix:read"]};
+  verifyToken(authorization:string|undefined,resource:string):boolean{
+    return this.tokenClaims(authorization,resource)!==null;
   }
-
-  /** Issue an authorization code (PKCE S256) */
-  issueCode(
-    codeChallenge: string,
-    resource: string,
-    redirectUri: string,
-    clientId: string,
-  ): string {
-    const code = crypto.randomBytes(24).toString("base64url");
-    this.codes.set(code, {
-      codeChallenge,
-      resource,
-      redirectUri,
-      clientId,
-      expiresAt: Date.now() + AUTH_CODE_TTL_MS,
-    });
+  issueCode(challenge:string,resource:string,redirectUri:string,clientId:string,
+    scopes:readonly string[]=[READ_SCOPE],principalId="operator"):string{
+    if(!/^[a-zA-Z0-9_-]{43}$/.test(challenge)||!resource||!redirectUri||!clientId||
+       clientId.length>256||redirectUri.length>2048)
+      throw new Error("oauth_invalid_authorization_request");
+    const chosen=validateRequestedScopes(scopes);
+    if(this.pending.size>=MAX_PENDING_CODES)this.cleanup();
+    if(this.pending.size>=MAX_PENDING_CODES)throw new Error("oauth_too_many_pending_codes");
+    const code=crypto.randomBytes(32).toString("base64url");
+    this.pending.set(hash(code),{codeHash:hash(code),challenge,resource,redirectUri,
+      clientId,scopes:chosen,principalId,expiresAt:this.now()+CODE_TTL_MS});
     return code;
   }
-
-  /** Exchange authorization code for tokens */
-  exchange(
-    code: string,
-    codeVerifier: string | undefined,
-    resource: string,
-    redirectUri: string,
-    clientId: string,
-  ): Record<string, unknown> | null {
-    const entry = this.codes.get(code);
-    if (!entry || entry.expiresAt < Date.now()) {
-      this.codes.delete(code);
-      return null;
-    }
-    this.codes.delete(code);
-
-    if (!resource || !redirectUri || !clientId) return null;
-    if (resource !== entry.resource) return null;
-    if (redirectUri !== entry.redirectUri) return null;
-    if (clientId !== entry.clientId) return null;
-
-    // Verify PKCE S256
-    if (entry.codeChallenge) {
-      if (!codeVerifier) return null;
-      const digest = crypto
-        .createHash("sha256")
-        .update(codeVerifier)
-        .digest("base64url");
-      if (digest !== entry.codeChallenge) return null;
-    }
-
-    return this.issueTokenGrant(resource, clientId, null);
+  exchange(code:string|undefined,verifier:string|undefined,resource:string,
+    redirectUri:string,clientId:string):Record<string,unknown>|null{
+    if(!code)return null;
+    const record=this.pending.get(hash(code));
+    this.pending.delete(hash(code)); // single use, including failed PKCE
+    if(!record||record.expiresAt<=this.now()||record.resource!==resource||
+       record.redirectUri!==redirectUri||record.clientId!==clientId||
+       !verifier||!/^[a-zA-Z0-9._~-]{43,128}$/.test(verifier))return null;
+    const challenge=crypto.createHash("sha256").update(verifier).digest("base64url");
+    if(!safeEqual(challenge,record.challenge))return null;
+    return this.issueGrant({clientId:record.clientId,resource:record.resource,
+      scopes:record.scopes,principalId:record.principalId});
   }
-
-  /**
-   * Refresh an access token. Refresh tokens are single-use: each successful
-   * refresh issues a NEW refresh token and invalidates the old one. Presenting
-   * a consumed refresh token signals theft — the entire token chain is
-   * revoked (RFC 6749 §10.4 / RFC 6819 §5.2.2.3).
-   */
-  refresh(
-    refreshToken: string | undefined,
-    resource: string,
-  ): Record<string, unknown> | null {
-    if (!resource || !refreshToken) return null;
-    const refreshHash = sha256(refreshToken);
-    const entry = this.byRefresh.get(refreshHash);
-    if (!entry) {
-      // Legacy HMAC refresh token from the pre-issued-token model — still
-      // accepted but does not rotate (it is a pure function of the master
-      // token, so rotation is meaningless for it). Remove after clients migrate.
-      const legacy = this.refreshTokenValue(resource);
-      if (
-        refreshToken.length === legacy.length &&
-        timingSafeStringEqual(refreshToken, legacy)
-      ) {
-        return this.tokenResponse(resource);
-      }
-      return null;
-    }
-
-    const issued = this.issued.get(entry);
-    if (!issued || issued.refreshExpiresAt < Date.now()) {
-      this.byRefresh.delete(refreshHash);
-      this.issued.delete(entry);
-      return null;
-    }
-
-    if (issued.consumed) {
-      // Reuse of an already-rotated refresh token → revoke the whole chain.
-      this.revokeChain(entry);
-      return null;
-    }
-
-    if (issued.resource !== resource) return null;
-
-    // Mark consumed, then issue the successor grant (linked to this grant's
-    // access hash so reuse detection can revoke the whole descendant chain).
-    issued.consumed = true;
-    return this.issueTokenGrant(resource, issued.clientId, entry);
+  refresh(refreshToken:string|undefined,resource:string,clientId?:string):Record<string,unknown>|null{
+    if(!refreshToken||!/^hxr_[a-zA-Z0-9_-]{43}$/.test(refreshToken)||!resource)return null;
+    const newAccess="hx_"+crypto.randomBytes(32).toString("base64url");
+    const newRefresh="hxr_"+crypto.randomBytes(32).toString("base64url");
+    const outcome=rotateOAuthRefresh({oldHash:hash(refreshToken),newAccessHash:hash(newAccess),
+      newRefreshHash:hash(newRefresh),resource,clientId,now:this.now(),
+      accessTtlMs:ACCESS_TTL_MS,refreshTtlMs:REFRESH_TTL_MS});
+    if(outcome.kind!=="rotated")return null;
+    return {access_token:newAccess,token_type:"Bearer",expires_in:ACCESS_TTL_MS/1000,
+      refresh_token:newRefresh,scope:outcome.grant.scopes.join(" ")};
   }
-
-  /** Revoke an access token (RFC 7009-style; also drops its refresh token). */
-  revoke(accessToken: string): void {
-    const hash = sha256(accessToken);
-    const entry = this.issued.get(hash);
-    if (!entry) return;
-    this.issued.delete(hash);
-    if (entry.refreshTokenHash) this.byRefresh.delete(entry.refreshTokenHash);
+  revoke(accessToken:string):void{revokeOAuthAccess(hash(accessToken),this.now());}
+  private issueGrant(request:{clientId:string;resource:string;scopes:readonly string[];
+    principalId:string}):Record<string,unknown>{
+    const rawAccess="hx_"+crypto.randomBytes(32).toString("base64url");
+    const rawRefresh="hxr_"+crypto.randomBytes(32).toString("base64url");
+    const time=this.now();
+    const grant:OAuthGrantRecord={tokenHash:hash(rawAccess),familyId:issueOAuthFamilyId(),
+      generation:0,principalId:request.principalId,clientId:request.clientId,
+      resource:request.resource,scopes:request.scopes,issuedAt:time,
+      accessExpiresAt:time+ACCESS_TTL_MS,refreshExpiresAt:time+REFRESH_TTL_MS};
+    persistOAuthGrant(grant,hash(rawRefresh));
+    return {access_token:rawAccess,token_type:"Bearer",expires_in:ACCESS_TTL_MS/1000,
+      refresh_token:rawRefresh,scope:grant.scopes.join(" ")};
   }
-
-  /**
-   * Revoke a rotation chain: the given grant and every grant rotated from it,
-   * computed as a fixed-point closure over the rotatedFrom links.
-   * `rotatedFrom` always holds the predecessor's access-token hash.
-   */
-  private revokeChain(accessHash: string): void {
-    const doomed = new Set<string>([accessHash]);
-    let grew = true;
-    while (grew) {
-      grew = false;
-      for (const [hash, t] of this.issued) {
-        if (!doomed.has(hash) && t.rotatedFrom && doomed.has(t.rotatedFrom)) {
-          doomed.add(hash);
-          grew = true;
-        }
-      }
-    }
-    for (const hash of doomed) {
-      const t = this.issued.get(hash);
-      if (t?.refreshTokenHash) this.byRefresh.delete(t.refreshTokenHash);
-      this.issued.delete(hash);
-    }
-  }
-
-  private issueTokenGrant(
-    resource: string,
-    clientId: string,
-    rotatedFrom: string | null,
-  ): Record<string, unknown> {
-    const accessToken = `hx_${crypto.randomBytes(32).toString("base64url")}`;
-    const refreshToken = `hxr_${crypto.randomBytes(32).toString("base64url")}`;
-    const now = Date.now();
-
-    const issued: IssuedToken = {
-      accessTokenHash: sha256(accessToken),
-      refreshTokenHash: sha256(refreshToken),
-      resource,
-      clientId,
-      accessExpiresAt: now + ACCESS_TOKEN_TTL_MS,
-      refreshExpiresAt: now + REFRESH_TTL_MS,
-      rotatedFrom,
-      consumed: false,
-      createdAt: now,
-    };
-    this.issued.set(issued.accessTokenHash, issued);
-    this.byRefresh.set(issued.refreshTokenHash, issued.accessTokenHash);
-    this.enforceIssuedCap();
-
-    return {
-      access_token: accessToken,
-      token_type: "Bearer",
-      expires_in: ACCESS_TOKEN_TTL_MS / 1000,
-      refresh_token: refreshToken,
-      scope: "offline_access",
-    };
-  }
-
-  /** Keep in-memory issued-token state bounded (local single-tenant server). */
-  private enforceIssuedCap(): void {
-    if (this.issued.size <= MAX_ISSUED_TOKENS) return;
-    const sorted = [...this.issued.values()].sort((a, b) => a.createdAt - b.createdAt);
-    const toEvict = sorted.slice(0, this.issued.size - MAX_ISSUED_TOKENS);
-    for (const victim of toEvict) {
-      this.issued.delete(victim.accessTokenHash);
-      if (victim.refreshTokenHash) this.byRefresh.delete(victim.refreshTokenHash);
-    }
-  }
-
-  /** Legacy response shape: master token + derived refresh token (deprecated). */
-  private tokenResponse(resource: string): Record<string, unknown> {
-    return {
-      access_token: this.accessToken,
-      token_type: "Bearer",
-      expires_in: ACCESS_TOKEN_TTL_MS / 1000,
-      refresh_token: this.refreshTokenValue(resource),
-      scope: "offline_access",
-    };
-  }
-
-  private refreshTokenValue(resource: string): string {
-    const digest = crypto
-      .createHmac("sha256", this.accessToken)
-      .update(`hooshix-oauth-refresh-v2:${resource}`)
-      .digest("base64url");
-    return `hxr_${digest}`;
-  }
-
-  private cleanup(): void {
-    const now = Date.now();
-    for (const [code, entry] of this.codes) {
-      if (entry.expiresAt < now) this.codes.delete(code);
-    }
-    for (const [hash, t] of this.issued) {
-      if (t.accessExpiresAt < now && t.refreshExpiresAt < now) {
-        this.issued.delete(hash);
-        if (t.refreshTokenHash) this.byRefresh.delete(t.refreshTokenHash);
-      }
-    }
+  private cleanup():void{
+    const time=this.now();
+    for(const [id,code] of this.pending){if(code.expiresAt<=time)this.pending.delete(id);}
+    cleanupOAuthExpired(time);
   }
 }

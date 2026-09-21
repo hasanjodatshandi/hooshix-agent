@@ -33,10 +33,15 @@ function response(value: unknown, correlationId: string) {
   return { content: [{ type: "text" as const, text: JSON.stringify(value, null, 2) }], _meta: { correlationId } };
 }
 
-async function progress(extra: { _meta?: { progressToken?: string | number }; sendNotification(input: unknown): Promise<void> }, value: number, total: number, message: string) {
-  const progressToken = extra._meta?.progressToken;
-  if (progressToken === undefined) return;
-  await extra.sendNotification({ method: "notifications/progress", params: { progressToken, progress: value, total, message } });
+async function progress(context:unknown,value:number,total:number,message:string):Promise<void>{
+  // SDK v2 context is transport-specific; progress is optional and must not
+  // turn a successful durable Task operation into an error.
+  const extra=context as {mcpReq?:{requestMeta?:{progressToken?:string|number};
+    sendNotification?:(input:unknown)=>Promise<void>}};
+  const token=extra.mcpReq?.requestMeta?.progressToken;
+  if(token===undefined||!extra.mcpReq?.sendNotification)return;
+  await extra.mcpReq.sendNotification({method:"notifications/progress",
+    params:{progressToken:token,progress:value,total,message}}).catch(()=>{});
 }
 
 export function registerTaskTools(server: McpServer) {

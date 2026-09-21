@@ -3,9 +3,9 @@
  * over an in-memory transport so tool handlers (src/tools/**) get coverage
  * without spawning child processes.
  */
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
+import { Client } from "@modelcontextprotocol/client";
+import { McpServer } from "@modelcontextprotocol/server";
+import { InMemoryTransport } from "@modelcontextprotocol/server";
 import { registerTools } from "../../src/mcp/registry.js";
 
 export async function connectInProcessMcp(): Promise<{ client: Client; server: McpServer; close(): Promise<void> }> {

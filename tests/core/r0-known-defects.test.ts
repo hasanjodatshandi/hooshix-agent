@@ -24,19 +24,19 @@ describe("R0 intentionally failing pre-remediation contracts", () => {
     expect(dockerfile).not.toMatch(/\bRUN\s+pnpm\s+install[^\r\n]*\|\|\s*pnpm\s+install/);
   });
 
-  it.fails("HIGH-11: deprecated MCP_ACCESS_TOKEN must no longer be accepted as an unrestricted HTTP bootstrap credential", () => {
+  it("HIGH-11: deprecated MCP_ACCESS_TOKEN must no longer be accepted as an unrestricted HTTP bootstrap credential", () => {
     // Test the insecure runtime behavior, not the former location of the env read.
     // R1 relocated this read into infrastructure/config without fixing HIGH-11.
     const credential = readLegacyHttpAccessToken({ MCP_ACCESS_TOKEN: "r0-fixture-bootstrap" });
     expect(credential).toBeUndefined();
   });
 
-  it.fails("HIGH-12: an unauthenticated, non-sensitive liveness endpoint must exist for container health probes", () => {
+  it("HIGH-12: an unauthenticated, non-sensitive liveness endpoint must exist for container health probes", () => {
     const http = fs.readFileSync(path.resolve("src/mcp/http-server.ts"), "utf8");
     expect(http).toContain('path === "/health/live"');
   });
 
-  it.fails("MED-01: HTTP monitoring must reject bearer secrets in query parameters", () => {
+  it("MED-01: HTTP monitoring must reject bearer secrets in query parameters", () => {
     const http = fs.readFileSync(path.resolve("src/mcp/http-server.ts"), "utf8");
     expect(http).not.toMatch(/url\.searchParams\.get\(["'](?:token|access_token)["']\)/);
   });

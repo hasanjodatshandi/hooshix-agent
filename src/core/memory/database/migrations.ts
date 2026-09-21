@@ -18,6 +18,8 @@ export function ensureColumn(
   if (!columns.some((item) => item.name === column)) {
     db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
   }
+
+
 }
 
 export function migrate(
@@ -33,6 +35,8 @@ export function migrate(
     db.prepare("INSERT INTO schema_migrations(version, name, applied_at) VALUES (?, ?, ?)")
       .run(version, name, new Date().toISOString());
   })();
+
+
 }
 
 export function runMigrations(db: Database.Database): void {
@@ -288,4 +292,51 @@ export function runMigrations(db: Database.Database): void {
       BEGIN SELECT RAISE(ABORT,'project_canonical_identity_required'); END;
     `);
   });
+
+
+  // R5.02: persistent hashed client credentials; raw secrets never enter SQLite.
+  migrate(db,16,"r5-oauth-credential-repository",()=>{
+    db.exec(`
+      CREATE TABLE oauth_access_tokens (
+        token_hash TEXT PRIMARY KEY,
+        principal_id TEXT NOT NULL,
+        client_id TEXT NOT NULL,
+        resource TEXT NOT NULL,
+        scopes_json TEXT NOT NULL,
+        family_id TEXT NOT NULL,
+        issued_at INTEGER NOT NULL,
+        expires_at INTEGER NOT NULL,
+        revoked_at INTEGER
+      );
+      CREATE INDEX idx_oauth_access_expires ON oauth_access_tokens(expires_at);
+      CREATE INDEX idx_oauth_access_family ON oauth_access_tokens(family_id);
+      CREATE TABLE oauth_refresh_tokens (
+        token_hash TEXT PRIMARY KEY,
+        family_id TEXT NOT NULL,
+        generation INTEGER NOT NULL,
+        principal_id TEXT NOT NULL,
+        client_id TEXT NOT NULL,
+        resource TEXT NOT NULL,
+        scopes_json TEXT NOT NULL,
+        issued_at INTEGER NOT NULL,
+        expires_at INTEGER NOT NULL,
+        consumed_at INTEGER,
+        revoked_at INTEGER,
+        rotated_to_hash TEXT,
+        UNIQUE(family_id,generation)
+      );
+      CREATE INDEX idx_oauth_refresh_expires ON oauth_refresh_tokens(expires_at);
+      CREATE INDEX idx_oauth_refresh_family ON oauth_refresh_tokens(family_id,generation);
+      CREATE TABLE oauth_revoked_families (
+        family_id TEXT PRIMARY KEY,
+        revoked_at INTEGER NOT NULL
+      );
+      CREATE TABLE oauth_registered_clients (
+        client_id TEXT PRIMARY KEY,
+        redirect_uris_json TEXT NOT NULL,
+        registered_at INTEGER NOT NULL
+      );
+    `);
+  });
+
 }

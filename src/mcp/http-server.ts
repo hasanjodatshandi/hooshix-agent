@@ -3,7 +3,7 @@ import { StreamableHTTPServerTransport } from "../adapters/inbound/mcp/legacy-sd
 import { registerTools } from "./registry.js";
 import { TOOL_CATEGORIES, TOOL_CATEGORY_MAP, ALL_REGISTERED_TOOLS, type ToolName } from "../application/services/legacy-tool-orchestrator.js";
 import { getOperationDescriptor } from "../application/services/operation-catalog.js";
-import { OAuthProvider } from "./oauth.js";
+import { OAuthProvider, OAUTH_SCOPES } from "./oauth.js";
 import { mcpMetrics } from "./metrics.js";
 import { createMetricsServer } from "./metrics-server.js";
 import { getAgentMetrics } from "../core/trace/metrics-service.js";
@@ -12,69 +12,99 @@ import http from "node:http";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import { readLegacyHttpServerSettings, readLegacyHttpAccessToken } from "../infrastructure/config/legacy-http-server.js";
+import {readHttpSecurityConfig,readHttpBootstrapSecret} from "../infrastructure/config/legacy-http-server.js";
 import { createSessionWorkspaceContext, runWithSessionWorkspace, type SessionWorkspaceContext } from "../security/workspace-guard.js";
 import { runWithTrustedInboundIdentity } from "../infrastructure/composition/r2-trusted-inbound-identity.js";
 import { getConfiguredPermissionLevel } from "../infrastructure/config/permission-config.js";
 import type { PrincipalId, SessionId } from "../domain/shared/ids.js";
-
-const { port: PORT, publicBaseUrl: PUBLIC_BASE_URL } = readLegacyHttpServerSettings();
-
-// Current access token (set in startHttpServer)
-let currentAccessToken = "";
-// OAuth provider reference used by monitoring-endpoint auth (set per request)
-let oauthProviderRef: OAuthProvider | null = null;
-
-// --- Persistent Token ---
-// Token priority: MCP_ACCESS_TOKEN env → .token file → auto-generate + save
-const TOKEN_FILE = path.join(process.cwd(), ".token");
-
-/** Load access token with persistent storage */
-function loadToken(): string {
-  const envToken = readLegacyHttpAccessToken();
-  if (envToken) return envToken;
-  try {
-    const fileToken = fs.readFileSync(TOKEN_FILE, "utf-8").trim();
-    if (fileToken) return fileToken;
-  } catch { /* File doesn't exist yet */ }
-  const generated = crypto.randomBytes(24).toString("base64url");
-  try {
-    fs.mkdirSync(path.dirname(TOKEN_FILE), { recursive: true });
-    fs.writeFileSync(TOKEN_FILE, generated, "utf-8");
-    console.error(`🔑 Auto-generated token saved to ${TOKEN_FILE}`);
-  } catch (err) {
-    console.error(`⚠️  Could not save token to ${TOKEN_FILE}:`, err);
+import {OperatorWebSessions,HttpWindowLimiter} from "../infrastructure/server/http-security.js";
+import {withAgentDatabase} from "../core/memory/database.js";
+import {createMcpHandler} from "@modelcontextprotocol/server";
+import {toNodeHandler} from "@modelcontextprotocol/node";
+const CONFIG=readHttpSecurityConfig();
+const PORT=CONFIG.port;
+const PUBLIC_BASE_URL=CONFIG.publicBaseUrl;
+let oauthProviderRef:OAuthProvider|null=null;
+const TOKEN_FILE=path.join(process.cwd(),".token");
+/** Bootstrap is an operator-only credential. It is never accepted as MCP bearer. */
+function loadToken():string{
+  const supplied=readHttpBootstrapSecret();
+  if(supplied){
+    if(Buffer.byteLength(supplied,"utf8")<32)throw new Error("HOOSHIX_BOOTSTRAP_TOKEN requires at least 32 bytes");
+    return supplied;
   }
+  try {
+    const stat=fs.lstatSync(TOKEN_FILE);
+    if(!stat.isFile()||stat.isSymbolicLink())throw new Error("unsafe bootstrap secret file");
+    if(process.platform!=="win32"&&(stat.mode&0o077)!==0)
+      throw new Error("insecure bootstrap secret file: expected 0600");
+    const current=fs.readFileSync(TOKEN_FILE,"utf8").trim();
+    if(Buffer.byteLength(current,"utf8")<32)throw new Error("insecure bootstrap secret length");
+    return current;
+  }catch(error){
+    if((error as NodeJS.ErrnoException).code!=="ENOENT")throw error;
+  }
+  const generated=crypto.randomBytes(32).toString("base64url");
+  fs.writeFileSync(TOKEN_FILE,generated,{flag:"wx",mode:0o600,encoding:"utf8"});
   return generated;
 }
-
 // Grace period before cleaning up closed sessions (ms)
-const SESSION_GRACE_MS = 5 * 60 * 1000; // 5 minutes
+const SESSION_GRACE_MS = 5 * 60 * 1000;
+const SESSION_IDLE_MS = 30 * 60_000;
+const SESSION_ABSOLUTE_MS = 8 * 60 * 60_000;
+const MAX_MCP_SESSIONS = 64;
+const operatorSessions=new OperatorWebSessions();
+const publicLimiter=new HttpWindowLimiter(60,60_000);
+const principalLimiter=new HttpWindowLimiter(120,60_000);
+const operatorLoginLimiter=new HttpWindowLimiter(5,60_000);
+const expensiveInflight=new Map<string,number>();
 
 interface SessionEntry {
   transport: StreamableHTTPServerTransport;
   server: McpServer;
   readonly workspace: SessionWorkspaceContext;
   readonly principalBinding: string;
-  closedAt?: number; // timestamp when transport closed (grace period starts)
+  closedAt?: number;
+  readonly createdAt: number;
+  lastActiveAt: number;
 }
 
 const sessions = new Map<string, SessionEntry>();
+/** 2026 protocol is per request; application workspace selection is a
+ * bounded, authenticated principal+client context, NOT an MCP session ID. */
+const modernWorkspace=new Map<string,{workspace:SessionWorkspaceContext,lastUsedAt:number}>();
+const modernHandler=toNodeHandler(createMcpHandler(()=>createServer(),{legacy:"reject"}));
+function modernContext(key:string):SessionWorkspaceContext{
+  const now=Date.now();
+  for(const [identity,entry] of modernWorkspace){
+    if(now-entry.lastUsedAt>=SESSION_IDLE_MS)modernWorkspace.delete(identity);
+  }
+  const previous=modernWorkspace.get(key);
+  if(previous){previous.lastUsedAt=now;return previous.workspace;}
+  if(modernWorkspace.size>=MAX_MCP_SESSIONS)throw new Error("modern_context_limit");
+  const workspace=createSessionWorkspaceContext();
+  modernWorkspace.set(key,{workspace,lastUsedAt:now});
+  return workspace;
+}
+
 
 /**
  * Clean up sessions that have been closed for longer than the grace period.
  * Called periodically to prevent unbounded memory growth.
  */
-function cleanupStaleSessions(): void {
-  const now = Date.now();
-  for (const [id, entry] of sessions) {
-    if (entry.closedAt && now - entry.closedAt > SESSION_GRACE_MS) {
+function cleanupStaleSessions():void{
+  const now=Date.now();
+  for(const [id,entry] of sessions){
+    if(now-entry.createdAt>=SESSION_ABSOLUTE_MS||now-entry.lastActiveAt>=SESSION_IDLE_MS||
+       (entry.closedAt!==undefined&&now-entry.closedAt>=SESSION_GRACE_MS)){
       sessions.delete(id);
-      console.error(`🧹 session_expired id=${id.slice(0, 8)}`);
+      void entry.transport.close().catch(()=>{});
+      mcpMetrics.recordSessionClosed(id);
     }
   }
+  operatorSessions.prune();
 }
-setInterval(cleanupStaleSessions, 60_000); // run every minute
+setInterval(cleanupStaleSessions,60_000).unref?.();
 
 function createServer(): McpServer {
   return createMetricsServer(
@@ -88,22 +118,77 @@ async function handleRequest(
   res: http.ServerResponse,
   oauth: OAuthProvider,
 ): Promise<void> {
-  const url = new URL(req.url ?? "/", `http://${req.headers.host ?? "localhost"}`);
+  const url = new URL(req.url ?? "/", CONFIG.publicBaseUrl);
+  if(url.origin!==CONFIG.publicBaseUrl){sendJSON(res,400,{error:"invalid_request_target"});return;}
 
   const path = url.pathname.replace(/\/$/, "") || "/";
   const method = req.method ?? "GET";
   oauthProviderRef = oauth;
+  res.setHeader("Cache-Control","no-store");
+  res.setHeader("X-Content-Type-Options","nosniff");
+  res.setHeader("Referrer-Policy","no-referrer");
+  res.setHeader("X-Frame-Options","DENY");
+  if(url.searchParams.has("token")||url.searchParams.has("access_token")){
+    sendJSON(res,400,{error:"credentials_in_query_forbidden"});return;
+  }
+  const origin=req.headers.origin;
+  if(origin){
+    if(origin!==CONFIG.publicBaseUrl&&!CONFIG.allowedOrigins.includes(origin)){
+      sendJSON(res,403,{error:"origin_not_allowed"});return;
+    }
+    res.setHeader("Vary","Origin");
+    res.setHeader("Access-Control-Allow-Origin",origin);
+    res.setHeader("Access-Control-Allow-Methods","GET, POST, DELETE, OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers","Content-Type, Mcp-Session-Id, Authorization");
+    res.setHeader("Access-Control-Expose-Headers","Mcp-Session-Id");
+  }
+  if(method==="OPTIONS"){
+    if(!origin){sendJSON(res,403,{error:"origin_required"});return;}
+    res.writeHead(204);res.end();return;
+  }
+  const remoteIp=req.socket.remoteAddress??"unknown";
+  if(path.startsWith("/oauth/")||path.startsWith("/.well-known/")||path.startsWith("/operator/")){
+    const limit=publicLimiter.allow(remoteIp);
+    if(!limit.allowed){res.setHeader("Retry-After",String(limit.retryAfter));sendJSON(res,429,{error:"rate_limited"});return;}
+  }
 
-  // Health check — requires the monitoring token when one is configured.
-  if (path === "/health") {
-    if (!authorizeMonitoringRequest(req, url, res)) return;
-    sendJSON(res, 200, {
-      status: "ok",
-      bridge: "running",
-      pid: process.pid,
-      tools_loaded: true,
-    });
+  if (path === "/health/live") {sendJSON(res,200,{status:"ok"});return;}
+  if (path === "/health/ready") {
+    try{
+      const ready=withAgentDatabase(db=>db.prepare("SELECT 1 AS ok").get()) as {ok:number}|undefined;
+      sendJSON(res,ready?.ok===1?200:503,{status:ready?.ok===1?"ready":"not_ready"});
+    }catch{sendJSON(res,503,{status:"not_ready"});}
     return;
+  }
+  // Historical /health is deliberately protected; use /health/live for probes.
+  if (path === "/health") {
+    if(!authorizeMonitoringRequest(req,url,res))return;
+    sendJSON(res,200,{status:"ok"});return;
+  }
+  if(path==="/operator/login" && method==="GET"){
+    sendHTML(res,200,`<!doctype html><html><head><meta charset="utf-8"></head><body><form method="post" action="/operator/login"><label>Operator secret<input type="password" autocomplete="off" name="secret" required></label><button type="submit">Sign in</button></form></body></html>`);return;
+  }
+  if(path==="/operator/login" && method==="POST"){
+    const loginRate=operatorLoginLimiter.allow(remoteIp);
+    if(!loginRate.allowed){res.setHeader("Retry-After",String(loginRate.retryAfter));sendJSON(res,429,{error:"login_rate_limited"});return;}
+    if(origin&&origin!==CONFIG.publicBaseUrl){sendJSON(res,403,{error:"origin_not_allowed"});return;}
+    const supplied=new URLSearchParams((await readBody(req,4096)).toString("utf8")).get("secret")??"";
+    if(!oauth.verifyBootstrapSecret(supplied)){sendJSON(res,403,{error:"invalid_operator_secret"});return;}
+    try{
+      const session=operatorSessions.issue();
+      res.setHeader("Set-Cookie",`hx_operator=${session.id}; Path=/; HttpOnly; SameSite=Strict; Max-Age=1800${CONFIG.publicBaseUrl.startsWith("https:")?"; Secure":""}`);
+      res.setHeader("Location","/dashboard");res.writeHead(303);res.end();
+    }catch{sendJSON(res,429,{error:"operator_session_limit"});}
+    return;
+  }
+  if(path==="/operator/logout" && method==="POST"){
+    if(origin&&origin!==CONFIG.publicBaseUrl){sendJSON(res,403,{error:"origin_not_allowed"});return;}
+    const token=operatorCookie(req),session=operatorSessions.get(token);
+    const form=new URLSearchParams((await readBody(req,4096)).toString("utf8"));
+    if(!session||form.get("csrf")!==session.csrf){sendJSON(res,403,{error:"invalid_csrf"});return;}
+    operatorSessions.close(token);
+    res.setHeader("Set-Cookie","hx_operator=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0");
+    res.writeHead(204);res.end();return;
   }
 
   // Metrics endpoint — supports ?taskId=uuid&tool=X&status=X&from=X&to=X&limit=N&offset=N
@@ -150,7 +235,7 @@ async function handleRequest(
     });
     // Get distinct tool names from database for the filter dropdown
     const toolNames = getDistinctToolNames();
-    sendHTML(res, 200, dashboardPage(snapshot, dbMetrics, toolNames, page, pageSize, { toolFilter, statusFilter, fromFilter, toFilter, taskIdFilter }));
+    sendHTML(res, 200, dashboardPage(snapshot, dbMetrics, toolNames, page, pageSize, { toolFilter, statusFilter, fromFilter, toFilter, taskIdFilter },operatorSessions.get(operatorCookie(req))?.csrf));
     return;
   }
 
@@ -174,56 +259,42 @@ async function handleRequest(
     return;
   }
 
-  // --- OAuth well-known endpoints (no auth) ---
-  if (path === "/.well-known/oauth-authorization-server" || path === "/.well-known/openid-configuration") {
-    const base = externalBaseURL(req);
-    sendJSON(res, 200, {
-      issuer: base,
-      authorization_endpoint: `${base}/oauth/authorize`,
-      token_endpoint: `${base}/oauth/token`,
-      registration_endpoint: `${base}/oauth/register`,
-      response_types_supported: ["code"],
-      grant_types_supported: ["authorization_code", "refresh_token"],
-      scopes_supported: ["offline_access"],
-      code_challenge_methods_supported: ["S256"],
-      token_endpoint_auth_methods_supported: ["none"],
-    });
-    return;
+  // Protected Resource Metadata (RFC 9728) and trusted AS discovery.
+  if(path==="/.well-known/oauth-authorization-server"||path==="/.well-known/openid-configuration"){
+    const base=CONFIG.publicBaseUrl;
+    sendJSON(res,200,{
+      issuer:base,authorization_endpoint:base+"/oauth/authorize",
+      token_endpoint:base+"/oauth/token",registration_endpoint:base+"/oauth/register",
+      response_types_supported:["code"],grant_types_supported:["authorization_code","refresh_token"],
+      scopes_supported:[...OAUTH_SCOPES],code_challenge_methods_supported:["S256"],
+      token_endpoint_auth_methods_supported:["none"]
+    });return;
   }
-
-  if (path === "/.well-known/oauth-protected-resource") {
-    const base = externalBaseURL(req);
-    sendJSON(res, 200, {
-      resource: `${base}/mcp`,
-      authorization_servers: [base],
-      scopes_supported: ["offline_access"],
-      bearer_methods_supported: ["header"],
-    });
-    return;
+  if(path==="/.well-known/oauth-protected-resource"||path==="/.well-known/oauth-protected-resource/mcp"){
+    sendJSON(res,200,{
+      resource:CONFIG.resource,authorization_servers:[CONFIG.publicBaseUrl],
+      scopes_supported:["hooshix:read"],bearer_methods_supported:["header"]
+    });return;
   }
-
-  // --- OAuth endpoints (no bearer auth) ---
-  if (path === "/oauth/authorize") {
-    if (method === "GET") {
-      const query = Object.fromEntries(url.searchParams);
-      sendHTML(res, 200, authorizePage(query, externalBaseURL(req)));
-      return;
+  if(path==="/oauth/authorize"){
+    if(method==="GET"){
+      const query=Object.fromEntries(url.searchParams);
+      if(query.resource!==CONFIG.resource||query.response_type!=="code"||
+         query.code_challenge_method!=="S256"||
+         !/^[a-zA-Z0-9_-]{43}$/.test(query.code_challenge??"")||
+         !validRedirectURI(query.redirect_uri??"")||!query.client_id||
+         query.client_id.length>256){sendJSON(res,400,{error:"invalid_request"});return;}
+      if(!oauth.isRegisteredClientRedirect(query.client_id,query.redirect_uri)){sendJSON(res,400,{error:"invalid_registered_client"});return;}
+      // Chrome sends Origin: null for a same-origin form under no-referrer.
+      // Keep consent page navigation same-origin without exposing the OAuth
+      // request URL as a referrer to any cross-origin destination.
+      res.setHeader("Referrer-Policy","same-origin");
+      sendHTML(res,200,authorizePage(query,CONFIG.publicBaseUrl));return;
     }
-    if (method === "POST") {
-      await handleAuthorizePOST(req, res, url, oauth, externalBaseURL(req));
-      return;
-    }
+    if(method==="POST"){await handleAuthorizePOST(req,res,url,oauth,CONFIG.publicBaseUrl);return;}
   }
-
-  if (path === "/oauth/token" && method === "POST") {
-    await handleTokenPOST(req, res, oauth);
-    return;
-  }
-
-  if (path === "/oauth/register" && method === "POST") {
-    await handleRegisterPOST(req, res);
-    return;
-  }
+  if(path==="/oauth/token"&&method==="POST"){await handleTokenPOST(req,res,oauth);return;}
+  if(path==="/oauth/register"&&method==="POST"){await handleRegisterPOST(req,res,oauth);return;}
 
   // --- MCP endpoint ---
   if (path !== "/mcp") {
@@ -231,46 +302,51 @@ async function handleRequest(
     return;
   }
 
-  // CORS headers
-  res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
-  res.setHeader(
-    "Access-Control-Allow-Headers",
-    "Content-Type, Mcp-Session-Id, Authorization",
-  );
-  res.setHeader("Access-Control-Expose-Headers", "Mcp-Session-Id");
-
-  if (method === "OPTIONS") {
-    res.writeHead(204);
-    res.end();
-    return;
+  const grant=oauth.tokenClaims(req.headers.authorization,CONFIG.resource);
+  if(!grant){
+    const metadata=CONFIG.publicBaseUrl+"/.well-known/oauth-protected-resource";
+    res.setHeader("WWW-Authenticate",`Bearer resource_metadata="${metadata}", scope="hooshix:read"`);
+    sendJSON(res,401,{error:"invalid_token"});return;
   }
-
-  // Bearer token auth (skip if ACCESS_TOKEN is empty = no auth required)
-  if (currentAccessToken && !oauth.verifyToken(req.headers.authorization)) {
-    const metadata = `${externalBaseURL(req)}/.well-known/oauth-protected-resource`;
-    res.writeHead(401, {
-      "WWW-Authenticate": `Bearer resource_metadata="${metadata}", scope="offline_access"`,
-    });
-    const body = JSON.stringify({ jsonrpc: "2.0", id: null, error: { code: -32001, message: "unauthorized: missing or invalid bearer token" } });
-    res.end(body);
-    return;
+  const quota=principalLimiter.allow(grant.principalId+":"+grant.clientId);
+  if(!quota.allowed){
+    res.setHeader("Retry-After",String(quota.retryAfter));
+    sendJSON(res,429,{error:"rate_limited"});return;
   }
-
-  // Bind session ID to the credential that initialized it. A second valid
-  // credential must not reuse someone else's workspace/session state.
-  const principalBinding = crypto.createHash("sha256")
-    .update(req.headers.authorization ?? "")
+  const principalBinding=crypto.createHash("sha256")
+    .update(grant.principalId+"|"+grant.clientId+"|"+grant.resource)
     .digest("hex");
-  const grant=oauth.tokenClaims(req.headers.authorization);
-  if (!grant) { sendJSON(res,401,{error:"invalid_authenticated_principal"}); return; }
-  const grantedScopes=grant.scopes;
+  const verifiedGrant=grant;
+  const grantedScopes=verifiedGrant.scopes;
   const permission=({READ_ONLY:"READ",PROJECT_ACCESS:"PROJECT_ACCESS",DEVELOPER_MODE:"DEVELOPER",ADMIN_MODE:"ADMIN"} as const)[getConfiguredPermissionLevel()];
-  function runAuthorizedSession<T>(sessionId:string,entry:SessionEntry,operation:()=>T):T {
+  function runAuthorizedSession<T>(sessionId:string,entry:SessionEntry,operation:()=>T):T{
+    entry.lastActiveAt=Date.now();
     return runWithTrustedInboundIdentity({
-      principal:{id:principalBinding as PrincipalId,permission,origin:"http_oauth",scopes:grantedScopes},
+      principal:{id:verifiedGrant.principalId as PrincipalId,permission,origin:"http_oauth",scopes:grantedScopes},
       sessionId:sessionId as SessionId,
     },()=>runWithSessionWorkspace(entry.workspace,operation));
+  }
+  // Global bounded concurrency for expensive protected MCP requests.
+  const count=expensiveInflight.get(principalBinding)??0;
+  if(count>=8){res.setHeader("Retry-After","1");sendJSON(res,429,{error:"concurrency_limited"});return;}
+  expensiveInflight.set(principalBinding,count+1);
+  let released=false;
+  const release=()=>{
+    if(released)return;released=true;
+    const current=expensiveInflight.get(principalBinding)??1;
+    if(current<=1)expensiveInflight.delete(principalBinding);
+    else expensiveInflight.set(principalBinding,current-1);
+  };
+  res.once("finish",release);res.once("close",release);
+  cleanupStaleSessions();
+  if(req.headers["mcp-protocol-version"]==="2026-07-28"){
+    if(method!=="POST"){sendJSON(res,405,{error:"modern_post_only"});return;}
+    const context=modernContext(principalBinding);
+    await runWithTrustedInboundIdentity({
+      principal:{id:verifiedGrant.principalId as PrincipalId,permission,origin:"http_oauth",scopes:grantedScopes},
+      sessionId:principalBinding as SessionId,
+    },()=>runWithSessionWorkspace(context,()=>modernHandler(req,res)));
+    return;
   }
   const requestedSessionId = req.headers["mcp-session-id"] as string | undefined;
   if (requestedSessionId && sessions.has(requestedSessionId) &&
@@ -357,7 +433,8 @@ async function handleRequest(
       enableJsonResponse: true,
     });
 
-    sessions.set(sessionId, { transport, server, workspace: createSessionWorkspaceContext(), principalBinding });
+    if(sessions.size>=MAX_MCP_SESSIONS){sendJSON(res,429,{error:"session_limit_reached"});return;}
+    sessions.set(sessionId, { transport, server, workspace: createSessionWorkspaceContext(), principalBinding, createdAt:Date.now(), lastActiveAt:Date.now() });
 
     await server.connect(transport);
 
@@ -432,31 +509,20 @@ function readBody(req: http.IncomingMessage, maxBytes = 1_000_000): Promise<Buff
   });
 }
 
-function externalBaseURL(req: http.IncomingMessage): string {
-  if (PUBLIC_BASE_URL) return PUBLIC_BASE_URL;
-  return `https://${req.headers.host ?? "localhost:3001"}`;
+function operatorCookie(req:http.IncomingMessage):string|undefined{
+  const raw=req.headers.cookie??"";
+  const value=raw.split(";").map(x=>x.trim()).find(x=>x.startsWith("hx_operator="));
+  return value?.slice("hx_operator=".length);
 }
-
-/**
- * Auth gate for monitoring/UI endpoints (/health, /metrics, /dashboard, /tools).
- * Mechanism: the same single bearer token that protects /mcp, but browser-friendly:
- * accepted via the Authorization header OR `?token=<token>` query parameter
- * (browsers cannot send headers on a plain navigation). Timing-safe comparison.
- * When no access token is configured (empty MCP_ACCESS_TOKEN and no .token file),
- * the endpoints stay open — that is the local stdio/dev scenario only.
- */
-function authorizeMonitoringRequest(req: http.IncomingMessage, url: URL, res: http.ServerResponse): boolean {
-  if (!currentAccessToken) return true; // no token configured — local dev mode
-  if (oauthProviderRef?.verifyToken(req.headers.authorization)) return true;
-  const queryToken = url.searchParams.get("token");
-  if (queryToken && queryToken.length === currentAccessToken.length && oauthProviderRef) {
-    if (oauthProviderRef.verifyToken(`Bearer ${queryToken}`)) return true;
-  }
-  res.writeHead(401, {
-    "Content-Type": "text/plain; charset=utf-8",
-    "WWW-Authenticate": `Bearer realm="hooshix-monitoring"`,
-  });
-  res.end("unauthorized: provide Authorization: Bearer <token> or ?token=<token>");
+/** Query credentials and master/bootstrap tokens are never HTTP bearer auth. */
+function authorizeMonitoringRequest(req:http.IncomingMessage,_url:URL,res:http.ServerResponse):boolean{
+  const session=operatorSessions.get(operatorCookie(req));
+  if(session && (req.method==="GET"||req.method==="HEAD"))return true;
+  const claims=oauthProviderRef?.tokenClaims(req.headers.authorization,CONFIG.resource);
+  if(claims?.scopes.includes("hooshix:monitoring:read"))return true;
+  const metadata=CONFIG.publicBaseUrl+"/.well-known/oauth-protected-resource";
+  res.setHeader("WWW-Authenticate",`Bearer resource_metadata="${metadata}", scope="hooshix:monitoring:read"`);
+  sendJSON(res,claims?403:401,{error:claims?"insufficient_scope":"invalid_token"});
   return false;
 }
 
@@ -483,11 +549,6 @@ function formatUptime(seconds: number): string {
   const h = Math.floor(seconds / 3600);
   const m = Math.floor((seconds % 3600) / 60);
   return `${h}h ${m}m`;
-}
-
-function maskToken(token: string): string {
-  if (token.length <= 8) return "****";
-  return token.slice(0, 4) + "****" + token.slice(-4);
 }
 
 interface ToolInfo {
@@ -750,13 +811,7 @@ function buildFilterQuery(base: Record<string, string>): string {
   return qs ? `?${qs}` : '';
 }
 
-function dashboardPage(snapshot: ReturnType<typeof mcpMetrics.getSnapshot>, dbMetrics: ReturnType<typeof getAgentMetrics>, toolNames: string[], page: number, pageSize: number, filters: DashboardFilters = {}): string {
-  const tokenSource = readLegacyHttpAccessToken()
-    ? "env MCP_ACCESS_TOKEN"
-    : fs.existsSync(TOKEN_FILE)
-      ? ".token file"
-      : "auto-generated";
-  const maskedToken = maskToken(currentAccessToken);
+function dashboardPage(snapshot: ReturnType<typeof mcpMetrics.getSnapshot>, dbMetrics: ReturnType<typeof getAgentMetrics>, toolNames: string[], page: number, pageSize: number, filters: DashboardFilters = {},csrf?:string): string {
   const toolRows = Object.entries(snapshot.tools)
     .sort((a, b) => b[1].calls - a[1].calls)
     .map(([name, stats]) => `
@@ -948,8 +1003,8 @@ function dashboardPage(snapshot: ReturnType<typeof mcpMetrics.getSnapshot>, dbMe
   <div class="section">
     <h2>🔑 Token Info</h2>
     <table>
-      <tr><th style="width:120px">Source</th><td>${escapeHTML(tokenSource)}</td></tr>
-      <tr><th>Token</th><td><span class="token-box">${maskedToken}</span></td></tr>
+      <tr><th style="width:120px">Authentication</th><td>Operator web session</td></tr>
+
       <tr><th>PID</th><td>${process.pid}</td></tr>
       <tr><th>Port</th><td>${PORT}</td></tr>
       ${PUBLIC_BASE_URL ? `<tr><th>Public URL</th><td><a href="${escapeHTML(PUBLIC_BASE_URL)}" style="color:#58a6ff">${escapeHTML(PUBLIC_BASE_URL)}</a></td></tr>` : ''}
@@ -998,6 +1053,7 @@ function dashboardPage(snapshot: ReturnType<typeof mcpMetrics.getSnapshot>, dbMe
       : '<div class="empty">No recent calls</div>'}
   </div>
 
+  ${csrf?`<form method="post" action="/operator/logout"><input type="hidden" name="csrf" value="${escapeHTML(csrf)}"><button type="submit">Sign out</button></form>`:""}
   <p class="refresh-note">Auto-refreshes every 10 seconds · <a href="/health" style="color:#58a6ff">Health</a> · <a href="/metrics" style="color:#58a6ff">Metrics (JSON)</a> · <a href="/tools" style="color:#58a6ff">Tools</a></p>
 </body>
 </html>`;
@@ -1017,6 +1073,19 @@ function authorizePage(query: Record<string, string>, _base: string): string {
   const fields = Object.entries(hidden)
     .map(([k, v]) => `<input type="hidden" name="${escapeHTML(k)}" value="${escapeHTML(String(v))}">`)
     .join("\n");
+  // ChatGPT may request only offline_access. Additional permissions must be
+  // visibly opted into by the operator, never silently inferred from that scope.
+  const grants = [
+    ["grant_read","خواندن اطلاعات و فایل‌های Workspace"],
+    ["grant_workspace","انتخاب و مدیریت Workspaceهای مجاز"],
+    ["grant_tasks","ساخت و اجرای Taskها"],
+    ["grant_write","ایجاد و تغییر فایل‌های پروژه"],
+    ["grant_execute","اجرای فرمان‌ها، Git و مدیریت بسته‌ها"],
+    ["grant_monitoring","مشاهده وضعیت و گزارش‌های سرویس"],
+  ] as const;
+  const grantFields = grants.map(([name,label]) =>
+    `<label class="scope-option"><input type="checkbox" name="${name}" value="yes"> ${escapeHTML(label)}</label>`
+  ).join("\n");
 
   return `<!DOCTYPE html><html dir="rtl" lang="fa"><head><meta charset="utf-8">
 <title>HooshiX Brain — تأیید دسترسی</title>
@@ -1024,14 +1093,18 @@ function authorizePage(query: Record<string, string>, _base: string): string {
 justify-content:center;align-items:center;height:100vh;margin:0}
 .box{background:#1a2027;padding:32px;border-radius:12px;width:380px}
 input{width:100%;padding:10px;margin:8px 0;border-radius:8px;border:1px solid #345}
+.scope-option{display:block;margin:8px 0;text-align:right;line-height:1.5}
+.scope-option input{width:auto;margin-left:8px;vertical-align:middle}
 button{width:100%;padding:12px;background:#0a7c43;color:#fff;border:0;
 border-radius:8px;font-size:16px;cursor:pointer}</style></head><body>
 <div class="box"><h3>HooshiX Brain MCP</h3>
-<p>ChatGPT درخواست دسترسی به سیستم شما را دارد.<br>
+<p>Client ${escapeHTML(query.client_id??"")} requests scopes: ${escapeHTML(query.scope??"hooshix:read")}<br>
 کلید دسترسی را وارد کنید:</p>
 <form method="post" action="/oauth/authorize">
 ${fields}
-<input type="password" name="pin" placeholder="کلید دسترسی (http_token.txt)" required>
+<p>مجوزهای موردنظر خود را صریحاً انتخاب کنید. دسترسی خواندن برای ابزارهای پایه لازم است؛ سایر مجوزها اختیاری هستند.</p>
+${grantFields}
+<input type="password" name="pin" placeholder="Operator bootstrap secret" required>
 <button type="submit">اجازه دسترسی</button></form></div></body></html>`;
 }
 
@@ -1054,32 +1127,36 @@ async function handleAuthorizePOST(
     const resource = form.resource ?? query.resource ?? "";
     const pin = form.pin ?? "";
 
-    if (!validRedirectURI(redirectUri)) { sendHTML(res, 400, "invalid redirect_uri"); return; }
+    if (!validRedirectURI(redirectUri) || !oauth.isRegisteredClientRedirect(clientId,redirectUri)) { sendHTML(res, 400, "invalid_registered_redirect_uri"); return; }
     if (resource !== `${base}/mcp`) { sendHTML(res, 400, "invalid resource"); return; }
-    if (!clientId) { sendHTML(res, 400, "client_id missing"); return; }
-    if (!challenge) { sendHTML(res, 400, "PKCE S256 required"); return; }
+    if (!clientId || clientId.length>256 || form.response_type!=="code") { sendHTML(res, 400, "invalid_client"); return; }
+    if (!/^[a-zA-Z0-9_-]{43}$/.test(challenge)) { sendHTML(res, 400, "PKCE S256 required"); return; }
 
     if (!pin) {
       sendHTML(res, 200, authorizePage({ ...query, ...form }, base));
       return;
     }
 
-    if (pin !== currentAccessToken) {
+    if (!oauth.verifyBootstrapSecret(pin)) {
       sendHTML(res, 403, "<h3>کلید اشتباه است</h3>");
       return;
     }
 
-    // Timing-safe comparison for the PIN (it is the master token)
-    {
-      const supplied = Buffer.from(pin);
-      const expected = Buffer.from(currentAccessToken);
-      if (supplied.length !== expected.length || !crypto.timingSafeEqual(supplied, expected)) {
-        sendHTML(res, 403, "<h3>کلید اشتباه است</h3>");
-        return;
-      }
-    }
-
-    const code = oauth.issueCode(challenge, resource, redirectUri, clientId);
+    const requestedScopes=(form.scope??"").split(/\s+/).filter(Boolean);
+    // Explicitly selected permissions may supplement an offline_access-only
+    // request. Neither a refresh grant nor a missing checkbox grants tools.
+    const optionalGrants:ReadonlyArray<readonly [string,string]>=[
+      ["grant_read","hooshix:read"],
+      ["grant_workspace","hooshix:workspace:manage"],
+      ["grant_tasks","hooshix:task:manage"],
+      ["grant_write","hooshix:project:write"],
+      ["grant_execute","hooshix:execute"],
+      ["grant_monitoring","hooshix:monitoring:read"],
+    ];
+    const selectedScopes=optionalGrants.filter(([field])=>form[field]==="yes").map(([,scope])=>scope);
+    const approvedScopes=[...new Set([...requestedScopes,...selectedScopes])];
+    if(form.code_challenge_method!=="S256") {sendHTML(res,400,"PKCE S256 required");return;}
+    const code = oauth.issueCode(challenge, resource, redirectUri, clientId,approvedScopes);
     const sep = redirectUri.includes("?") ? "&" : "?";
     const params = new URLSearchParams({ code });
     if (state) params.set("state", state);
@@ -1099,12 +1176,13 @@ async function handleTokenPOST(
     const body = await readBody(req);
     const form = Object.fromEntries(new URLSearchParams(body.toString("utf-8")));
     const grantType = form.grant_type ?? "authorization_code";
+    if(form.resource!==CONFIG.resource){sendJSON(res,400,{error:"invalid_target_resource"});return;}
 
     let tokenResponse: Record<string, unknown> | null = null;
     if (grantType === "authorization_code") {
       tokenResponse = oauth.exchange(form.code, form.code_verifier, form.resource, form.redirect_uri, form.client_id);
     } else if (grantType === "refresh_token") {
-      tokenResponse = oauth.refresh(form.refresh_token, form.resource);
+      tokenResponse = oauth.refresh(form.refresh_token, form.resource,form.client_id);
     } else {
       sendJSON(res, 400, { error: "unsupported_grant_type" });
       return;
@@ -1121,79 +1199,46 @@ async function handleTokenPOST(
 }
 
 async function handleRegisterPOST(
-  req: http.IncomingMessage,
-  res: http.ServerResponse,
-): Promise<void> {
-  try {
-    const body = await readBody(req);
-    const registration = JSON.parse(body.toString("utf-8"));
-    const redirectUris = registration.redirect_uris;
-
-    if (!Array.isArray(redirectUris) || !redirectUris.length || !redirectUris.every(validRedirectURI)) {
-      sendJSON(res, 400, { error: "invalid_client_metadata" });
-      return;
+  req:http.IncomingMessage,res:http.ServerResponse,oauth:OAuthProvider
+):Promise<void>{
+  try{
+    const raw=await readBody(req,4096);
+    const registration=JSON.parse(raw.toString("utf8")) as {redirect_uris?:unknown};
+    const redirectUris=registration.redirect_uris;
+    if(!Array.isArray(redirectUris)||redirectUris.length<1||redirectUris.length>8||
+       !redirectUris.every(u=>typeof u==="string"&&validRedirectURI(u))||
+       new Set(redirectUris).size!==redirectUris.length){
+      sendJSON(res,400,{error:"invalid_client_metadata"});return;
     }
-
-    sendJSON(res, 201, {
-      client_id: `hooshix-auto-${crypto.randomBytes(8).toString("base64url")}`,
-      redirect_uris: redirectUris,
-      token_endpoint_auth_method: "none",
-      grant_types: ["authorization_code"],
-      response_types: ["code"],
-    });
-  } catch {
-    sendJSON(res, 400, { error: "invalid_client_metadata" });
-  }
+    const id=oauth.registerClient(redirectUris);
+    sendJSON(res,201,{client_id:id,redirect_uris:redirectUris,
+      token_endpoint_auth_method:"none",grant_types:["authorization_code"],response_types:["code"]});
+  }catch{sendJSON(res,400,{error:"invalid_client_metadata"});}
 }
 
-export function startHttpServer(): Promise<void> {
-  currentAccessToken = loadToken();
-  const accessToken = currentAccessToken;
-  const source = readLegacyHttpAccessToken()
-    ? "env MCP_ACCESS_TOKEN"
-    : fs.existsSync(TOKEN_FILE)
-      ? ".token file"
-      : "auto-generated + saved";
-
-  const oauth = new OAuthProvider(accessToken);
-
-  return new Promise((resolve) => {
-    const server = http.createServer(async (req, res) => {
-      try {
-        await handleRequest(req, res, oauth);
-      } catch (error) {
-        console.error("MCP HTTP error:", error);
-        if (!res.headersSent) {
-          res.writeHead(500);
-          res.end("Internal server error");
-        }
+export function startHttpServer():Promise<void>{
+  const bootstrap=loadToken();
+  const oauth=new OAuthProvider(bootstrap);
+  return new Promise((resolve,reject)=>{
+    const server=http.createServer(async(req,res)=>{
+      try{await handleRequest(req,res,oauth);}
+      catch(error){
+        // Do not log credential-bearing URLs, raw headers, or POST form bodies.
+        console.error("MCP HTTP handler error:",error instanceof Error?error.name:"unknown");
+        if(!res.headersSent)sendJSON(res,500,{error:"internal_server_error"});
+        else if(!res.writableEnded)res.end();
       }
     });
-
-    server.listen(PORT, () => {
-      console.error(`HooshiX MCP HTTP server running on http://localhost:${PORT}/mcp`);
-      console.error(`Token source: ${source}`);
-      // Do NOT print the raw token to logs — use the masked form instead.
-      console.error(`Access token: ${maskToken(accessToken)} (full token in ${readLegacyHttpAccessToken() ? "env MCP_ACCESS_TOKEN" : TOKEN_FILE})`);
-      if (PUBLIC_BASE_URL) {
-        console.error(`Public base URL: ${PUBLIC_BASE_URL}`);
-      }
+    server.once("error",(error:NodeJS.ErrnoException)=>{
+      oauth.destroy();
+      reject(new Error(error.code==="EADDRINUSE"?
+        `MCP port ${PORT} is already in use`:
+        `MCP listener startup failed: ${error.code??"unknown"}`));
+    });
+    server.listen(PORT,CONFIG.host,()=>{
+      console.error(`HooshiX MCP HTTP listener ready on ${CONFIG.host}:${PORT} (public resource: ${CONFIG.resource})`);
       resolve();
     });
-    // A second start attempt (script + watchdog overlap, manual + script) must
-    // fail with a clear, actionable message instead of an unhandled stack trace.
-    server.on("error", (error: NodeJS.ErrnoException) => {
-      if (error.code === "EADDRINUSE") {
-        console.error(`
-Port ${PORT} is already in use — the MCP server appears to be running.
-
-  Health check : curl "http://localhost:${PORT}/health"
-  Stop it first: taskkill /F /PID <pid>   (find the pid: netstat -ano | findstr :${PORT})
-
-If the running instance is STALE (older dist), kill it and start again.`);
-        process.exit(1);
-      }
-      console.error("MCP HTTP server error:", error);
-    });
+    server.on("close",()=>oauth.destroy());
   });
 }

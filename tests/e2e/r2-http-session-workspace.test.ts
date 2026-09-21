@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { spawn } from "node:child_process";
 import { pathToFileURL } from "node:url";
+import {createHash,randomBytes} from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { createDisposableFixture, reserveEphemeralLoopbackPort } from "../helpers/r0-disposable-fixtures.js";
 
@@ -24,7 +25,8 @@ describe("R2.04 HTTP transport session-scoped real workspace",()=>{
     const repo=process.cwd();
     const runner=path.join(fixture.root,"http-runner.mts");
     fs.writeFileSync(runner,`import { startHttpServer } from ${JSON.stringify(pathToFileURL(path.join(repo,"src/mcp/http-server.ts")).href)};\nawait startHttpServer();\n`);
-    const accessToken="R2_ONLY_SYNTHETIC_HTTP_TOKEN";
+    const bootstrap="R2_ONLY_SYNTHETIC_OPERATOR_BOOTSTRAP_0123456789";
+    let accessToken="";
     // Invoke tsx as a Node import in this process: the tsx CLI may fork a
     // second Node process that survives killing the wrapper and locks the fixture DB.
     const tsxLoader=pathToFileURL(path.join(repo,"node_modules/tsx/dist/loader.mjs")).href;
@@ -33,13 +35,13 @@ describe("R2.04 HTTP transport session-scoped real workspace",()=>{
       // node/tsx cleanup can retain a directory handle briefly after process close.
       // All runtime DB/log/workspace paths remain explicitly isolated below.
       cwd:repo,
-      env:{...process.env,MCP_PORT:String(port),MCP_ACCESS_TOKEN:accessToken,
+      env:{...process.env,MCP_PORT:String(port),MCP_PUBLIC_BASE_URL:undefined,MCP_BIND_HOST:"127.0.0.1",MCP_ALLOWED_ORIGINS:undefined,MCP_ACCESS_TOKEN:undefined,HOOSHIX_BOOTSTRAP_TOKEN:bootstrap,
         HOOSHIX_WORKSPACE:[a,b].join(","),HOOSHIX_DB_PATH:path.join(fixture.root,"db","agent.sqlite"),
         HOOSHIX_LOG_DIR:path.join(fixture.root,"logs"),HOOSHIX_PERMISSION_LEVEL:"DEVELOPER_MODE"},
       stdio:["pipe","pipe","pipe"],windowsHide:true,
     });
     const base=`http://127.0.0.1:${port}/mcp`;
-    const requestHeaders={authorization:`Bearer ${accessToken}`,"content-type":"application/json",accept:"application/json, text/event-stream"};
+    const requestHeaders={authorization:"","content-type":"application/json",accept:"application/json, text/event-stream"};
     let seq=0;
     async function rpc(method:string,params:unknown,session?:string){
       const response=await fetch(base,{method:"POST",headers:{...requestHeaders,...(session?{"mcp-session-id":session}:{})},
@@ -55,13 +57,42 @@ describe("R2.04 HTTP transport session-scoped real workspace",()=>{
       return /^[\\s]*[\\[{]/.test(text) ? JSON.parse(text) : text;
     }
     try {
-      const healthy=async()=>{try{return (await fetch(`http://127.0.0.1:${port}/health`,{headers:{authorization:requestHeaders.authorization}})).status===200}catch{return false}};
+      const healthy=async()=>{try{return (await fetch(`http://127.0.0.1:${port}/health/live`)).status===200}catch{return false}};
       let ready=false;
       for(let tries=0;tries<60;tries++){if(await healthy()){ready=true;break}
         if(child.exitCode!==null)break;
         await new Promise(resolve=>setTimeout(resolve,100));
       }
       expect(ready).toBe(true);
+      const verifier=randomBytes(32).toString("base64url");
+      const challenge=createHash("sha256").update(verifier).digest("base64url");
+      const redirectUri=`http://127.0.0.1:${port}/callback`;
+      const registration=await fetch(`http://127.0.0.1:${port}/oauth/register`,{
+        method:"POST",headers:{"content-type":"application/json"},
+        body:JSON.stringify({redirect_uris:[redirectUri]})
+      });
+      expect(registration.status).toBe(201);
+      const clientId=(await registration.json() as {client_id:string}).client_id;
+      const resource=base;
+      const authorize=await fetch(`http://127.0.0.1:${port}/oauth/authorize`,{
+        method:"POST",redirect:"manual",
+        headers:{"content-type":"application/x-www-form-urlencoded"},
+        body:new URLSearchParams({pin:bootstrap,redirect_uri:redirectUri,client_id:clientId,resource,
+          code_challenge:challenge,code_challenge_method:"S256",response_type:"code",
+          scope:"hooshix:read hooshix:workspace:manage"}).toString()
+      });
+      expect(authorize.status,await authorize.text()).toBe(302);
+      const code=new URL(authorize.headers.get("location")!).searchParams.get("code")!;
+      const token=await fetch(`http://127.0.0.1:${port}/oauth/token`,{
+        method:"POST",headers:{"content-type":"application/x-www-form-urlencoded"},
+        body:new URLSearchParams({grant_type:"authorization_code",code,code_verifier:verifier,
+          redirect_uri:redirectUri,client_id:clientId,resource}).toString()
+      });
+      expect(token.status).toBe(200);
+      const tokenJson=await token.json() as {access_token:string};
+      accessToken=tokenJson.access_token;
+      expect(accessToken).not.toBe(bootstrap);
+      requestHeaders.authorization=`Bearer ${accessToken}`;
       const one=await rpc("initialize",{protocolVersion:"2025-06-18",capabilities:{},clientInfo:{name:"fixture-a",version:"1"}});
       const two=await rpc("initialize",{protocolVersion:"2025-06-18",capabilities:{},clientInfo:{name:"fixture-b",version:"1"}});
       const s1=one.session!,s2=two.session!;

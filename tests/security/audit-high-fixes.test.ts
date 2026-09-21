@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   isSensitiveSearchHit,
   searchWorkspaceFiles,
@@ -26,6 +26,7 @@ const root = path.resolve("tests/audit-high");
 
 afterEach(() => {
   setUnrestrictedMode(false);
+  vi.useRealTimers();
 });
 
 describe("HIGH-02: search_files sensitive-file denylist", () => {
@@ -97,10 +98,6 @@ describe("HIGH-04: OAuth issued-token model", () => {
     return [code, verifier];
   }
 
-  function issuedTable(oauth: OAuthProvider): Map<string, { accessExpiresAt: number }> {
-    return (oauth as unknown as { issued: Map<string, { accessExpiresAt: number }> }).issued;
-  }
-
   it("issues unique non-master access tokens that verify", () => {
     const oauth = newProvider();
     try {
@@ -113,12 +110,12 @@ describe("HIGH-04: OAuth issued-token model", () => {
       expect(t2.access_token).not.toBe(t1.access_token);
       expect(t1.expires_in).toBe(3600);
 
-      expect(oauth.verifyToken(`Bearer ${t1.access_token}`)).toBe(true);
-      expect(oauth.verifyToken(`Bearer ${t2.access_token}`)).toBe(true);
+      expect(oauth.verifyToken(`Bearer ${t1.access_token}`, resource)).toBe(true);
+      expect(oauth.verifyToken(`Bearer ${t2.access_token}`, resource)).toBe(true);
       // master token remains valid (bootstrap + local tooling)
-      expect(oauth.verifyToken(`Bearer ${master}`)).toBe(true);
-      expect(oauth.verifyToken(undefined)).toBe(false);
-      expect(oauth.verifyToken("Bearer garbage")).toBe(false);
+      expect(oauth.verifyToken(`Bearer ${master}`, resource)).toBe(false);
+      expect(oauth.verifyToken(undefined, resource)).toBe(false);
+      expect(oauth.verifyToken("Bearer garbage", resource)).toBe(false);
     } finally {
       oauth.destroy();
     }
@@ -147,7 +144,7 @@ describe("HIGH-04: OAuth issued-token model", () => {
       expect(second.access_token).not.toBe(first.access_token);
       const r2 = second.refresh_token as string;
       expect(r2).not.toBe(r1);
-      expect(oauth.verifyToken(`Bearer ${second.access_token}`)).toBe(true);
+      expect(oauth.verifyToken(`Bearer ${second.access_token}`, resource)).toBe(true);
     } finally {
       oauth.destroy();
     }
@@ -164,7 +161,7 @@ describe("HIGH-04: OAuth issued-token model", () => {
       const attacker = oauth.refresh(r1, resource); // reuse of consumed token
       expect(attacker).toBeNull();
       // successor tokens from the chain are dead too
-      expect(oauth.verifyToken(`Bearer ${second.access_token}`)).toBe(false);
+      expect(oauth.verifyToken(`Bearer ${second.access_token}`, resource)).toBe(false);
       expect(oauth.refresh(second.refresh_token as string, resource)).toBeNull();
     } finally {
       oauth.destroy();
@@ -172,17 +169,16 @@ describe("HIGH-04: OAuth issued-token model", () => {
   });
 
   it("rejects expired access tokens", () => {
+    vi.useFakeTimers();
     const oauth = newProvider();
     try {
       const [code, verifier] = codeFor(oauth);
       const t = oauth.exchange(code, verifier, resource, redirect, clientId)!;
       const tok = t.access_token as string;
-      expect(oauth.verifyToken(`Bearer ${tok}`)).toBe(true);
+      expect(oauth.verifyToken(`Bearer ${tok}`, resource)).toBe(true);
 
-      const hash = crypto.createHash("sha256").update(tok).digest("hex");
-      const entry = issuedTable(oauth).get(hash)!;
-      entry.accessExpiresAt = Date.now() - 1000;
-      expect(oauth.verifyToken(`Bearer ${tok}`)).toBe(false);
+      vi.advanceTimersByTime(3_600_001);
+      expect(oauth.verifyToken(`Bearer ${tok}`, resource)).toBe(false);
     } finally {
       oauth.destroy();
     }
@@ -194,10 +190,10 @@ describe("HIGH-04: OAuth issued-token model", () => {
       const [code, verifier] = codeFor(oauth);
       const t = oauth.exchange(code, verifier, resource, redirect, clientId)!;
       const tok = t.access_token as string;
-      expect(oauth.verifyToken(`Bearer ${tok}`)).toBe(true);
+      expect(oauth.verifyToken(`Bearer ${tok}`, resource)).toBe(true);
 
       oauth.revoke(tok);
-      expect(oauth.verifyToken(`Bearer ${tok}`)).toBe(false);
+      expect(oauth.verifyToken(`Bearer ${tok}`, resource)).toBe(false);
       // and its refresh token no longer works
       expect(oauth.refresh(t.refresh_token as string, resource)).toBeNull();
     } finally {

@@ -2,7 +2,7 @@
 
 **Project:** `D:/workspace/hooshix-agent`  
 **Program:** Full Hexagonal/Clean redesign + complete consolidated-audit remediation  
-**Status:** R0 GATE_PASSED; R1 GATE_PASSED (G1 PASS); R2 GATE_PASSED (G2 PASS on isolated feature branch); R3 GATE_PASSED (G3 PASS on isolated feature branch, 2026-09-21). R4 GATE_PASSED (R4.01–R4.07 VERIFIED; G4 PASS on isolated feature branch, 2026-09-21). R5–R10 NOT_STARTED.
+**Status:** R0 GATE_PASSED; R1 GATE_PASSED (G1 PASS); R2 GATE_PASSED (G2 PASS on isolated feature branch); R3 GATE_PASSED (G3 PASS on isolated feature branch, 2026-09-21). R4 GATE_PASSED (R4.01–R4.07 VERIFIED; G4 PASS on isolated feature branch, 2026-09-21). R5 IN_PROGRESS (HTTP/OAuth/MCP security implementation under G5 review); R6–R10 NOT_STARTED.
 **Owner directive:** all 13 HIGH, 29 MEDIUM, 12 LOW findings must be fixed and verified.
 
 This file is intentionally a live execution ledger. The implementing assistant updates it during implementation. Do not erase previous evidence; append/update status while preserving history.
@@ -40,7 +40,7 @@ Notes on pre-existing dirty changes: none at R0 baseline; source hardening alrea
 | R2 Unified tool/auth/workspace | GATE_PASSED | G2 PASS — shared Direct MCP/Task gateway, exact approval, scope controls and retired alternate inbound handlers | 2026-09-20 | 2026-09-20 | Commit e641b6d; 133 files / 589 PASS + 15 expected RED, Typecheck, Build, G1 PASS; R2 G2 closure worklog below |
 | R3 Task/recovery/idempotency/lease | GATE_PASSED | G3 PASS — R3.01–R3.10 VERIFIED on isolated branch; no release/deployment claim | 2026-09-20 | 2026-09-21 | 142 files / 639 PASS + 11 expected RED; Typecheck, Build, strict G1 183/0 candidates, live-owner crash-recovery and real 2-process lease proofs PASS; see G3 completion record |
 | R4 Data integrity/compensation | GATE_PASSED | G4 PASS — immutable file restore, canonical project identity, clean Git snapshots/rollback and truthful package manifest compensation VERIFIED on isolated feature branch | 2026-09-21 | 2026-09-21 | 148 files / 673 PASS + 7 expected RED assigned to R5–R10; Typecheck, Build and strict G1 PASS; no live migration or deployment |
-| R5 HTTP/OAuth/MCP modern | NOT_STARTED | — | | | |
+| R5 HTTP/OAuth/MCP modern | IN_PROGRESS | G5 OPEN — HTTP/OAuth process tests and SDK v2 migration under verification | 2026-09-21 | | Source/test typecheck, full suite after added security fixtures (153 files / 687 PASS + 4 expected other-phase failures), build and strict G1 186/0 PASS. See R5 in-progress record. |
 | R6 Persistence/perf/observability | NOT_STARTED | — | | | |
 | R7 Config/deployment/CI | NOT_STARTED | — | | | |
 | R8 Verification/parallel/fuzz | NOT_STARTED | — | | | |
@@ -68,11 +68,11 @@ The detailed source is `20_FINDINGS_TRACEABILITY_MATRIX.md`; keep totals consist
 
 ```text
 Completed phases: R0–R4 (G0–G4 VERIFIED PASS on isolated feature branch); R4.01–R4.07 all VERIFIED
-Next pending leaf: R5.01 — separate bootstrap secret from issued credentials (NOT_STARTED; do not start without user instruction)
-Findings: HIGH-05/06/07/13 and MED-05/08/09 VERIFIED_CLOSED with G3 evidence; MED-11/12 VERIFIED_CLOSED with R4.02, MED-10 with R4.03; 20/54 total closed. Other findings retain their statuses.
-Gate: G4 PASS on isolated branch; G5–G10 OPEN. HooshiX is NOT release-ready.
+Current phase: R5 IN_PROGRESS — R5.01–R5.12 implementation and modern MCP v2 integration under verification. G5 must remain OPEN until process-level fake-clock/PKCE/session contracts, SDK interoperability, migration and secret permission acceptance are all documented.
+Findings: last approved closure baseline 20/54 VERIFIED_CLOSED at G4; R5 finding statuses pending comprehensive G5 verification.
+Gate: G0–G4 PASS on isolated branch; G5–G10 OPEN. HooshiX is NOT release-ready.
 Workspace: D:/workspace/hooshix-agent; isolated feature/r2-unified-tool-gateway-2026-09-20 branch.
-No live database migration, deployment, restart, push, merge, reset or removal of unrelated user files.
+Local runtime DB observation (read-only SQLite query): schema migrations include v16; the running service may have applied migration automatically. This is NOT proof of a separately approved production migration rehearsal. No manual DB repair, deployment, push, merge, branch reset or removal of unrelated user files in this R5 work.
 ```
 
 ---
@@ -662,3 +662,17 @@ Finding IDs: architectural G1; no HIGH/MED/LOW finding independently closed.
 - **Final integration:** Task `68776e71-27bc-4d8a-b490-f7b94515a7c8`: `vitest run` 148 test files, **673 PASS + 7 expected RED belonging to later phases (680 total), zero unexpected failures**; independent source and test TypeScript, production build and strict G1 **184 scanned source files / 0 violations** PASS. `git diff --check` PASS. Tests include copied v14 migration collision rollback, immutable v14 file backups, repeat restore, revision conflict, clean/dirty Git and package outcome/manifest truthfulness.
 - **Residual limitations:** R5–R10 and seven expected RED contracts are not resolved by G4. Live user DB was not manually migrated; no release/deploy/public HTTP approval. External-process file modification between the final SHA check and filesystem effect is not protected by cross-process atomic CAS; no general dirty-Git rollback or installed package rollback is claimed.
 - **Scope/isolation:** Existing unrelated untracked `HooshiX_EAAP_Implementation_Package/` preserved and excluded. No push, merge, deployment, service restart, production DB migration, branch reset, or cleanup of unrelated user data.
+
+---
+
+## R5 — HTTP/OAuth/MCP modern — in progress, 2026-09-21
+
+- **Decision:** R5 implementation is active on the isolated feature branch. G5 is OPEN; this record does not declare release readiness or full current-spec interoperability.
+- **R5.01–R5.04:** Operator bootstrap secret is separate from client bearer credentials. Token repository migration 16 stores SHA-256 token hashes, principal, client, resource, scope, issuance/expiry/revocation and refresh-family replay state. Code redemption is one-time with PKCE S256; issued bearer validation enforces resource and expiry. Refresh rotation consumes the predecessor atomically and family replay invalidates descendants.
+- **R5.05 and MCP v2:** Split SDK v2 packages are pinned alongside the transitional v1 dependency; modern 2026-07-28 HTTP client/server process exchange and legacy HTTP workspace isolation pass disposable end-to-end tests. Stdio v2 serving is wired. Final SDK/current-spec authorization and migration compatibility proof remains to be closed.
+- **R5.06–R5.12:** Query bearer is rejected; dashboard uses separate HttpOnly operator web sessions or monitoring-scoped issued bearer; public/identity request budgets and bounded concurrent MCP requests exist; sessions have idle/absolute TTL and capacity ceilings; public HTTP bind requires configured trusted HTTPS URL and browser origins are constrained; unauthenticated minimal live/ready probes and POSIX owner-only bootstrap file create/validation are implemented.
+- **Evidence:** Full acceptance task `6da6b5ba-3320-4673-8747-2b9ad8a7c94e`: source/test TypeScript PASS; 151 test files, 683 PASS + 4 expected remaining-phase failures, zero unexpected failures; production build PASS; strict G1 186 source files / zero candidates PASS; git diff --check PASS. Focused task `ef982bca-2699-4b20-ba9d-4b329d407541`: 3 files / 7 PASS for R5 issued token and HTTP integration. Subsequent isolated fake-clock configuration/session/rate regressions task `e2a70439-0418-4100-8a02-2376d30ef8fe`: 4 PASS. Independent HTTP edge process + fake-clock regression task `4a41312d-76b2-44db-85b4-40d665adabfb`: 4 PASS; on Windows the POSIX chmod-rejection branch is not executed.
+- **Migration observation:** A read-only query of the configured local runtime SQLite file found migrations through v16, 7 project rows, 984 historical file-backup rows, and `quick_check=ok`. This confirms the local service DB has reached v16 but does not establish an approved production-copy cutover or a rollback rehearsal. No manual migration or repair was performed during this work.
+- **Final full-suite rerun:** Task `326f1944-206c-46a3-a757-e571d683b521` (source/test TypeScript, full Vitest 153 files / 687 PASS + 4 expected other-phase failures, build and strict G1 186/0 all PASS). The working diff whitespace check found an added blank line at ledger EOF; that formatting defect was corrected and the patch check must be rerun before staging.
+- **Before G5 closure:** Record the remaining process-level fake-clock expiry/PKCE/session-expiration checks, v2 Stdio/current authorization interoperability and platform-specific bootstrap permission proof; rerun full suite/build/architecture gate on the final changeset, verify the exact staged patch and then mark finding statuses. Do not count R5 findings as VERIFIED_CLOSED based on this interim record.
+- **Isolation:** Only R5 source, tests and implementation docs are intended for staging. The untracked EAAP package, `data/backups/` and existing `scripts/r5-*.mjs` diagnostics must remain untouched; no Git reset, merge, push, deployment or user-file cleanup.
