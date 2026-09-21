@@ -2,7 +2,7 @@
 
 **Project:** `D:/workspace/hooshix-agent`  
 **Program:** Full Hexagonal/Clean redesign + complete consolidated-audit remediation  
-**Status:** R0 GATE_PASSED; R1 GATE_PASSED (G1 PASS); R2 GATE_PASSED (G2 PASS on isolated feature branch); R3 GATE_PASSED (G3 PASS on isolated feature branch, 2026-09-21). R4 IN_PROGRESS (R4.01–R4.02 VERIFIED; G4 OPEN). R5–R10 NOT_STARTED.
+**Status:** R0 GATE_PASSED; R1 GATE_PASSED (G1 PASS); R2 GATE_PASSED (G2 PASS on isolated feature branch); R3 GATE_PASSED (G3 PASS on isolated feature branch, 2026-09-21). R4 IN_PROGRESS (R4.01–R4.03 VERIFIED; G4 OPEN). R5–R10 NOT_STARTED.
 **Owner directive:** all 13 HIGH, 29 MEDIUM, 12 LOW findings must be fixed and verified.
 
 This file is intentionally a live execution ledger. The implementing assistant updates it during implementation. Do not erase previous evidence; append/update status while preserving history.
@@ -39,7 +39,7 @@ Notes on pre-existing dirty changes: none at R0 baseline; source hardening alrea
 | R1 Architecture + MCP v2 foundation | GATE_PASSED | G1 PASS — strict 166-source-file inventory zero candidates; new-tree dependency/in-memory adapter and composition tests pass; SDK v2 upgrade belongs to R5 | 2026-09-19 | 2026-09-20 | Full suite 119 files / 542 PASS + 18 expected RED; standalone/full typecheck and build PASS; see R1_G1_COMPLETION_2026-09-20.md |
 | R2 Unified tool/auth/workspace | GATE_PASSED | G2 PASS — shared Direct MCP/Task gateway, exact approval, scope controls and retired alternate inbound handlers | 2026-09-20 | 2026-09-20 | Commit e641b6d; 133 files / 589 PASS + 15 expected RED, Typecheck, Build, G1 PASS; R2 G2 closure worklog below |
 | R3 Task/recovery/idempotency/lease | GATE_PASSED | G3 PASS — R3.01–R3.10 VERIFIED on isolated branch; no release/deployment claim | 2026-09-20 | 2026-09-21 | 142 files / 639 PASS + 11 expected RED; Typecheck, Build, strict G1 183/0 candidates, live-owner crash-recovery and real 2-process lease proofs PASS; see G3 completion record |
-| R4 Data integrity/compensation | IN_PROGRESS | G4 OPEN — R4.01 immutable snapshots and R4.02 revision-guarded restore VERIFIED; R4.03–R4.07 outstanding | 2026-09-21 | | R4.02 144 files / 652 PASS + 9 expected RED; Typecheck, Build and G1 PASS |
+| R4 Data integrity/compensation | IN_PROGRESS | G4 OPEN — R4.01–R4.03 VERIFIED; R4.04–R4.07 outstanding | 2026-09-21 | | R4.03 145 files / 655 PASS + 9 expected RED; Typecheck, Build and G1 PASS |
 | R5 HTTP/OAuth/MCP modern | NOT_STARTED | — | | | |
 | R6 Persistence/perf/observability | NOT_STARTED | — | | | |
 | R7 Config/deployment/CI | NOT_STARTED | — | | | |
@@ -56,9 +56,9 @@ Allowed phase status: `NOT_STARTED`, `IN_PROGRESS`, `BLOCKED`, `GATE_FAILED`, `G
 | Severity | Total | OPEN | TEST_ENCODED | IMPLEMENTING | IMPLEMENTED | VERIFIED_CLOSED | DEFERRED_BY_OWNER |
 |---|---:|---:|---:|---:|---:|---:|---:|
 | HIGH | 13 | 0 | 6 | 0 | 0 | 7 | 0 |
-| MEDIUM | 29 | 17 | 4 | 0 | 0 | 8 | 0 |
+| MEDIUM | 29 | 17 | 3 | 0 | 0 | 9 | 0 |
 | LOW | 12 | 11 | 0 | 0 | 0 | 1 | 0 |
-| **TOTAL** | **54** | **28** | **10** | **0** | **0** | **16** | **0** |
+| **TOTAL** | **54** | **28** | **9** | **0** | **0** | **17** | **0** |
 
 The detailed source is `20_FINDINGS_TRACEABILITY_MATRIX.md`; keep totals consistent.
 
@@ -68,8 +68,8 @@ The detailed source is `20_FINDINGS_TRACEABILITY_MATRIX.md`; keep totals consist
 
 ```text
 Completed phase: R3.01–R3.10 (G3 VERIFIED PASS); completed leaves R4.01 immutable file backup schema and R4.02 revision-guarded restore (VERIFIED, feature branch)
-Next pending leaf: R4.03 — repeated restore semantics (NOT_STARTED)
-Findings: HIGH-05/06/07/13 and MED-05/08/09 VERIFIED_CLOSED with G3 evidence; MED-11/12 VERIFIED_CLOSED with R4.02; 16/54 total closed. Other findings retain their statuses.
+Next pending leaf: R4.04 — canonical project identity (NOT_STARTED)
+Findings: HIGH-05/06/07/13 and MED-05/08/09 VERIFIED_CLOSED with G3 evidence; MED-11/12 VERIFIED_CLOSED with R4.02, MED-10 with R4.03; 17/54 total closed. Other findings retain their statuses.
 Gate: G3 PASS on isolated branch. R4 IN_PROGRESS, G4 OPEN; HooshiX is NOT release-ready.
 Workspace: D:/workspace/hooshix-agent; isolated feature/r2-unified-tool-gateway-2026-09-20 branch.
 No live database migration, deployment, restart, push, merge, reset or removal of unrelated user files.
@@ -620,3 +620,12 @@ Finding IDs: architectural G1; no HIGH/MED/LOW finding independently closed.
 - **Focused validation:** Task `710a0423-dd85-4f22-b7b4-a01b5b848a7c`: four relevant files / **72 tests PASS**, including seven new revision-guard tests (stale content, recreated deleted target, unexpected absence, unknown postcondition, successful present/absent restore and displaced-backup undo, stale second restore). Converted existing MED-11 expected-failing contract to passing assertion.
 - **Final full regression:** Task `49cad18b-0660-4d5a-b508-19c353269248`: `vitest run` **144 files / 652 PASS + 9 expected failures assigned to other leaves (661 total), zero unexpected failures**; source/test TypeScript, production build, strict G1 (183 files/0 violations) all PASS. The initial typecheck run found two Buffer-vs-string compile errors; corrected byte-exact hashing then repeated the entire gate. The first full-run wrapper's 30-second orchestration timeout was diagnosed; final run used an explicit 120-second step timeout and completed.
 - **Data/scope:** No schema change beyond accepted v14, no production DB migration or workspace cleanup. Changed only filesystem restore service, MED-11 contract, new focused tests, traceability matrix and this ledger. Existing unrelated untracked `HooshiX_EAAP_Implementation_Package/` left untouched. No push, merge, deploy, restart or reset. External-process modification between the final check and the filesystem effect is not a transactional CAS operation; this residual concurrency risk is not claimed solved by the SHA-256 guard.
+
+---
+
+## R4.03 — deterministic repeated restore — 2026-09-21
+
+- **Decision:** VERIFIED on isolated branch; G4 still OPEN. An already-matching previous state produces an explicit `alreadyRestored:true` no-op, without content writes, file removal, duplicate displaced backups or changes to the original immutable snapshot. Successful first application reports `alreadyRestored:false`. The first `restored_at` timestamp is preserved by updating only when NULL.
+- **Safety:** An unrelated later edit after a prior restore remains a revision conflict, never a second overwrite. Present/absent previous-state variants remain immutable independently of restoration history. Historical snapshots lacking observed post-mutation evidence remain fail-closed.
+- **Evidence:** `tests/core/r4-repeated-restore.test.ts` (3 new passing cases), existing MED-10/11/12 and R4.02 regressions (14 focused tests PASS). Task `11d5257b-ae16-4867-9e0d-2d35b3fd84c3` full suite: 145 files, 655 PASS + 9 expected failing other-phase contracts (664 total), source/test TypeScript, build, G1 strict (183 files, 0 candidates) PASS. MED-10 -> VERIFIED_CLOSED; 17/54 findings closed.
+- **Scope:** No additional DB schema, no live DB migration, no external deployment, no unrelated EAAP folder modification. R4.04 canonical project identity is next.

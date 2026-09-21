@@ -70,6 +70,6 @@ export function getStoredFileBackup(id: string): StoredFileBackup | undefined {
 }
 export function markFileBackupRestored(id: string): void {
   withAgentDatabase(db => db.prepare(
-    "UPDATE file_backups SET restored_at=? WHERE id=?"
+    "UPDATE file_backups SET restored_at=? WHERE id=? AND restored_at IS NULL"
   ).run(new Date().toISOString(), id));
 }

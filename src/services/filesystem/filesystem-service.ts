@@ -59,6 +59,8 @@ export interface FileMutationResult {
   displacedBackupId?: string;
   path?: string;
   restored?: boolean;
+  /** True only when the target already matches the immutable previous state (no write/delete). */
+  alreadyRestored?: boolean;
   /** Whether a file was newly created (was previously absent) */
   created?: boolean;
   /** Whether the file existed before this operation */
@@ -393,7 +395,7 @@ export async function restoreWorkspaceFile(backupId: string, correlationId?: str
     // a later *different* revision simply because this backup was used once.
     if (matchesPrevious(observed)) {
       markFileBackupRestored(backupId);
-      return {backupId, path: backup.path, restored: true, previousState: backup.previous_state};
+      return {backupId, path: backup.path, restored: true, alreadyRestored: true, previousState: backup.previous_state};
     }
     if (!matchesPost(observed))
       throw new Error("RESTORE_REVISION_CONFLICT: target no longer matches the recorded post-mutation state");
@@ -421,7 +423,7 @@ export async function restoreWorkspaceFile(backupId: string, correlationId?: str
       recordFileBackupPostcondition(displacedBackupId, backup.previous_state,
         backup.previous_state === "present" ? backup.previous_revision! : undefined);
     markFileBackupRestored(backupId);
-    return { backupId, displacedBackupId, path: backup.path, restored: true, previousState: backup.previous_state };
+    return { backupId, displacedBackupId, path: backup.path, restored: true, alreadyRestored: false, previousState: backup.previous_state };
   });
 }
 
