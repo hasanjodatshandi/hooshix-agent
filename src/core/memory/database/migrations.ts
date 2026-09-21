@@ -1,4 +1,6 @@
 import type Database from "better-sqlite3";
+import {createHash} from "node:crypto";
+import path from "node:path";
 
 const SAFE_IDENTIFIER = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
 
@@ -214,5 +216,43 @@ export function runMigrations(db: Database.Database): void {
   // Legacy keyed rows have no verified hash; reject their ambiguous replay.
   migrate(db,13,"r3-task-creation-request-hash",()=>{
     ensureColumn(db,"tasks","request_hash","TEXT");
+  });
+  // R4.01: preserve historical file content and convert the overloaded
+  // restored_at absent sentinel to an independent immutable previous_state.
+  // No legacy post-mutation revision is manufactured.
+  migrate(db,14,"r4-immutable-file-backup-snapshot",()=>{
+    ensureColumn(db,"file_backups","target_canonical_path","TEXT");
+    ensureColumn(db,"file_backups","previous_state","TEXT");
+    ensureColumn(db,"file_backups","previous_revision","TEXT");
+    ensureColumn(db,"file_backups","content_hash","TEXT");
+    ensureColumn(db,"file_backups","content_ref","TEXT");
+    ensureColumn(db,"file_backups","post_mutation_state","TEXT");
+    ensureColumn(db,"file_backups","post_mutation_revision","TEXT");
+    ensureColumn(db,"file_backups","legacy_unversioned","INTEGER NOT NULL DEFAULT 1");
+    const rows=db.prepare("SELECT id,path,content,restored_at FROM file_backups")
+      .all() as Array<{id:string;path:string;content:Buffer|string;restored_at:string|null}>;
+    const classify=db.prepare("UPDATE file_backups SET target_canonical_path=?,previous_state=?,previous_revision=?,content_hash=?,content_ref=?,post_mutation_state=NULL,post_mutation_revision=NULL,legacy_unversioned=1,restored_at=? WHERE id=?");
+    for(const row of rows){
+      const absent=row.restored_at==="absent";
+      const bytes=Buffer.isBuffer(row.content)?row.content:Buffer.from(row.content);
+      const digest=absent?null:createHash("sha256").update(bytes).digest("hex");
+      const target=path.isAbsolute(row.path)?path.normalize(row.path):null;
+      classify.run(target,absent?"absent":"present",digest,digest,
+        absent?null:"sqlite:file_backups:"+row.id,
+        absent?null:row.restored_at,row.id);
+    }
+    db.exec("CREATE TRIGGER r4_backup_immutable BEFORE UPDATE ON file_backups WHEN NOT ("+
+      "OLD.path IS NEW.path AND OLD.target_canonical_path IS NEW.target_canonical_path "+
+      "AND OLD.previous_state IS NEW.previous_state AND OLD.previous_revision IS NEW.previous_revision "+
+      "AND OLD.content_hash IS NEW.content_hash AND OLD.content_ref IS NEW.content_ref "+
+      "AND OLD.content IS NEW.content AND OLD.file_revision IS NEW.file_revision "+
+      "AND OLD.correlation_id IS NEW.correlation_id AND OLD.created_at IS NEW.created_at "+
+      "AND OLD.legacy_unversioned IS NEW.legacy_unversioned "+
+      "AND (OLD.post_mutation_state IS NEW.post_mutation_state OR "+
+      "(OLD.post_mutation_state IS NULL AND NEW.post_mutation_state IN ('present','absent'))) "+
+      "AND (OLD.post_mutation_revision IS NEW.post_mutation_revision OR "+
+      "(OLD.post_mutation_revision IS NULL AND NEW.post_mutation_revision IS NOT NULL "+
+      "AND OLD.post_mutation_state IS NULL))"+
+      ") BEGIN SELECT RAISE(ABORT,'immutable_file_backup_snapshot'); END");
   });
 }

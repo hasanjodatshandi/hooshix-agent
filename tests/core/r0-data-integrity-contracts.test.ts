@@ -29,7 +29,7 @@ describe("R0 MED-07/10/11/12 disposable data-integrity contracts", () => {
     expect(() => saveProject({ name: "r0-project-b", path: variant })).toThrow(/already registered/i);
   });
 
-  it.fails("MED-10: reusing an absent-state backup must never create an empty file", async () => {
+  it("MED-10: reusing an absent-state backup must never create an empty file", async () => {
     fixture = createDisposableFixture("absent");
     scope(fixture.root);
     const file = path.join(fixture.root, "absent.txt");

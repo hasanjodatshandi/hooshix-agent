@@ -7,7 +7,7 @@ import { isSensitivePath } from "../../application/services/sensitive-path-polic
 import { policyDecisionPoint } from "../../core/governance/policy-decision-point.js";
 import { logFileAction } from "../../memory/file-audit.js";
 import { resolveCorrelationId } from "../../core/runtime/correlation-id.js";
-import { persistFileBackup, persistAbsentFileBackup, getStoredIdempotentResponse, persistIdempotentResponse, getStoredFileBackup, markFileBackupRestored } from "../../adapters/outbound/persistence/sqlite/repositories/file-backup-idempotency.adapter.js";
+import { persistFileBackup, persistAbsentFileBackup, getStoredIdempotentResponse, persistIdempotentResponse, getStoredFileBackup, markFileBackupRestored, recordFileBackupPostcondition } from "../../adapters/outbound/persistence/sqlite/repositories/file-backup-idempotency.adapter.js";
 
 const MAX_FILE_BYTES = 1024 * 1024;
 const MAX_SEARCH_RESULTS = 1000;
@@ -135,8 +135,7 @@ async function backupFile(filePath: string, _targetPath: string, correlationId: 
   await assertReadableSize(filePath);
   const id = randomUUID();
   const content = await fs.readFile(filePath);
-  const contentStr = content.toString("utf8");
-  const sha256 = sha256hex(contentStr);
+  const sha256 = createHash("sha256").update(content).digest("hex");
   // Store the CANONICAL absolute path, never the raw caller string. A raw
   // relative path would be re-resolved against whatever workspace is active
   // at restore time — materializing the file in the WRONG workspace
@@ -186,7 +185,7 @@ export async function readWorkspaceFile(targetPath: string, correlationId?: stri
 }
 
 export async function createWorkspaceFile(targetPath: string, content: string, correlationId?: string): Promise<FileMutationResult> {
-  return audit("create", targetPath, correlationId, async () => {
+  return audit("create", targetPath, correlationId, async (traceId) => {
     policyDecisionPoint.assertAllowed({ tool: "create_file", arguments: { path: targetPath }, correlationId });
     if (Buffer.byteLength(content, "utf8") > MAX_FILE_BYTES) throw new Error(`Content exceeds ${MAX_FILE_BYTES} byte limit`);
     const filePath = validateWorkspace(targetPath);
@@ -194,8 +193,14 @@ export async function createWorkspaceFile(targetPath: string, content: string, c
     await fs.mkdir(path.dirname(filePath), { recursive: true });
     validateWorkspace(path.dirname(filePath));
     // Atomic create like write_file: temp file + rename so a crash never leaves a partial file
+    // An exclusive create displaces the ABSENT state; capture it before the
+    // effect, and only attach the post-revision after observing the new bytes.
+    if (await fs.access(filePath).then(() => true, () => false))
+      throw new Error("Target already exists");
+    const backupId = await saveAbsentSnapshot(targetPath, traceId);
     await atomicWrite(filePath, content, { flag: "wx" });
-    return { path: targetPath, created: true, previousState: "absent" as const };
+    recordFileBackupPostcondition(backupId,"present",sha256hex(content));
+    return { backupId, path: targetPath, created: true, previousState: "absent" as const };
   });
 }
 
@@ -242,6 +247,7 @@ export async function writeWorkspaceFile(targetPath: string, content: string, co
       ? await backupFile(filePath, targetPath, traceId)
       : await saveAbsentSnapshot(targetPath, traceId);
     await atomicWrite(filePath, content);
+    recordFileBackupPostcondition(backupId,"present",sha256hex(content));
     const result: FileMutationResult = { backupId, path: targetPath, created: !existed, previousState: existed ? "present" : "absent" };
     // Cache idempotent response
     if (options?.idempotencyKey) {
@@ -278,6 +284,7 @@ export async function modifyWorkspaceFile(targetPath: string, search: string, re
     if (Buffer.byteLength(updated, "utf8") > MAX_FILE_BYTES) throw new Error(`Content exceeds ${MAX_FILE_BYTES} byte limit`);
     const backupId = await backupFile(filePath, targetPath, traceId);
     await atomicWrite(filePath, updated);
+    recordFileBackupPostcondition(backupId,"present",sha256hex(updated));
     return { backupId, path: targetPath, previousState: "present" as const, replacedOccurrences: occurrences };
   });
 }
@@ -307,6 +314,7 @@ export async function deleteWorkspaceFile(targetPath: string, correlationId?: st
     }
     const backupId = await backupFile(filePath, targetPath, traceId);
     await fs.unlink(filePath);
+    recordFileBackupPostcondition(backupId,"absent");
     const result = { backupId, path: targetPath, previousState: "present" as const };
     if (options?.idempotencyKey) {
       storeIdempotentResponse(options.idempotencyKey, "delete", normalizeRequest(targetPath), result);
@@ -347,8 +355,11 @@ export async function restoreWorkspaceFile(backupId: string, correlationId?: str
     }
     await fs.mkdir(path.dirname(filePath), { recursive: true });
 
-    // Check if this is an absent-state snapshot (restored_at = 'absent')
-    const isAbsentSnapshot = backup.restored_at === "absent";
+    // Immutable state is independent of mutable restoration history.
+    // Unclassified manually inserted/legacy rows have no trustworthy type.
+    if(backup.previous_state!=="absent"&&backup.previous_state!=="present")
+      throw new Error("backup_previous_state_unclassified");
+    const isAbsentSnapshot = backup.previous_state === "absent";
 
     if (isAbsentSnapshot) {
       // Restore to absent state — delete the file if it exists.

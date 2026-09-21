@@ -2,7 +2,7 @@
 
 **Project:** `D:/workspace/hooshix-agent`  
 **Program:** Full Hexagonal/Clean redesign + complete consolidated-audit remediation  
-**Status:** R0 GATE_PASSED; R1 GATE_PASSED (G1 PASS); R2 GATE_PASSED (G2 PASS on isolated feature branch); R3 GATE_PASSED (G3 PASS on isolated feature branch, 2026-09-21). R4–R10 NOT_STARTED.
+**Status:** R0 GATE_PASSED; R1 GATE_PASSED (G1 PASS); R2 GATE_PASSED (G2 PASS on isolated feature branch); R3 GATE_PASSED (G3 PASS on isolated feature branch, 2026-09-21). R4 IN_PROGRESS (R4.01 VERIFIED; G4 OPEN). R5–R10 NOT_STARTED.
 **Owner directive:** all 13 HIGH, 29 MEDIUM, 12 LOW findings must be fixed and verified.
 
 This file is intentionally a live execution ledger. The implementing assistant updates it during implementation. Do not erase previous evidence; append/update status while preserving history.
@@ -39,7 +39,7 @@ Notes on pre-existing dirty changes: none at R0 baseline; source hardening alrea
 | R1 Architecture + MCP v2 foundation | GATE_PASSED | G1 PASS — strict 166-source-file inventory zero candidates; new-tree dependency/in-memory adapter and composition tests pass; SDK v2 upgrade belongs to R5 | 2026-09-19 | 2026-09-20 | Full suite 119 files / 542 PASS + 18 expected RED; standalone/full typecheck and build PASS; see R1_G1_COMPLETION_2026-09-20.md |
 | R2 Unified tool/auth/workspace | GATE_PASSED | G2 PASS — shared Direct MCP/Task gateway, exact approval, scope controls and retired alternate inbound handlers | 2026-09-20 | 2026-09-20 | Commit e641b6d; 133 files / 589 PASS + 15 expected RED, Typecheck, Build, G1 PASS; R2 G2 closure worklog below |
 | R3 Task/recovery/idempotency/lease | GATE_PASSED | G3 PASS — R3.01–R3.10 VERIFIED on isolated branch; no release/deployment claim | 2026-09-20 | 2026-09-21 | 142 files / 639 PASS + 11 expected RED; Typecheck, Build, strict G1 183/0 candidates, live-owner crash-recovery and real 2-process lease proofs PASS; see G3 completion record |
-| R4 Data integrity/compensation | NOT_STARTED | — | | | |
+| R4 Data integrity/compensation | IN_PROGRESS | G4 OPEN — R4.01 immutable file backup snapshots VERIFIED; R4.02–R4.07 outstanding | 2026-09-21 | | R4.01 143 files / 644 PASS + 10 expected RED; Typecheck, Build and G1 PASS |
 | R5 HTTP/OAuth/MCP modern | NOT_STARTED | — | | | |
 | R6 Persistence/perf/observability | NOT_STARTED | — | | | |
 | R7 Config/deployment/CI | NOT_STARTED | — | | | |
@@ -67,10 +67,10 @@ The detailed source is `20_FINDINGS_TRACEABILITY_MATRIX.md`; keep totals consist
 ## 4. Current task
 
 ```text
-Completed phase: R3.01–R3.10 — execution/recovery/idempotency/lease (G3 VERIFIED PASS, isolated feature branch)
-Next pending phase: R4.01 — immutable file backup schema (NOT_STARTED)
+Completed phase: R3.01–R3.10 (G3 VERIFIED PASS); completed leaf R4.01 — immutable file backup schema (VERIFIED, feature branch)
+Next pending leaf: R4.02 — revision-guarded restore (NOT_STARTED)
 Findings: HIGH-05/06/07/13 and MED-05/08/09 VERIFIED_CLOSED with G3 evidence; 14/54 total closed. Other findings retain their statuses.
-Gate: G3 PASS on isolated branch. R4 is NOT_STARTED; HooshiX is NOT release-ready.
+Gate: G3 PASS on isolated branch. R4 IN_PROGRESS, G4 OPEN; HooshiX is NOT release-ready.
 Workspace: D:/workspace/hooshix-agent; isolated feature/r2-unified-tool-gateway-2026-09-20 branch.
 No live database migration, deployment, restart, push, merge, reset or removal of unrelated user files.
 ```
@@ -597,3 +597,13 @@ Finding IDs: architectural G1; no HIGH/MED/LOW finding independently closed.
 - **Final full regression:** Task `ea20d895-35e1-4c02-b423-44cf187ee213`: `pnpm exec vitest run` **142 test files / 639 PASS + 11 expected failures assigned to other phases (650 total), zero unexpected failures**; `pnpm run typecheck` PASS (source and tests); `pnpm run build` PASS; `node scripts/verify-g1-global.mjs --strict` PASS (183 source files; 0 architecture candidates); `git diff --check` exit 0 (only Windows CRLF normalization warnings). Explicit R3 multiprocess/lease acceptance is recorded above; the full suite includes those tests. The first full run flagged two now-green MED-08/09 `it.fails` markers; converting those to normal assertions and rerunning yielded the stated final result.
 - **Closure update:** `HIGH-05`, `HIGH-06`, `HIGH-07`, `HIGH-13`, `MED-05`, `MED-08`, `MED-09` changed to `VERIFIED_CLOSED` in `20_FINDINGS_TRACEABILITY_MATRIX.md`. Matrix count: 14/54 closed; 40 remaining (28 OPEN, 12 TEST_ENCODED). This does **not** imply authentication, compensation, deployment or release gates G4–G10 are passed.
 - **Safety and isolation:** R3 source/tests/docs only; untracked `HooshiX_EAAP_Implementation_Package/` existed concurrently and is deliberately left untouched and **excluded from staging/commit**. No push, merge, deployment, service restart, user workspace cleanup or manually applied production DB migration. R4 NOT_STARTED.
+---
+
+## R4.01 — immutable file backup snapshots — 2026-09-21
+
+- **Decision:** R4.01 VERIFIED on isolated feature branch. R4.02–R4.07 have NOT been accepted; G4 remains OPEN. The existing G3 PASS is unchanged.
+- **Snapshot contract:** Newly stored file backups capture canonical absolute target, explicit prior existence (present/absent), SHA-256 of previously present bytes and immutable content reference, created and restored timestamps separately. A post-effect revision/state is recorded only upon observed successful completion; unknown outcomes are not manufactured. An SQLite trigger rejects alterations to historical immutable snapshot fields. An absence snapshot cannot be treated as a previously existing empty file.
+- **Migration:** SQLite migration 14 evolves `file_backups` on versioned startup only. Legacy sentinel `restored_at='absent'` is classified as prior absent and cleared from the distinct restoration timestamp. Legacy present-file content is hashed when available; non-absolute legacy target is left unverified (not guessed) and no historical post-mutation revision is invented. The v13-to-v14 migration was rehearsed on a marker-protected disposable DB copy, not on the user's live DB.
+- **Tests:** New `tests/core/r4-file-backup-schema.test.ts` covers present/absent snapshot and observed postcondition for write/create/modify/delete, immutable historical rows and copied-DB legacy migration. Existing now-green `MED-10` absent-state repeat restore assertion was converted from expected failure to ordinary passing regression in `tests/core/r0-data-integrity-contracts.test.ts`. The complete R4.03 repeated-restore contract and R4.02 revision-guarded restore remain pending; do not close those findings prematurely.
+- **Final validation:** Task `6974855a-5ed2-4332-8b81-87ab00e9a8a4`: `pnpm exec vitest run` 143 files, **644 PASS + 10 expected failures assigned to other leaves (654 total), zero unexpected failures**; `pnpm run typecheck` PASS, `pnpm run build` PASS, `node scripts/verify-g1-global.mjs --strict` PASS (183 source files / 0 candidates), and `git diff --check` exit 0 (Windows newline warnings only). Earlier focused R4.01 + copied-migration fixtures 9 PASS in task `a8fb8228-0984-4b51-b7c0-377c7b43da23`.
+- **Scope:** Only seven R4.01-related source, test and ledger files are eligible for this leaf's commit. Existing untracked `HooshiX_EAAP_Implementation_Package/` is unrelated and must remain untouched. No push, merge, production DB migration, deploy, service restart, destructive checkout or workspace cleanup.
