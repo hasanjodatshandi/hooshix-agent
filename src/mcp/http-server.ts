@@ -267,7 +267,7 @@ async function handleRequest(
       token_endpoint:base+"/oauth/token",registration_endpoint:base+"/oauth/register",
       response_types_supported:["code"],grant_types_supported:["authorization_code","refresh_token"],
       scopes_supported:[...OAUTH_SCOPES],code_challenge_methods_supported:["S256"],
-      token_endpoint_auth_methods_supported:["none"]
+      token_endpoint_auth_methods_supported:["none"],authorization_response_iss_parameter_supported:true
     });return;
   }
   if(path==="/.well-known/oauth-protected-resource"||path==="/.well-known/oauth-protected-resource/mcp"){
@@ -1159,6 +1159,7 @@ async function handleAuthorizePOST(
     const code = oauth.issueCode(challenge, resource, redirectUri, clientId,approvedScopes);
     const sep = redirectUri.includes("?") ? "&" : "?";
     const params = new URLSearchParams({ code });
+    params.set("iss",base);
     if (state) params.set("state", state);
     res.writeHead(302, { Location: `${redirectUri}${sep}${params.toString()}` });
     res.end();

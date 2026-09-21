@@ -80,15 +80,51 @@ describe("R5 real HTTP operator session lifecycle with an isolated fake clock",(
       }
       await advance(17*60_000);
       expect((await privateTools(absoluteSession)).status).toBe(401);
+      const metadataResponse=await fetch(base+"/.well-known/oauth-authorization-server");
+      expect(metadataResponse.status).toBe(200);
+      const metadata=await metadataResponse.json() as {
+        issuer:string;authorization_response_iss_parameter_supported?:boolean
+      };
+      expect(metadata).toMatchObject({
+        issuer:base,authorization_response_iss_parameter_supported:true
+      });
+      const redirect="http://127.0.0.1:54321/callback";
+      const registration=await fetch(base+"/oauth/register",{method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({redirect_uris:[redirect]})});
+      expect(registration.status).toBe(201);
+      const clientId=(await registration.json() as {client_id:string}).client_id;
+      const verifier=crypto.randomBytes(32).toString("base64url");
+      const challenge=crypto.createHash("sha256").update(verifier).digest("base64url");
+      const consent=await fetch(base+"/oauth/authorize",{method:"POST",redirect:"manual",
+        body:new URLSearchParams({response_type:"code",client_id:clientId,redirect_uri:redirect,
+          code_challenge:challenge,code_challenge_method:"S256",
+          resource:base+"/mcp",scope:"hooshix:read",pin:bootstrap})});
+      expect(consent.status).toBe(302);
+      const callback=new URL(consent.headers.get("location")!);
+      expect(callback.origin+callback.pathname).toBe(redirect);
+      expect(callback.searchParams.get("iss")).toBe(base);
+      const code=callback.searchParams.get("code")!;
+      expect(code).toMatch(/^[a-zA-Z0-9_-]{43}$/);
+      const invalidAudience=await fetch(base+"/oauth/token",{method:"POST",
+        body:new URLSearchParams({grant_type:"authorization_code",code,
+          code_verifier:verifier,redirect_uri:redirect,client_id:clientId,
+          resource:base+"/other"})});
+      expect(invalidAudience.status).toBe(400);
+      const exchanged=await fetch(base+"/oauth/token",{method:"POST",
+        body:new URLSearchParams({grant_type:"authorization_code",code,
+          code_verifier:verifier,redirect_uri:redirect,client_id:clientId,
+          resource:base+"/mcp"})});
+      expect(exchanged.status).toBe(200);
+      const tokens=await exchanged.json() as {access_token:string;expires_in:number};
+      expect(tokens.expires_in).toBe(3600);
+      expect((await fetch(base+"/mcp",{headers:{Authorization:"Bearer "+tokens.access_token}})).status).not.toBe(401);
+      await advance(tokens.expires_in*1000+1);
+      expect((await fetch(base+"/mcp",{headers:{Authorization:"Bearer "+tokens.access_token}})).status).toBe(401);
     }finally{
       await stop(child);
       fixture.cleanup();
     }
   },30000);
 
-  it.fails("R5 G5 blocker: OAuth authorization response must advertise and stamp its issuer",()=>{
-    const source=fs.readFileSync(path.join(process.cwd(),"src","mcp","http-server.ts"),"utf8");
-    expect(source).toContain("authorization_response_iss_parameter_supported:true");
-    expect(source).toContain('params.set("iss",base)');
-  });
 });

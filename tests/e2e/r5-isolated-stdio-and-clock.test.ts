@@ -74,8 +74,14 @@ describe("R5 isolated modern stdio and fake-clock process acceptance",()=>{
         assert.equal(provider.verifyToken("Bearer "+rotated.access_token,resource),true);
         assert.equal(provider.refresh(token.refresh_token,resource,client),null);
         assert.equal(provider.verifyToken("Bearer "+rotated.access_token,resource),false);
+        const revocationCode=provider.issueCode(challenge,resource,redirect,client);
+        const revoked=provider.exchange(revocationCode,verifier,resource,redirect,client);
+        assert.ok(revoked);
+        assert.equal(provider.verifyToken("Bearer "+revoked.access_token,resource),true);
+        provider.revoke(revoked.access_token);
+        assert.equal(provider.verifyToken("Bearer "+revoked.access_token,resource),false);
         console.log(JSON.stringify({expiredCode:true,oneTimePkce:true,audienceBound:true,
-          accessExpired:true,refreshRotated:true,replayRevoked:true}));
+          accessExpired:true,refreshRotated:true,replayRevoked:true,accessRevoked:true}));
       }finally{provider.destroy();}
     `,{flag:"wx"});
     const result=spawnSync(process.execPath,["--import",
@@ -89,7 +95,7 @@ describe("R5 isolated modern stdio and fake-clock process acceptance",()=>{
       expect(result.status,result.stderr||result.error?.message).toBe(0);
       expect(JSON.parse(result.stdout.trim())).toEqual({
         expiredCode:true,oneTimePkce:true,audienceBound:true,
-        accessExpired:true,refreshRotated:true,replayRevoked:true
+        accessExpired:true,refreshRotated:true,replayRevoked:true,accessRevoked:true
       });
     }finally{fixture.cleanup();}
   },20000);
