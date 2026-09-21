@@ -2,7 +2,7 @@
 
 **Project:** `D:/workspace/hooshix-agent`  
 **Program:** Full Hexagonal/Clean redesign + complete consolidated-audit remediation  
-**Status:** R0 GATE_PASSED; R1 GATE_PASSED (G1 PASS); R2 GATE_PASSED (G2 PASS on isolated feature branch); R3 GATE_PASSED (G3 PASS on isolated feature branch, 2026-09-21). R4 GATE_PASSED (R4.01–R4.07 VERIFIED; G4 PASS on isolated feature branch, 2026-09-21). R5 IN_PROGRESS (HTTP/OAuth/MCP security implementation under G5 review); R6–R10 NOT_STARTED.
+**Status:** R0 GATE_PASSED; R1 GATE_PASSED (G1 PASS); R2 GATE_PASSED (G2 PASS on isolated feature branch); R3 GATE_PASSED (G3 PASS on isolated feature branch, 2026-09-21). R4 GATE_PASSED (R4.01–R4.07 VERIFIED; G4 PASS on isolated feature branch, 2026-09-21). R5 GATE_PASSED (R5.01–R5.12 VERIFIED; G5 PASS on isolated feature branch, 2026-09-21); R6–R10 NOT_STARTED.
 **Owner directive:** all 13 HIGH, 29 MEDIUM, 12 LOW findings must be fixed and verified.
 
 This file is intentionally a live execution ledger. The implementing assistant updates it during implementation. Do not erase previous evidence; append/update status while preserving history.
@@ -40,7 +40,7 @@ Notes on pre-existing dirty changes: none at R0 baseline; source hardening alrea
 | R2 Unified tool/auth/workspace | GATE_PASSED | G2 PASS — shared Direct MCP/Task gateway, exact approval, scope controls and retired alternate inbound handlers | 2026-09-20 | 2026-09-20 | Commit e641b6d; 133 files / 589 PASS + 15 expected RED, Typecheck, Build, G1 PASS; R2 G2 closure worklog below |
 | R3 Task/recovery/idempotency/lease | GATE_PASSED | G3 PASS — R3.01–R3.10 VERIFIED on isolated branch; no release/deployment claim | 2026-09-20 | 2026-09-21 | 142 files / 639 PASS + 11 expected RED; Typecheck, Build, strict G1 183/0 candidates, live-owner crash-recovery and real 2-process lease proofs PASS; see G3 completion record |
 | R4 Data integrity/compensation | GATE_PASSED | G4 PASS — immutable file restore, canonical project identity, clean Git snapshots/rollback and truthful package manifest compensation VERIFIED on isolated feature branch | 2026-09-21 | 2026-09-21 | 148 files / 673 PASS + 7 expected RED assigned to R5–R10; Typecheck, Build and strict G1 PASS; no live migration or deployment |
-| R5 HTTP/OAuth/MCP modern | IN_PROGRESS | G5 OPEN — HTTP/OAuth process tests and SDK v2 migration under verification | 2026-09-21 | | Source/test typecheck, full suite after added security fixtures (153 files / 687 PASS + 4 expected other-phase failures), build and strict G1 186/0 PASS. See R5 in-progress record. |
+| R5 HTTP/OAuth/MCP modern | GATE_PASSED | G5 PASS — isolated HTTP/OAuth process + v2 Stdio/HTTP, bounded contexts, fake-clock expiry, issuer and credential proofs | 2026-09-21 | 2026-09-21 | 155 files / 692 PASS + 4 expected later-phase RED; source/test TypeScript, build, G1 strict 186/0 PASS. Windows POSIX permission behavior remains conditional; live connector cutover and Docker/CI smoke not claimed. See R5 G5 closure record. |
 | R6 Persistence/perf/observability | NOT_STARTED | — | | | |
 | R7 Config/deployment/CI | NOT_STARTED | — | | | |
 | R8 Verification/parallel/fuzz | NOT_STARTED | — | | | |
@@ -55,10 +55,10 @@ Allowed phase status: `NOT_STARTED`, `IN_PROGRESS`, `BLOCKED`, `GATE_FAILED`, `G
 
 | Severity | Total | OPEN | TEST_ENCODED | IMPLEMENTING | IMPLEMENTED | VERIFIED_CLOSED | DEFERRED_BY_OWNER |
 |---|---:|---:|---:|---:|---:|---:|---:|
-| HIGH | 13 | 0 | 4 | 0 | 0 | 9 | 0 |
-| MEDIUM | 29 | 17 | 2 | 0 | 0 | 10 | 0 |
+| HIGH | 13 | 0 | 3 | 0 | 0 | 10 | 0 |
+| MEDIUM | 29 | 15 | 1 | 0 | 0 | 13 | 0 |
 | LOW | 12 | 11 | 0 | 0 | 0 | 1 | 0 |
-| **TOTAL** | **54** | **28** | **6** | **0** | **0** | **20** | **0** |
+| **TOTAL** | **54** | **26** | **4** | **0** | **0** | **24** | **0** |
 
 The detailed source is `20_FINDINGS_TRACEABILITY_MATRIX.md`; keep totals consistent.
 
@@ -67,10 +67,10 @@ The detailed source is `20_FINDINGS_TRACEABILITY_MATRIX.md`; keep totals consist
 ## 4. Current task
 
 ```text
-Completed phases: R0–R4 (G0–G4 VERIFIED PASS on isolated feature branch); R4.01–R4.07 all VERIFIED
-Current phase: R5 IN_PROGRESS — R5.01–R5.12 implementation and modern MCP v2 integration under verification. G5 must remain OPEN until process-level fake-clock/PKCE/session contracts, SDK interoperability, migration and secret permission acceptance are all documented.
-Findings: last approved closure baseline 20/54 VERIFIED_CLOSED at G4; R5 finding statuses pending comprehensive G5 verification.
-Gate: G0–G4 PASS on isolated branch; G5–G10 OPEN. HooshiX is NOT release-ready.
+Completed phases: R0–R5 (G0–G5 VERIFIED PASS on isolated feature branch); R5.01–R5.12 code/fixture acceptance recorded in R5 G5 closure.
+Current phase: R5 GATE_PASSED; next planned phase R6 NOT_STARTED. No R6 changes in this gate record.
+Findings: 24/54 VERIFIED_CLOSED (HIGH 10, MEDIUM 13, LOW 1); 26 OPEN, 4 TEST_ENCODED for later phases. HIGH-11/HIGH-12 and MED-03/LOW-07 remain cross-phase or platform-bound and are NOT closed by G5.
+Gate: G0–G5 PASS on isolated branch; G6–G10 OPEN. HooshiX is NOT release-ready.
 Workspace: D:/workspace/hooshix-agent; isolated feature/r2-unified-tool-gateway-2026-09-20 branch.
 Local runtime DB observation (read-only SQLite query): schema migrations include v16; the running service may have applied migration automatically. This is NOT proof of a separately approved production migration rehearsal. No manual DB repair, deployment, push, merge, branch reset or removal of unrelated user files in this R5 work.
 ```
@@ -698,3 +698,16 @@ Finding IDs: architectural G1; no HIGH/MED/LOW finding independently closed.
 - **Additional independent token proof:** The separate OAuth process fixture now explicitly verifies manual access-token revocation, on top of PKCE, code expiry, resource binding, access expiry, refresh rotation and replay-family revocation.
 - **Validation:** Focus task `0a670435-96d7-4b28-9ce2-bf40a672ba46`: source/test TypeScript PASS and 4 focused files / 9 PASS. Token/HTTP extra process tasks `418bbe3d-43c4-49e5-9221-236786f437a1` and `96ce2398-ee03-4854-adc2-0b41c4a00fa9` PASS. Full acceptance task `25358b93-e6b4-4bd4-abf6-c7661045be6c`: source and test TypeScript PASS; 155 test files / 690 PASS + 4 expected RED assigned to other phases, zero unexpected failures; production build and strict G1 (186 scanned source files / 0 violations) PASS. After the additional isolated HTTP 401-on-expiry and manual access-revocation fixture assertions, final task `eb5b33d4-8d88-47a0-b0c4-3919296eecb6` re-ran source/test TypeScript (PASS), full Vitest (155 files; 690 PASS + 4 expected failures belonging to other phases; 0 unexpected failures), production build (PASS) and strict G1 (186 source files; 0 violations).
 - **Operational boundary:** No running HooshiX service restart, local-user database repair/migration, production client re-registration, token rotation, push, merge or deployment. The external connector is not claimed reauthorized or upgraded by these repository-only changes; a separate controlled cutover and existing-client smoke test remain necessary before claiming live interoperability. G5 remains OPEN in this narrowly scoped checkpoint pending broader phase acceptance; later R7 owns the existing Docker/Compose healthcheck/config migration and POSIX-only permission tests cannot be exercised on Windows.
+
+---
+
+## R5 G5 — phase acceptance — 2026-09-21
+
+- **Decision:** G5 PASS for the isolated-branch R5.01–R5.12 HTTP/OAuth/MCP code-and-process acceptance gate. This supersedes the preceding dated IN_PROGRESS and G5 OPEN records; the product is NOT release-ready and no operational cutover is authorized.
+- **Scope:** Existing R5 OAuth grants use distinct opaque bearer credentials, stored SHA-256 hashes, resource/client/scope binding, issuer-stamped authorization responses, short-lived authorization code + PKCE S256, enforced access expiry, one-time refresh rotation and family replay invalidation. Header-only bearer and scoped monitoring/browser sessions prevent query-secret use. Public binding validates its configured HTTPS public base, rejects stale auth configuration, and restricts origins; live/ready endpoints are minimal. Modern HTTP and Stdio run under the pinned 2026-07-28 MCP SDK v2 protocol; legacy HTTP session compatibility remains bounded and isolated in the adapter.
+- **R5.09 final change:** `HttpPrincipalContexts` in `src/infrastructure/server/http-security.ts` bounds modern principal+client workspace context to 64 active identities with 30-minute idle TTL and 8-hour absolute TTL; expired contexts are pruned on access. Modern `/mcp` returns HTTP 429 with Retry-After if the context budget is full; request workspace state is never keyed solely to `Mcp-Session-Id`. A fake-clock unit regression verifies per-identity reuse, idle/absolute expiry and cap. Legacy sessions retain their independent bounded lifecycle.
+- **Process-level G5 evidence:** `tests/e2e/r5-http-security.test.ts`, `tests/e2e/r5-http-edge-contracts.test.ts`, `tests/e2e/r5-http-session-fakeclock.test.ts`, `tests/e2e/r5-isolated-stdio-and-clock.test.ts` and `tests/security/r5-issued-credentials.test.ts` cover the required PKCE positive/negative cases, issued-vs-bootstrap token isolation, fake-clock 401 after the advertised 3600-second expiry, resource/audience and consent-scope checks, revoked grants, refresh replay, rejected query bearer, 429/Retry-After, browser CSRF/logout plus idle and absolute TTL, configured public base and rejected external origin, no-secret unauthenticated liveness/readiness, monitoring scope, and bootstrap secret creation. The focus task `01bd2ab9-965d-41f5-b5ba-c3a0ce5c1c20` passed 5 files / 10 tests including the final modern context and browser/config cases.
+- **Full phase acceptance:** Task `05342dce-331d-4756-afe1-a98df2db0a47` ran independent source + test TypeScript PASS, full Vitest **155 files / 692 PASS + 4 expected later-phase RED / 0 unexpected failures**, production build PASS, strict global G1 **186 source files / 0 violations** PASS.
+- **Finding closure:** HIGH-04, MED-01, MED-22 and MED-29 upgraded to VERIFIED_CLOSED with persistent real HTTP/OAuth process and v2 client fixtures. Matrix total is 24/54 VERIFIED_CLOSED; HIGH 10/13, MEDIUM 13/29, LOW 1/12; 26 OPEN and 4 TEST_ENCODED for subsequent phases.
+- **Explicit remaining work outside G5:** HIGH-11/12 retain Docker/Compose/CI/config or real container smoke acceptance in R7; MED-03 retains independent expensive-operation concurrency evidence and R6 performance limits; LOW-07 requires actual POSIX owner-only creation/rejection proof on a POSIX-capable CI target (Windows fixture only checks available platform behavior). These findings are NOT marked closed. R8 retains repeated release-stage interoperability and parallel/fuzz gates; R9 owns v1 SDK compatibility retirement; production OAuth reauthorization and migration/cutover require a separate controlled operational plan.
+- **Isolation:** No live HooshiX server restart, production database migration/repair, existing-client re-registration, secret rotation, Git reset/merge/push, deployment or destructive cleanup. Existing untracked EAAP package, database backups and the other assistant's diagnostic/recovery scripts remain excluded from this phase checkpoint.

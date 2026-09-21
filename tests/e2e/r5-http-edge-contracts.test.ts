@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import {spawn, type ChildProcess} from "node:child_process";
+import {spawn,spawnSync, type ChildProcess} from "node:child_process";
 import {pathToFileURL} from "node:url";
 import {describe,expect,it} from "vitest";
 import {createDisposableFixture,reserveEphemeralLoopbackPort} from "../helpers/r0-disposable-fixtures.js";
@@ -91,4 +91,30 @@ describe("R5 protected HTTP edge and operator bootstrap process contracts",()=>{
       fixture.cleanup();
     }
   },30000);
+
+  it("refuses untrusted public binding and stale auth config in isolated startup processes",()=>{
+    const fixture=createDisposableFixture("r5-config");
+    const repo=process.cwd();
+    const tsx=pathToFileURL(path.join(repo,"node_modules/tsx/dist/loader.mjs")).href;
+    const source=pathToFileURL(path.join(repo,"src/infrastructure/config/legacy-http-server.ts")).href;
+    const baseEnv={...process.env,MCP_PORT:"0",HOOSHIX_WORKSPACE:fixture.root,
+      HOOSHIX_DB_PATH:fixture.sqlitePath,MCP_PUBLIC_BASE_URL:undefined,
+      HOOSHIX_BOOTSTRAP_TOKEN:undefined,MCP_ACCESS_TOKEN:undefined,MCP_API_KEY:undefined};
+    try{
+      const invalidPublic=spawnSync(process.execPath,["--import",tsx,"--input-type=module","-e",
+        `import {readHttpSecurityConfig} from ${JSON.stringify(source)};
+        readHttpSecurityConfig({MCP_PORT:"0",MCP_BIND_HOST:"0.0.0.0"});`],{
+        cwd:fixture.root,env:baseEnv,encoding:"utf8",timeout:6000,windowsHide:true
+      });
+      expect(invalidPublic.status,invalidPublic.stderr).not.toBe(0);
+      expect(invalidPublic.stderr).toContain("MCP_PUBLIC_BASE_URL");
+      const staleSecret=spawnSync(process.execPath,["--import",tsx,"--input-type=module","-e",
+        `import {readHttpSecurityConfig} from ${JSON.stringify(source)};
+        readHttpSecurityConfig({MCP_PORT:"0",MCP_BIND_HOST:"127.0.0.1",MCP_API_KEY:"fixture"});`],{
+        cwd:fixture.root,env:baseEnv,encoding:"utf8",timeout:6000,windowsHide:true
+      });
+      expect(staleSecret.status,staleSecret.stderr).not.toBe(0);
+      expect(staleSecret.stderr).toContain("MCP_API_KEY is unsupported");
+    }finally{fixture.cleanup();}
+  },20000);
 });

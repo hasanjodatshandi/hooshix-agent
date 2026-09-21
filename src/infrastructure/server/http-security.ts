@@ -37,6 +37,27 @@ export class OperatorWebSessions{
   }
   get activeCount():number{return this.entries.size;}
 }
+/** Bounded principal-scoped application context, independent of transport session IDs. */
+export class HttpPrincipalContexts<T>{
+  private readonly entries=new Map<string,{value:T;createdAt:number;lastUsedAt:number}>();
+  constructor(private readonly now:()=>number=Date.now,
+    private readonly idleMs=30*60_000,private readonly absoluteMs=8*60*60_000,
+    private readonly cap=64){}
+  get(key:string,create:()=>T):T{
+    const current=this.now();
+    for(const [id,item] of this.entries){
+      if(current-item.createdAt>=this.absoluteMs||current-item.lastUsedAt>=this.idleMs)
+        this.entries.delete(id);
+    }
+    const prior=this.entries.get(key);
+    if(prior){prior.lastUsedAt=current;return prior.value;}
+    if(this.entries.size>=this.cap)throw new Error("modern_context_limit");
+    const value=create();
+    this.entries.set(key,{value,createdAt:current,lastUsedAt:current});
+    return value;
+  }
+  get activeCount():number{return this.entries.size;}
+}
 export class HttpWindowLimiter{
   private readonly buckets=new Map<string,{start:number;count:number}>();
   constructor(private readonly limit:number,private readonly windowMs:number,

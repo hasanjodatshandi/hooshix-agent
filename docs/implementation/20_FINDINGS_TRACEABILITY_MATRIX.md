@@ -14,7 +14,7 @@ Status values: `OPEN`, `TEST_ENCODED`, `IMPLEMENTING`, `IMPLEMENTED`, `VERIFIED_
 | HIGH-01 | Workspace authorization/scope expansion gap | R2 | 02, 08, 09 | actual MCP + Task regression; ADMIN+approval unrestricted; no bypass path | VERIFIED_CLOSED |
 | HIGH-02 | `search_files` sensitive denylist bypass | R2 | 08, 09, 14, 16 | fake `.env/.token/.ssh` regression; no read occurs | VERIFIED_CLOSED |
 | HIGH-03 | `git diff --no-index` outside disclosure | R2 | 08, 09, 16 | PoC regression blocked/approval-required; no output disclosure | VERIFIED_CLOSED |
-| HIGH-04 | OAuth expiry not enforced | R5 | 10, 13, 16, 31 | fake-clock expiry, distinct token, rotated refresh, wrong-resource/scope tests | TEST_ENCODED |
+| HIGH-04 | OAuth expiry not enforced | R5 | 10, 13, 16, 31 | fake-clock expiry, distinct token, rotated refresh, wrong-resource/scope tests | VERIFIED_CLOSED |
 | HIGH-05 | Timeout finalizes before termination | R3 | 06, 11, 16 | cancellation race/termination-grace tests; no overlapping retry | VERIFIED_CLOSED |
 | HIGH-06 | Crash recovery replays uncertain effects | R3 | 11, 13, 16 | crash-after-marker test -> unknown, no duplicate marker | VERIFIED_CLOSED |
 | HIGH-07 | Crash hydration incomplete | R3 | 11, 13, 16 | all-fields Task round-trip + recovery uses canonical get | VERIFIED_CLOSED |
@@ -31,7 +31,7 @@ Status values: `OPEN`, `TEST_ENCODED`, `IMPLEMENTING`, `IMPLEMENTED`, `VERIFIED_
 
 | ID | Short title | Phase | Specs | Mandatory closure evidence | Status |
 |---|---|---|---|---|---|
-| MED-01 | Bearer token in query string | R5 | 10,16 | query token rejected; header token accepted | TEST_ENCODED |
+| MED-01 | Bearer token in query string | R5 | 10,16 | query token rejected; header token accepted | VERIFIED_CLOSED |
 | MED-02 | Separate-arg secret redaction leak | R6 | 15,16 | opaque `--token VALUE` regression | TEST_ENCODED |
 | MED-03 | No rate/concurrency limits | R5/R6 | 10,14,16 | 429/budget/concurrency tests | OPEN |
 | MED-04 | Shell cwd not workspace-authorized | R2 | 06,08,09,16 | outside cwd rejected for auto-approved path | VERIFIED_CLOSED |
@@ -52,14 +52,14 @@ Status values: `OPEN`, `TEST_ENCODED`, `IMPLEMENTING`, `IMPLEMENTED`, `VERIFIED_
 | MED-19 | Session metrics accumulation | R6/R5 | 14,15 | churn test proves bounded active state | OPEN |
 | MED-20 | PRAGMA on hot path | R6 | 13,14,15 | grep/architecture test + benchmark confirms removed | OPEN |
 | MED-21 | Exploits lack regressions | R0/R8 | 16 | all HIGH exploit tests permanent | OPEN |
-| MED-22 | HTTP/OAuth transport under-tested | R5/R8 | 10,16,31 | process/in-process modern HTTP E2E release gate | OPEN |
+| MED-22 | HTTP/OAuth transport under-tested | R5/R8 | 10,16,31 | process/in-process modern HTTP E2E release gate | VERIFIED_CLOSED |
 | MED-23 | Global coverage hides critical gaps | R8 | 16 | critical per-file/glob thresholds | OPEN |
 | MED-24 | Test harness not parallel-isolated | R8 | 16 | 2/4 worker repeated runs after unique fixture state | OPEN |
 | MED-25 | Prometheus HELP/TYPE malformed | R6 | 15,16 | golden grammar + promtool where available | OPEN |
 | MED-26 | Dependency inversion incomplete | R1-R9 | 02,03,06,07,22 | architecture import gates; zero forbidden edges | OPEN |
 | MED-27 | Runtime/loop broad responsibilities | R1-R9 | 02,05,06,11 | use-case/port split + architecture tests | OPEN |
 | MED-28 | Direct/Task adapter drift | R2/R9 | 02,08,19 | one catalog + one ExecuteTool gateway + completeness test | VERIFIED_CLOSED |
-| MED-29 | Host-header trust + CORS `*` | R5 | 10,16,31 | configured issuer/public URL; hostile Host/origin tests | OPEN |
+| MED-29 | Host-header trust + CORS `*` | R5 | 10,16,31 | configured issuer/public URL; hostile Host/origin tests | VERIFIED_CLOSED |
 
 ---
 

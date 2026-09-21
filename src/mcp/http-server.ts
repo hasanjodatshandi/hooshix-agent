@@ -17,7 +17,7 @@ import { createSessionWorkspaceContext, runWithSessionWorkspace, type SessionWor
 import { runWithTrustedInboundIdentity } from "../infrastructure/composition/r2-trusted-inbound-identity.js";
 import { getConfiguredPermissionLevel } from "../infrastructure/config/permission-config.js";
 import type { PrincipalId, SessionId } from "../domain/shared/ids.js";
-import {OperatorWebSessions,HttpWindowLimiter} from "../infrastructure/server/http-security.js";
+import {OperatorWebSessions,HttpWindowLimiter,HttpPrincipalContexts} from "../infrastructure/server/http-security.js";
 import {withAgentDatabase} from "../core/memory/database.js";
 import {createMcpHandler} from "@modelcontextprotocol/server";
 import {toNodeHandler} from "@modelcontextprotocol/node";
@@ -72,20 +72,8 @@ interface SessionEntry {
 const sessions = new Map<string, SessionEntry>();
 /** 2026 protocol is per request; application workspace selection is a
  * bounded, authenticated principal+client context, NOT an MCP session ID. */
-const modernWorkspace=new Map<string,{workspace:SessionWorkspaceContext,lastUsedAt:number}>();
+const modernContexts=new HttpPrincipalContexts<SessionWorkspaceContext>();
 const modernHandler=toNodeHandler(createMcpHandler(()=>createServer(),{legacy:"reject"}));
-function modernContext(key:string):SessionWorkspaceContext{
-  const now=Date.now();
-  for(const [identity,entry] of modernWorkspace){
-    if(now-entry.lastUsedAt>=SESSION_IDLE_MS)modernWorkspace.delete(identity);
-  }
-  const previous=modernWorkspace.get(key);
-  if(previous){previous.lastUsedAt=now;return previous.workspace;}
-  if(modernWorkspace.size>=MAX_MCP_SESSIONS)throw new Error("modern_context_limit");
-  const workspace=createSessionWorkspaceContext();
-  modernWorkspace.set(key,{workspace,lastUsedAt:now});
-  return workspace;
-}
 
 
 /**
@@ -341,7 +329,9 @@ async function handleRequest(
   cleanupStaleSessions();
   if(req.headers["mcp-protocol-version"]==="2026-07-28"){
     if(method!=="POST"){sendJSON(res,405,{error:"modern_post_only"});return;}
-    const context=modernContext(principalBinding);
+    let context:SessionWorkspaceContext;
+    try{context=modernContexts.get(principalBinding,createSessionWorkspaceContext);}
+    catch{res.setHeader("Retry-After","1");sendJSON(res,429,{error:"modern_context_limit"});return;}
     await runWithTrustedInboundIdentity({
       principal:{id:verifiedGrant.principalId as PrincipalId,permission,origin:"http_oauth",scopes:grantedScopes},
       sessionId:principalBinding as SessionId,

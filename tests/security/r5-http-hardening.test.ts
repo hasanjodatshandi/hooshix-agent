@@ -1,6 +1,6 @@
 import {describe,expect,it} from "vitest";
 import {readHttpBootstrapSecret,readHttpSecurityConfig} from "../../src/infrastructure/config/legacy-http-server.js";
-import {HttpWindowLimiter,OperatorWebSessions} from "../../src/infrastructure/server/http-security.js";
+import {HttpWindowLimiter,OperatorWebSessions,HttpPrincipalContexts} from "../../src/infrastructure/server/http-security.js";
 
 describe("R5 HTTP config and bounded security state",()=>{
   it("rejects legacy secrets, external HTTP binding without a trusted HTTPS origin, and wildcard browser CORS",()=>{
@@ -31,6 +31,31 @@ describe("R5 HTTP config and bounded security state",()=>{
     const third=sessions.issue();
     sessions.close(third.id);
     expect(sessions.get(third.id)).toBeNull();
+  });
+  it("bounds modern principal workspaces independent of the transport session with idle and absolute fake-clock TTL",()=>{
+    let now=1000;
+    const identities=new HttpPrincipalContexts<{id:number}>(()=>now,100,300,2);
+    let created=0;
+    const create=()=>({id:++created});
+    const alice=identities.get("alice-client",create);
+    expect(identities.get("alice-client",create)).toBe(alice);
+    identities.get("bob-client",create);
+    expect(identities.activeCount).toBe(2);
+    expect(()=>identities.get("charlie-client",create)).toThrow(/modern_context_limit/);
+    now+=99;
+    expect(identities.get("alice-client",create)).toBe(alice);
+    now+=2;
+    expect(identities.get("alice-client",create)).toBe(alice);
+    expect(identities.get("charlie-client",create).id).toBe(3);
+    now+=100;
+    expect(identities.get("alice-client",create).id).toBe(4);
+    now+=201;
+    expect(identities.get("alice-client",create).id).toBe(5);
+    expect(identities.activeCount).toBe(1);
+    const absolute=new HttpPrincipalContexts<{id:number}>(()=>now,200,300,2);
+    const initial=absolute.get("principal",create);
+    now+=150;expect(absolute.get("principal",create)).toBe(initial);
+    now+=150;expect(absolute.get("principal",create)).not.toBe(initial);
   });
   it("limits per-key rates, returns bounded Retry-After, expires windows and refuses unbounded identities",()=>{
     let now=1000;

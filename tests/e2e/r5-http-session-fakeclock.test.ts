@@ -69,6 +69,21 @@ describe("R5 real HTTP operator session lifecycle with an isolated fake clock",(
         await new Promise(resolve=>setTimeout(resolve,100));
       }
       expect(ready,logs.slice(-1500)).toBe(true);
+      expect((await fetch(base+"/dashboard")).status).toBe(401);
+      const logoutSession=await signIn();
+      const dashboard=await fetch(base+"/dashboard",{headers:{Cookie:logoutSession}});
+      expect(dashboard.status).toBe(200);
+      const logoutCsrf=/name="csrf" value="([A-Za-z0-9_-]{43})"/.exec(await dashboard.text())?.[1];
+      expect(logoutCsrf).toBeTruthy();
+      const badLogout=await fetch(base+"/operator/logout",{method:"POST",
+        headers:{Cookie:logoutSession,Origin:base},
+        body:new URLSearchParams({csrf:"wrong"})});
+      expect(badLogout.status).toBe(403);
+      const loggedOut=await fetch(base+"/operator/logout",{method:"POST",
+        headers:{Cookie:logoutSession,Origin:base},
+        body:new URLSearchParams({csrf:logoutCsrf!})});
+      expect(loggedOut.status).toBe(204);
+      expect((await fetch(base+"/dashboard",{headers:{Cookie:logoutSession}})).status).toBe(401);
       const idleSession=await signIn();
       expect((await privateTools(idleSession)).status).toBe(200);
       await advance(30*60_000+1);
