@@ -51,6 +51,10 @@ export class McpMetrics {
   private toolCalls: ToolCallRecord[] = [];
   private sessions = new Map<string, SessionRecord>();
   private lifetimeSessions = 0;
+  private lifetimeToolCalls = 0;
+  private lifetimeSuccessful = 0;
+  private lifetimeFailed = 0;
+  private readonly lifetimePerTool = new Map<string, { calls: number; errors: number }>();
   private peakConcurrent = 0;
   private startTime = Date.now();
   private maxRecentCalls = 100;
@@ -72,6 +76,16 @@ export class McpMetrics {
       ...(error ? { error } : {}),
     };
     this.toolCalls.push(record);
+    this.lifetimeToolCalls++;
+    if (success) this.lifetimeSuccessful++;
+    else this.lifetimeFailed++;
+    // Bound label cardinality. A reserved bucket absorbs unknown tool names.
+    const metricTool = this.lifetimePerTool.has(tool) ? tool :
+      (tool === "__other__" || this.lifetimePerTool.size >= 127 ? "__other__" : tool);
+    const metric = this.lifetimePerTool.get(metricTool) ?? { calls: 0, errors: 0 };
+    metric.calls++;
+    if (!success) metric.errors++;
+    this.lifetimePerTool.set(metricTool, metric);
 
     // Keep only recent calls in memory
     if (this.toolCalls.length > this.maxRecentCalls * 2) {
@@ -182,51 +196,44 @@ export class McpMetrics {
     };
   }
 
-  /** Get Prometheus-compatible metrics */
+  /** Prometheus 0.0.4 exposition: exactly one HELP/TYPE pair per metric family. */
   getPrometheusMetrics(): string {
     const snapshot = this.getSnapshot();
     const lines: string[] = [];
+    const emit = (name: string, type: "counter" | "gauge", help: string,
+      samples: ReadonlyArray<{ labels?: string; value: number }>): void => {
+      lines.push("# HELP " + name + " " + help);
+      lines.push("# TYPE " + name + " " + type);
+      for (const sample of samples) {
+        lines.push(name + (sample.labels ?? "") + " " + sample.value);
+      }
+    };
+    const scalar = (name: string, type: "counter" | "gauge", help: string, value: number): void =>
+      emit(name, type, help, [{ value }]);
+    const escapeLabel = (value: string): string => value
+      .replace(/\\/g, "\\\\").replace(/\n/g, "\\n").replace(/"/g, '\\"');
+    const label = (tool: string): string => '{tool="' + escapeLabel(tool) + '"}';
 
-    lines.push("# HELP mcp_uptime_seconds MCP server uptime in seconds");
-    lines.push("# TYPE mcp_uptime_seconds gauge");
-    lines.push(`mcp_uptime_seconds ${snapshot.uptime}`);
+    scalar("mcp_uptime_seconds", "gauge", "MCP server uptime in seconds", snapshot.uptime);
+    scalar("mcp_sessions_total", "counter", "Lifetime number of MCP sessions created", snapshot.sessions.total);
+    scalar("mcp_sessions_active", "gauge", "Current active MCP sessions", snapshot.sessions.active);
+    scalar("mcp_sessions_peak_concurrent", "gauge", "Maximum concurrently active MCP sessions", snapshot.sessions.peakConcurrent);
+    scalar("mcp_tool_calls_total", "counter", "Lifetime number of tool calls", this.lifetimeToolCalls);
+    scalar("mcp_tool_calls_successful_total", "counter", "Lifetime successful tool calls", this.lifetimeSuccessful);
+    scalar("mcp_tool_calls_failed_total", "counter", "Lifetime failed tool calls", this.lifetimeFailed);
+    scalar("mcp_tool_duration_ms_avg", "gauge", "Mean duration of recent tool calls in milliseconds", snapshot.performance.avgDurationMs);
 
-    lines.push("# HELP mcp_sessions_total Total sessions created");
-    lines.push("# TYPE mcp_sessions_total counter");
-    lines.push(`mcp_sessions_total ${snapshot.sessions.total}`);
-
-    lines.push("# HELP mcp_sessions_active Currently active sessions");
-    lines.push("# TYPE mcp_sessions_active gauge");
-    lines.push(`mcp_sessions_active ${snapshot.sessions.active}`);
-
-    lines.push("# HELP mcp_tool_calls_total Total tool calls");
-    lines.push("# TYPE mcp_tool_calls_total counter");
-    lines.push(`mcp_tool_calls_total ${snapshot.toolCalls.total}`);
-
-    lines.push("# HELP mcp_tool_calls_successful Total successful tool calls");
-    lines.push("# TYPE mcp_tool_calls_successful counter");
-    lines.push(`mcp_tool_calls_successful ${snapshot.toolCalls.successful}`);
-
-    lines.push("# HELP mcp_tool_calls_failed Total failed tool calls");
-    lines.push("# TYPE mcp_tool_calls_failed counter");
-    lines.push(`mcp_tool_calls_failed ${snapshot.toolCalls.failed}`);
-
-    lines.push("# HELP mcp_tool_duration_ms_avg Average tool call duration");
-    lines.push("# TYPE mcp_tool_duration_ms_avg gauge");
-    lines.push(`mcp_tool_duration_ms_avg ${snapshot.performance.avgDurationMs}`);
-
-    // Per-tool metrics
-    for (const [tool, stats] of Object.entries(snapshot.tools)) {
-      lines.push(`# HELP mcp_tool_calls{tool="${tool}"} Calls for tool ${tool}`);
-      lines.push(`# TYPE mcp_tool_calls{tool="${tool}"} counter`);
-      lines.push(`mcp_tool_calls{tool="${tool}"} ${stats.calls}`);
-      lines.push(`mcp_tool_errors{tool="${tool}"} ${stats.errors}`);
-      lines.push(`mcp_tool_duration_ms{tool="${tool}"} ${stats.avgMs}`);
-    }
-
+    // Tool-name cardinality is limited to 127 distinct names plus a shared overflow bucket.
+    const allTools = [...this.lifetimePerTool].sort(([a], [b]) => a.localeCompare(b));
+    emit("mcp_tool_calls_by_tool_total", "counter", "Lifetime tool calls by registered tool",
+      allTools.map(([tool, value]) => ({ labels: label(tool), value: value.calls })));
+    emit("mcp_tool_errors_by_tool_total", "counter", "Lifetime failed tool calls by registered tool",
+      allTools.map(([tool, value]) => ({ labels: label(tool), value: value.errors })));
+    emit("mcp_tool_duration_ms_by_tool", "gauge", "Mean duration of recent calls by tool in milliseconds",
+      Object.entries(snapshot.tools).sort(([a], [b]) => a.localeCompare(b))
+        .map(([tool, value]) => ({ labels: label(tool), value: value.avgMs })));
     return lines.join("\n") + "\n";
   }
-
   /** Console log a tool call */
   logToolCall(
     tool: string,
