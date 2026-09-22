@@ -7,11 +7,10 @@ import { isSensitivePath } from "../../application/services/sensitive-path-polic
 import { policyDecisionPoint } from "../../core/governance/policy-decision-point.js";
 import { logFileAction } from "../../memory/file-audit.js";
 import { resolveCorrelationId } from "../../core/runtime/correlation-id.js";
+import { SearchBudgetMeter, workspaceSearchLimiter } from "./search-budget.js";
 import { persistFileBackup, persistAbsentFileBackup, getStoredIdempotentResponse, persistIdempotentResponse, getStoredFileBackup, markFileBackupRestored, recordFileBackupPostcondition } from "../../adapters/outbound/persistence/sqlite/repositories/file-backup-idempotency.adapter.js";
 
 const MAX_FILE_BYTES = 1024 * 1024;
-const MAX_SEARCH_RESULTS = 1000;
-const MAX_SEARCH_FILES = 10000;
 const MAX_SEARCH_LINE_BYTES = 512;
 const MAX_DIRECTORY_ENTRIES = 5000;
 const IGNORED_DIRECTORIES = new Set([".git", "node_modules", "dist", "coverage", "data", "logs"]);
@@ -455,18 +454,20 @@ export interface SearchResult {
 }
 
 export async function searchWorkspaceFiles(targetPath: string, query: string, correlationId?: string): Promise<SearchResult> {
-  return audit("search", targetPath, correlationId, async () => {
+  return workspaceSearchLimiter.run(() => audit("search", targetPath, correlationId, async () => {
     policyDecisionPoint.assertAllowed({ tool: "search_files", arguments: { path: targetPath, query }, correlationId });
     if (!query) throw new Error("Search query must not be empty");
     const root = validateWorkspace(targetPath);
     assertNotSensitive(root);
     const matches: SearchMatch[] = [];
     let truncated = false;
-    let scannedFiles = 0;
+    const budget = new SearchBudgetMeter();
     async function walk(current: string): Promise<void> {
+      budget.assertWithinTime();
       if (truncated) return;
       const entries = await fs.readdir(validateWorkspace(current), { withFileTypes: true });
       for (const entry of entries) {
+        budget.assertWithinTime();
         if (truncated) return;
         const candidatePath = path.join(current, entry.name);
         // Exclude a sensitive directory BEFORE traversing or stat-ing children.
@@ -481,10 +482,13 @@ export async function searchWorkspaceFiles(targetPath: string, query: string, co
         // Sensitive files are silently skipped, never returned as search hits —
         // their content must not leak through search lines (audit HIGH-02).
         if (isSensitiveSearchHit(fullPath)) continue;
-        if (++scannedFiles > MAX_SEARCH_FILES) throw new Error(`Search exceeds ${MAX_SEARCH_FILES} file limit`);
+        budget.recordFile();
         const stat = await fs.stat(fullPath);
         if (stat.size > MAX_FILE_BYTES) continue;
+        budget.reserveBytes(stat.size);
         const content = await fs.readFile(fullPath, "utf8").catch(() => "");
+        budget.reconcileRead(stat.size, Buffer.byteLength(content, "utf8"));
+        if (Buffer.byteLength(content, "utf8") > MAX_FILE_BYTES) continue;
         const lines = content.split("\n");
         for (let i = 0; i < lines.length; i++) {
           if (lines[i].includes(query)) {
@@ -497,7 +501,7 @@ export async function searchWorkspaceFiles(targetPath: string, query: string, co
                 ? lines[i].slice(0, MAX_SEARCH_LINE_BYTES) + "…[truncated]"
                 : lines[i].trimEnd(),
             });
-            if (matches.length >= MAX_SEARCH_RESULTS) {
+            if (budget.recordResult()) {
               truncated = true;
               return;
             }
@@ -512,5 +516,5 @@ export async function searchWorkspaceFiles(targetPath: string, query: string, co
     const safeRoot = relativeRoot && !relativeRoot.startsWith("..") && !path.isAbsolute(relativeRoot)
       ? relativeRoot.replace(/\\/g, "/") : ".";
     return { query, root: safeRoot, matches, totalMatches: matches.length, truncated };
-  });
+  }));
 }
