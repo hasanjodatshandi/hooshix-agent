@@ -2,7 +2,7 @@
 
 **Project:** `D:/workspace/hooshix-agent`  
 **Program:** Full Hexagonal/Clean redesign + complete consolidated-audit remediation  
-**Status:** R0 GATE_PASSED; R1 GATE_PASSED (G1 PASS); R2 GATE_PASSED (G2 PASS on isolated feature branch); R3 GATE_PASSED (G3 PASS on isolated feature branch, 2026-09-21). R4 GATE_PASSED (R4.01–R4.07 VERIFIED; G4 PASS on isolated feature branch, 2026-09-21). R5 GATE_PASSED (R5.01–R5.12 VERIFIED; G5 PASS on isolated feature branch, 2026-09-21); R6 IN_PROGRESS (R6.01–R6.02 VERIFIED on isolated branch); R7–R10 NOT_STARTED.
+**Status:** R0 GATE_PASSED; R1 GATE_PASSED (G1 PASS); R2 GATE_PASSED (G2 PASS on isolated feature branch); R3 GATE_PASSED (G3 PASS on isolated feature branch, 2026-09-21). R4 GATE_PASSED (R4.01–R4.07 VERIFIED; G4 PASS on isolated feature branch, 2026-09-21). R5 GATE_PASSED (R5.01–R5.12 VERIFIED; G5 PASS on isolated feature branch, 2026-09-21); R6 IN_PROGRESS (R6.01–R6.03 VERIFIED on isolated branch); R7–R10 NOT_STARTED.
 **Owner directive:** all 13 HIGH, 29 MEDIUM, 12 LOW findings must be fixed and verified.
 
 This file is intentionally a live execution ledger. The implementing assistant updates it during implementation. Do not erase previous evidence; append/update status while preserving history.
@@ -41,7 +41,7 @@ Notes on pre-existing dirty changes: none at R0 baseline; source hardening alrea
 | R3 Task/recovery/idempotency/lease | GATE_PASSED | G3 PASS — R3.01–R3.10 VERIFIED on isolated branch; no release/deployment claim | 2026-09-20 | 2026-09-21 | 142 files / 639 PASS + 11 expected RED; Typecheck, Build, strict G1 183/0 candidates, live-owner crash-recovery and real 2-process lease proofs PASS; see G3 completion record |
 | R4 Data integrity/compensation | GATE_PASSED | G4 PASS — immutable file restore, canonical project identity, clean Git snapshots/rollback and truthful package manifest compensation VERIFIED on isolated feature branch | 2026-09-21 | 2026-09-21 | 148 files / 673 PASS + 7 expected RED assigned to R5–R10; Typecheck, Build and strict G1 PASS; no live migration or deployment |
 | R5 HTTP/OAuth/MCP modern | GATE_PASSED | G5 PASS — isolated HTTP/OAuth process + v2 Stdio/HTTP, bounded contexts, fake-clock expiry, issuer and credential proofs | 2026-09-21 | 2026-09-21 | 155 files / 692 PASS + 4 expected later-phase RED; source/test TypeScript, build, G1 strict 186/0 PASS. Windows POSIX permission behavior remains conditional; live connector cutover and Docker/CI smoke not claimed. See R5 G5 closure record. |
-| R6 Persistence/perf/observability | IN_PROGRESS | G6 OPEN — R6.01 schema migration and R6.02 periodic class-aware retention VERIFIED; R6.03–R6.09 pending | 2026-09-21 | | R6.02 source/test TS, full 157 files / 699 PASS + 4 expected later-phase RED, production build and G1 strict 188/0 PASS; per-table policy, dry-run/report and periodic scheduler fixtures. See R6.02 checkpoint. |
+| R6 Persistence/perf/observability | IN_PROGRESS | G6 OPEN — R6.01 migration, R6.02 retention, R6.03 25k/250k representative metrics benchmark VERIFIED; R6.04–R6.09 pending | 2026-09-21 | | Two isolated 25k/250k benchmark runs using real getAgentMetrics: 250k global ~175ms, filtered ~296–304ms median; EXPLAIN query plans captured in R6_03_METRICS_QUERY_BENCHMARK_2026-09-22.md. Next R6.04 index comparison. |
 | R7 Config/deployment/CI | NOT_STARTED | — | | | |
 | R8 Verification/parallel/fuzz | NOT_STARTED | — | | | |
 | R9 Legacy deletion/docs/cutover | NOT_STARTED | — | | | |
@@ -68,7 +68,7 @@ The detailed source is `20_FINDINGS_TRACEABILITY_MATRIX.md`; keep totals consist
 
 ```text
 Completed phases: R0–R5 (G0–G5 VERIFIED PASS on isolated feature branch); R5.01–R5.12 code/fixture acceptance recorded in R5 G5 closure.
-Current phase: R6 IN_PROGRESS — R6.01–R6.02 VERIFIED on isolated feature branch; next pending leaf R6.03 representative metrics benchmark. G6 stays OPEN until R6.03–R6.09 and the performance/observability acceptance criteria are verified.
+Current phase: R6 IN_PROGRESS — R6.01–R6.03 VERIFIED on isolated feature branch; next pending leaf R6.04 evidence-based index comparison. G6 stays OPEN until R6.04–R6.09 and the performance/observability acceptance criteria are verified.
 Findings: 25/54 VERIFIED_CLOSED (HIGH 10, MEDIUM 14, LOW 1); 25 OPEN, 4 TEST_ENCODED for later phases. MED-18 closed by R6.02 retention fixtures. HIGH-11/HIGH-12 and MED-03/LOW-07 remain cross-phase or platform-bound and are NOT closed by G5.
 Gate: G0–G5 PASS on isolated branch; G6–G10 OPEN. HooshiX is NOT release-ready.
 Workspace: D:/workspace/hooshix-agent; isolated feature/r2-unified-tool-gateway-2026-09-20 branch.
@@ -734,4 +734,14 @@ Finding IDs: architectural G1; no HIGH/MED/LOW finding independently closed.
 - **Full acceptance:** Task `17ac25db-6b19-40c6-9e62-10f08450d2da`: source/test TypeScript PASS; full 157 Vitest files / 699 PASS + 4 expected later-phase failures / 0 unexpected failures; production build PASS; strict G1 188 source files / zero violations PASS.
 - **Finding closure:** MED-18 (retention startup-only/incomplete) VERIFIED_CLOSED with the five-class dry-run/delete and periodic-scheduler regression evidence above. Finding matrix totals now 25/54 closed; HIGH 10/13, MEDIUM 14/29, LOW 1/12. MED-19 session metrics pruning remains R6.06 and is not silently included in this closure.
 - **Isolation:** Test runs use the Vitest dedicated test database and marker-owned child fixtures; the other assistant's existing untracked EAAP materials, runtime backups, diagnostic/recovery scripts and all active connector credentials are excluded. No manual live DB cleanup or migration, restart, push, merge or deployment. G6 and release readiness remain OPEN.
+
+---
+
+## R6.03 — Real Metrics query benchmarks — VERIFIED 2026-09-22
+
+- **Decision:** R6.03 benchmark evidence VERIFIED on isolated feature branch. This is the *pre-index* baseline for R6.04, not a G6 release gate closure. G6 stays OPEN.
+- **Reproduction:** `pnpm exec tsx scripts/r6-metrics-benchmark.mts` runs the real `getAgentMetrics` outbound adapter with 25,000/250,000 `tool_calls` rows plus proportional execution and recovery rows in a newly created, marker-owned OS temporary SQLite database. Source bootstrap/migrations create the fixture; the script closes the database and deletes only that marked temporary root. The configured live database is never used.
+- **Observed two-run medians (ms):** At 25k: global 9.947 / 11.001; filtered task/category/date 16.983 / 16.035; paged offset 1000 8.121 / 9.779. At 250k: global 174.904 / 175.743; filtered 304.209 / 295.984; paged 179.181 / 170.580. Two warmups and seven samples/profile/run; measured p95, seed durations, exact fixture distributions and selected `EXPLAIN QUERY PLAN` output are recorded in `docs/implementation/R6_03_METRICS_QUERY_BENCHMARK_2026-09-22.md`.
+- **Query-plan observation:** The filtered recent-call path uses `idx_tool_calls_category_created_at` on `category` and `created_at`, leaving `task_id` as a residual filter; failed-tools grouping uses a covering `idx_tool_calls_tool_status` scan plus temporary sort; recovery-duration aggregation scans 250/2,500 rows; failed execution count uses `idx_executions_status`. R6.04 must compare candidate indexes on equivalent disposable fixtures and quantify total Metrics and write impact before changing migration/schema.
+- **Evidence:** Benchmark tasks `37a6d3ea-cfaf-4dc5-bc7a-d32cf6155218` and `e090edd2-e464-4eb3-a172-acb16454822c` PASS, both temporary SQLite `quick_check=ok` at both sizes. No production schema/index or live service was modified; no finding closed solely from benchmark observations. R6.04–R6.09 remain pending.
 
