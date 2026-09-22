@@ -47,7 +47,7 @@ interface MetricsSnapshot {
   recentCalls: ToolCallRecord[];
 }
 
-class McpMetrics {
+export class McpMetrics {
   private toolCalls: ToolCallRecord[] = [];
   private sessions = new Map<string, SessionRecord>();
   private lifetimeSessions = 0;
@@ -87,7 +87,8 @@ class McpMetrics {
 
   /** Record session creation */
   recordSessionCreated(sessionId: string, clientInfo?: string): void {
-    if (!this.sessions.has(sessionId)) this.lifetimeSessions++;
+    if (this.sessions.has(sessionId)) return;
+    this.lifetimeSessions++;
     this.sessions.set(sessionId, {
       sessionId,
       createdAt: new Date().toISOString(),
@@ -103,24 +104,14 @@ class McpMetrics {
 
   /** Record session closure */
   recordSessionClosed(sessionId: string): void {
-    const session = this.sessions.get(sessionId);
-    if (session) session.closedAt = new Date().toISOString();
-    // Keep active sessions and only the most recent completed sessions.
-    // Older metrics must not retain an unlimited number of session objects.
-    if (this.sessions.size > 512) {
-      const active = [...this.sessions].filter(([, item]) => !item.closedAt);
-      const completed = [...this.sessions].filter(([, item]) => item.closedAt);
-      this.sessions = new Map([...active, ...completed.slice(-Math.max(0, 512 - active.length))]);
-    }
+    // Closed sessions carry no live state. Their lifetime count and peak are
+    // independent aggregate counters, so never retain old IDs/client details.
+    this.sessions.delete(sessionId);
   }
 
   /** Get active session count */
   private getActiveSessionCount(): number {
-    let count = 0;
-    for (const session of this.sessions.values()) {
-      if (!session.closedAt) count++;
-    }
-    return count;
+    return this.sessions.size;
   }
 
   /** Get metrics snapshot */

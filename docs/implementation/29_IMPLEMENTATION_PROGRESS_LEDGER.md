@@ -2,7 +2,7 @@
 
 **Project:** `D:/workspace/hooshix-agent`  
 **Program:** Full Hexagonal/Clean redesign + complete consolidated-audit remediation  
-**Status:** R0 GATE_PASSED; R1 GATE_PASSED (G1 PASS); R2 GATE_PASSED (G2 PASS on isolated feature branch); R3 GATE_PASSED (G3 PASS on isolated feature branch, 2026-09-21). R4 GATE_PASSED (R4.01–R4.07 VERIFIED; G4 PASS on isolated feature branch, 2026-09-21). R5 GATE_PASSED (R5.01–R5.12 VERIFIED; G5 PASS on isolated feature branch, 2026-09-21); R6 IN_PROGRESS (R6.01–R6.04 VERIFIED; R6.05 implementation/tests PASS but test-project typecheck blocked by executor); R7–R10 NOT_STARTED.
+**Status:** R0 GATE_PASSED; R1 GATE_PASSED (G1 PASS); R2 GATE_PASSED (G2 PASS on isolated feature branch); R3 GATE_PASSED (G3 PASS on isolated feature branch, 2026-09-21). R4 GATE_PASSED (R4.01–R4.07 VERIFIED; G4 PASS on isolated feature branch, 2026-09-21). R5 GATE_PASSED (R5.01–R5.12 VERIFIED; G5 PASS on isolated feature branch, 2026-09-21); R6 IN_PROGRESS (R6.01–R6.04 VERIFIED; R6.05 implementation/tests PASS and R6.06 session-metrics pruning implemented/tested; test-project typecheck blocked by executor); R7–R10 NOT_STARTED.
 **Owner directive:** all 13 HIGH, 29 MEDIUM, 12 LOW findings must be fixed and verified.
 
 This file is intentionally a live execution ledger. The implementing assistant updates it during implementation. Do not erase previous evidence; append/update status while preserving history.
@@ -41,7 +41,7 @@ Notes on pre-existing dirty changes: none at R0 baseline; source hardening alrea
 | R3 Task/recovery/idempotency/lease | GATE_PASSED | G3 PASS — R3.01–R3.10 VERIFIED on isolated branch; no release/deployment claim | 2026-09-20 | 2026-09-21 | 142 files / 639 PASS + 11 expected RED; Typecheck, Build, strict G1 183/0 candidates, live-owner crash-recovery and real 2-process lease proofs PASS; see G3 completion record |
 | R4 Data integrity/compensation | GATE_PASSED | G4 PASS — immutable file restore, canonical project identity, clean Git snapshots/rollback and truthful package manifest compensation VERIFIED on isolated feature branch | 2026-09-21 | 2026-09-21 | 148 files / 673 PASS + 7 expected RED assigned to R5–R10; Typecheck, Build and strict G1 PASS; no live migration or deployment |
 | R5 HTTP/OAuth/MCP modern | GATE_PASSED | G5 PASS — isolated HTTP/OAuth process + v2 Stdio/HTTP, bounded contexts, fake-clock expiry, issuer and credential proofs | 2026-09-21 | 2026-09-21 | 155 files / 692 PASS + 4 expected later-phase RED; source/test TypeScript, build, G1 strict 186/0 PASS. Windows POSIX permission behavior remains conditional; live connector cutover and Docker/CI smoke not claimed. See R5 G5 closure record. |
-| R6 Persistence/perf/observability | IN_PROGRESS | G6 OPEN — R6.01–R6.04 VERIFIED; R6.05 aggregate search budgets implemented and functional/full tests PASS, separate test-project TypeScript validation blocked by tool_handler_failure; R6.06–R6.09 pending | 2026-09-21 | | R6.05: 159 Vitest files / 703 PASS + 4 expected later-phase failures, 3 scoped tests PASS, production build PASS, strict G1 189/0 PASS; source/test typecheck last passed before newly added R6.05 fixture, subsequent attempts return executor tool_handler_failure without compiler diagnostics. See R6.05 checkpoint. |
+| R6 Persistence/perf/observability | IN_PROGRESS | G6 OPEN — R6.01–R6.04 VERIFIED; R6.05 search budgets and R6.06 session-metrics lifecycle functional/full tests PASS, test-project TypeScript validation still blocked by tool_handler_failure; R6.07–R6.09 pending | 2026-09-21 | | R6.06: 160 Vitest files / 704 PASS + 4 expected later-phase failures, 10k closed-session churn PASS, source TypeScript, production build and strict G1 189/0 PASS; full test-project compiler result UNVERIFIED. See R6.06 checkpoint. |
 | R7 Config/deployment/CI | NOT_STARTED | — | | | |
 | R8 Verification/parallel/fuzz | NOT_STARTED | — | | | |
 | R9 Legacy deletion/docs/cutover | NOT_STARTED | — | | | |
@@ -56,9 +56,9 @@ Allowed phase status: `NOT_STARTED`, `IN_PROGRESS`, `BLOCKED`, `GATE_FAILED`, `G
 | Severity | Total | OPEN | TEST_ENCODED | IMPLEMENTING | IMPLEMENTED | VERIFIED_CLOSED | DEFERRED_BY_OWNER |
 |---|---:|---:|---:|---:|---:|---:|---:|
 | HIGH | 13 | 0 | 3 | 0 | 0 | 10 | 0 |
-| MEDIUM | 29 | 13 | 1 | 0 | 0 | 15 | 0 |
+| MEDIUM | 29 | 12 | 1 | 0 | 0 | 16 | 0 |
 | LOW | 12 | 11 | 0 | 0 | 0 | 1 | 0 |
-| **TOTAL** | **54** | **24** | **4** | **0** | **0** | **26** | **0** |
+| **TOTAL** | **54** | **23** | **4** | **0** | **0** | **27** | **0** |
 
 The detailed source is `20_FINDINGS_TRACEABILITY_MATRIX.md`; keep totals consistent.
 
@@ -68,8 +68,8 @@ The detailed source is `20_FINDINGS_TRACEABILITY_MATRIX.md`; keep totals consist
 
 ```text
 Completed phases: R0–R5 (G0–G5 VERIFIED PASS on isolated feature branch); R5.01–R5.12 code/fixture acceptance recorded in R5 G5 closure.
-Current phase: R6 IN_PROGRESS — R6.01–R6.04 VERIFIED; R6.05 code and functional tests PASS but final test-project TypeScript compiler check remains UNVERIFIED after repeated executor tool_handler_failure (no compiler diagnostic). G6 stays OPEN; R6.06–R6.09 and complete R6.05 typecheck are pending. R6.04's selected index has measured +54–128% fixture write amplification offset by 45–76x filtered-query speedup; production workload acceptance remains separate.
-Findings: 26/54 VERIFIED_CLOSED (HIGH 10, MEDIUM 15, LOW 1); 24 OPEN, 4 TEST_ENCODED for later phases. MED-17 closed by R6.03–R6.04 query latency/plan and v17 migration evidence. MED-18 closed by R6.02 retention fixtures. HIGH-11/HIGH-12 and MED-03/LOW-07 remain cross-phase or platform-bound and are NOT closed by G5.
+Current phase: R6 IN_PROGRESS — R6.01–R6.04 VERIFIED; R6.05 and R6.06 code/functional/full tests PASS. Full test-project TypeScript check remains UNVERIFIED after repeated execute_command tool_handler_failure (no compiler diagnostic). G6 stays OPEN; R6.07–R6.09 and complete source/test acceptance remain pending. R6.04's selected index has measured +54–128% fixture write amplification offset by 45–76x filtered-query speedup; production workload acceptance remains separate.
+Findings: 27/54 VERIFIED_CLOSED (HIGH 10, MEDIUM 16, LOW 1); 23 OPEN, 4 TEST_ENCODED for later phases. MED-19 closed by R6.06 10k closed-session churn and aggregate counter tests; MED-17 by R6.03–R6.04 and MED-18 by R6.02. HIGH-11/HIGH-12 and MED-03/LOW-07 remain cross-phase or platform-bound.
 Gate: G0–G5 PASS on isolated branch; G6–G10 OPEN. HooshiX is NOT release-ready.
 Workspace: D:/workspace/hooshix-agent; isolated feature/r2-unified-tool-gateway-2026-09-20 branch.
 Local runtime DB observation (read-only SQLite query): schema migrations include v16; the running service may have applied migration automatically. This is NOT proof of a separately approved production migration rehearsal. No manual DB repair, deployment, push, merge, branch reset or removal of unrelated user files in this R5 work.
@@ -768,4 +768,15 @@ Finding IDs: architectural G1; no HIGH/MED/LOW finding independently closed.
 - **Explicit open acceptance item:** Repeatable attempts to run `pnpm run typecheck`, the test-only `tsc -p tsconfig.test.json --noEmit`, and a read-only TypeScript API compilation after the new test file was added failed at the HooshiX `execute_command` boundary with `tool_handler_failure`, without any TypeScript compiler stdout/stderr or diagnostic. This is **not** evidence of a TypeScript compilation failure or success. Do not represent R6.05 or G6 as fully VERIFIED until the complete test-project compiler check is independently successful. The code/test checkpoint may be committed without closing that gate.
 - **Finding status:** MED-03 remains OPEN because it also covers broader HTTP/expensive-operation concurrency and cross-transport acceptance, not only file-search concurrency. No other finding is closed solely by this leaf.
 - **Scope:** Neither the live SQLite database nor the running MCP server was restarted or modified; unrelated EAAP materials, backups and R5 recovery scripts remain unmodified/untracked. G6 remains OPEN; R6.06–R6.09 and the outstanding R6.05 test-only compiler acceptance must be resolved before final G6 closure.
+
+---
+
+## R6.06 — Session metrics lifecycle — focused/full tests PASS 2026-09-22
+
+- **Implementation:** `src/mcp/metrics.ts` now keeps session details only for currently active session IDs. On close, it removes the session record immediately rather than retaining up to 512 completed objects. Lifetime session count and peak concurrent count are separate monotonic aggregates; closing an unknown or already-closed ID has no effect. Duplicate creation of an already-active ID does not inflate the lifetime count or overwrite client details. Recent tool-call history retains its existing separate bounded limit and is not changed by this leaf.
+- **Churn evidence:** `tests/core/r6-session-metrics-pruning.test.ts` creates and closes 10,000 unique sessions with two continuously active sessions, asserts exactly two retained IDs throughout the churn, verifies duplicate close/creation and unchanged live counts, then closes both remaining sessions and verifies an empty map with 10,002 total and a peak of three. Focused test task `08b0c727-b979-40ed-9f25-c2aa3cd3cbaf`: 2 files / 2 PASS including the earlier R5 bounded-state fixture.
+- **Regression evidence:** Full-suite task `3b389074-7a90-41c3-8edf-d8a19753b64b`: 160 test files / 704 PASS + 4 expected later-phase failures; zero unexpected failures. Production source TypeScript PASS via task `4d551308-4024-4975-952a-4cfe576647b1`; build and strict G1 PASS via task `04a43bf1-df6f-4464-83fc-a5bb67ff751c` (189 scanned files, zero candidates).
+- **Open acceptance boundary:** The full test-project TypeScript compiler step in `4d551308-4024-4975-952a-4cfe576647b1` returned `tool_handler_failure` with no compiler diagnostic. It is not represented as passing or failing TypeScript. R6.05 and final G6 compiler acceptance remain OPEN. The code/test checkpoint does not imply live-service cutover or product release readiness.
+- **Finding closure:** MED-19 (session metrics accumulation) VERIFIED_CLOSED based on 10,000 churn record retention and active/lifetime aggregate assertions; matrix now 27/54 closed (HIGH 10, MEDIUM 16, LOW 1), 23 OPEN, 4 TEST_ENCODED.
+- **Isolation:** Only source, dedicated test, finding status and ledger are in scope. The running server, actual SQLite, session credentials, EAAP materials and other assistant's untracked backups/recovery scripts were not modified or restarted. Next planned leaf R6.07 hot-path schema introspection, followed by R6.08–R6.09; G6 remains OPEN.
 
