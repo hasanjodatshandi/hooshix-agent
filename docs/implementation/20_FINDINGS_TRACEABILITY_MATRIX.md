@@ -32,7 +32,7 @@ Status values: `OPEN`, `TEST_ENCODED`, `IMPLEMENTING`, `IMPLEMENTED`, `VERIFIED_
 | ID | Short title | Phase | Specs | Mandatory closure evidence | Status |
 |---|---|---|---|---|---|
 | MED-01 | Bearer token in query string | R5 | 10,16 | query token rejected; header token accepted | VERIFIED_CLOSED |
-| MED-02 | Separate-arg secret redaction leak | R6 | 15,16 | opaque `--token VALUE` regression | TEST_ENCODED |
+| MED-02 | Separate-arg secret redaction leak | R6 | 15,16 | opaque `--token VALUE` regression | VERIFIED_CLOSED |
 | MED-03 | No rate/concurrency limits | R5/R6 | 10,14,16 | 429/budget/concurrency tests | OPEN |
 | MED-04 | Shell cwd not workspace-authorized | R2 | 06,08,09,16 | outside cwd rejected for auto-approved path | VERIFIED_CLOSED |
 | MED-05 | Audit failure masks successful effect | R3/R6 | 11,15,16 | effect succeeds + sink fails -> success/degraded, no retry | VERIFIED_CLOSED |

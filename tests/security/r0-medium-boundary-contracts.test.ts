@@ -22,7 +22,7 @@ afterEach(() => {
 });
 
 describe("R0 MED-01/02/04/08 direct boundary contracts", () => {
-  it.fails("MED-02: a separated opaque --token VALUE must not leak through command audit logging", async () => {
+  it("MED-02: a separated opaque --token VALUE must not leak through command audit logging", async () => {
     fixture = createDisposableFixture("auditsecret");
     formerLogDirectory = process.env.HOOSHIX_LOG_DIR;
     process.env.HOOSHIX_LOG_DIR = fixture.root;

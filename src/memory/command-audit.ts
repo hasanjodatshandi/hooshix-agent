@@ -10,30 +10,38 @@ const SENSITIVE_PATTERN = /token|secret|password|api[-_]?key|credential|auth[-_]
 /** Bare secret values (no =) — high-entropy-looking tokens are redacted too. */
 const RAW_SECRET_PATTERN = /^(sk|ghp|gho|github_pat|xoxb|xoxp|AKIA)[-_][A-Za-z0-9_\-]{8,}$/;
 
-function redactArguments(args: string[] = []): string[] {
+/** Treat both --flag=value and --flag VALUE as secret-bearing inputs. */
+function redactArguments(args: readonly string[] = []): string[] {
+  const masked: string[] = [];
   let redactNext = false;
-  return args.map((argument) => {
+  for (const argument of args) {
     if (redactNext) {
+      masked.push("[REDACTED]");
       redactNext = false;
-      return "[REDACTED]";
+      continue;
     }
-    // Bare secret value that merely contains a keyword (old behavior logged it
-    // verbatim) or a recognizable raw token prefix — redact, don't log.
-    if (RAW_SECRET_PATTERN.test(argument)) return "[REDACTED]";
-    if (SENSITIVE_PATTERN.test(argument)) {
-      if (argument.includes("=")) {
-        return `${argument.split("=", 1)[0]}=[REDACTED]`;
-      }
-      // Keyword present without "=" — treat the whole argument as a secret value
-      return "[REDACTED]";
+    const sensitiveOption = /^(?:--?|\/)(?:token|secret|password|passphrase|api[-_]?key|credential|auth(?:orization)?|access[-_]?key|private[-_]?key|sign[-_]?key)(?:[-_][a-z0-9]+)*(?:[=:]|$)/i;
+    const opaqueValueOption = /^(?:--(?:env|header|data|data-raw|data-binary|json|form)|-e|-H)(?:[=:]|$)/i;
+    if (sensitiveOption.test(argument) || opaqueValueOption.test(argument)) {
+      const split = argument.search(/[=:]/);
+      if (split >= 0) masked.push(argument.slice(0, split + 1) + "[REDACTED]");
+      else { masked.push(argument); redactNext = true; }
+      continue;
     }
-    return argument;
-  });
+    if (RAW_SECRET_PATTERN.test(argument) || SENSITIVE_PATTERN.test(argument)) {
+      const split = argument.indexOf("=");
+      masked.push(split < 0 ? "[REDACTED]" : argument.slice(0, split + 1) + "[REDACTED]");
+      continue;
+    }
+    masked.push(argument);
+  }
+  return masked;
 }
-
 export async function logCommandAction(data: {
   command: string;
   args?: string[];
+  /** Optional caller-supplied environment is never written verbatim to audit. */
+  env?: Readonly<Record<string,string|undefined>>;
   cwd?: string;
   exitCode?: number;
   status: "success" | "failed" | "timeout" | "blocked";
@@ -42,8 +50,14 @@ export async function logCommandAction(data: {
   const destination = logPath();
   await fs.mkdir(path.dirname(destination), { recursive: true });
   await fs.appendFile(destination, JSON.stringify({
-    ...data,
+    command: redactArguments([data.command])[0],
     args: redactArguments(data.args),
+    cwd: data.cwd === undefined ? undefined : redactArguments([data.cwd])[0],
+    exitCode: typeof data.exitCode === "number" && Number.isSafeInteger(data.exitCode) ? data.exitCode : undefined,
+    status: data.status,
+    correlationId: redactArguments([data.correlationId])[0],
+    // Values and even key names may contain credentials; never serialize a raw environment.
+    ...(data.env === undefined ? {} : { environment: "[REDACTED]" }),
     timestamp: new Date().toISOString()
   }) + "\n", "utf8");
 }

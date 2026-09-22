@@ -8,6 +8,8 @@
  * - Response times
  */
 
+import { telemetryDegradationCount } from "../core/trace/telemetry-degradation.js";
+
 interface ToolCallRecord {
   tool: string;
   durationMs: number;
@@ -221,6 +223,7 @@ export class McpMetrics {
     scalar("mcp_tool_calls_total", "counter", "Lifetime number of tool calls", this.lifetimeToolCalls);
     scalar("mcp_tool_calls_successful_total", "counter", "Lifetime successful tool calls", this.lifetimeSuccessful);
     scalar("mcp_tool_calls_failed_total", "counter", "Lifetime failed tool calls", this.lifetimeFailed);
+    scalar("hooshix_telemetry_degraded_total", "counter", "Lifetime best-effort telemetry sink failures", telemetryDegradationCount());
     scalar("mcp_tool_duration_ms_avg", "gauge", "Mean duration of recent tool calls in milliseconds", snapshot.performance.avgDurationMs);
 
     // Tool-name cardinality is limited to 127 distinct names plus a shared overflow bucket.

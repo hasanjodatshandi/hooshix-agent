@@ -7,7 +7,8 @@ export function bestEffortTelemetry(operation:()=>void):void {
   try{operation();}
   catch{
     failures++;
-    console.error("hooshix_telemetry_degraded");
+    // Even a broken diagnostic stream must never rewrite the business outcome.
+    try { console.error("hooshix_telemetry_degraded"); } catch { /* best-effort sink */ }
   }
 }
 export function telemetryDegradationCount():number{return failures;}
