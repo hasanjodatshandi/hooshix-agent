@@ -2,7 +2,7 @@
 
 **Project:** `D:/workspace/hooshix-agent`  
 **Program:** Full Hexagonal/Clean redesign + complete consolidated-audit remediation  
-**Status:** R0 GATE_PASSED; R1 GATE_PASSED (G1 PASS); R2 GATE_PASSED (G2 PASS on isolated feature branch); R3 GATE_PASSED (G3 PASS on isolated feature branch, 2026-09-21). R4 GATE_PASSED (R4.01–R4.07 VERIFIED; G4 PASS on isolated feature branch, 2026-09-21). R5 GATE_PASSED (R5.01–R5.12 VERIFIED; G5 PASS on isolated feature branch, 2026-09-21); R6 IN_PROGRESS (R6.01 VERIFIED on isolated branch); R7–R10 NOT_STARTED.
+**Status:** R0 GATE_PASSED; R1 GATE_PASSED (G1 PASS); R2 GATE_PASSED (G2 PASS on isolated feature branch); R3 GATE_PASSED (G3 PASS on isolated feature branch, 2026-09-21). R4 GATE_PASSED (R4.01–R4.07 VERIFIED; G4 PASS on isolated feature branch, 2026-09-21). R5 GATE_PASSED (R5.01–R5.12 VERIFIED; G5 PASS on isolated feature branch, 2026-09-21); R6 IN_PROGRESS (R6.01–R6.02 VERIFIED on isolated branch); R7–R10 NOT_STARTED.
 **Owner directive:** all 13 HIGH, 29 MEDIUM, 12 LOW findings must be fixed and verified.
 
 This file is intentionally a live execution ledger. The implementing assistant updates it during implementation. Do not erase previous evidence; append/update status while preserving history.
@@ -41,7 +41,7 @@ Notes on pre-existing dirty changes: none at R0 baseline; source hardening alrea
 | R3 Task/recovery/idempotency/lease | GATE_PASSED | G3 PASS — R3.01–R3.10 VERIFIED on isolated branch; no release/deployment claim | 2026-09-20 | 2026-09-21 | 142 files / 639 PASS + 11 expected RED; Typecheck, Build, strict G1 183/0 candidates, live-owner crash-recovery and real 2-process lease proofs PASS; see G3 completion record |
 | R4 Data integrity/compensation | GATE_PASSED | G4 PASS — immutable file restore, canonical project identity, clean Git snapshots/rollback and truthful package manifest compensation VERIFIED on isolated feature branch | 2026-09-21 | 2026-09-21 | 148 files / 673 PASS + 7 expected RED assigned to R5–R10; Typecheck, Build and strict G1 PASS; no live migration or deployment |
 | R5 HTTP/OAuth/MCP modern | GATE_PASSED | G5 PASS — isolated HTTP/OAuth process + v2 Stdio/HTTP, bounded contexts, fake-clock expiry, issuer and credential proofs | 2026-09-21 | 2026-09-21 | 155 files / 692 PASS + 4 expected later-phase RED; source/test TypeScript, build, G1 strict 186/0 PASS. Windows POSIX permission behavior remains conditional; live connector cutover and Docker/CI smoke not claimed. See R5 G5 closure record. |
-| R6 Persistence/perf/observability | IN_PROGRESS | G6 OPEN — R6.01 migration-only initialization VERIFIED; R6.02–R6.09 pending | 2026-09-21 | | R6.01 source/test TS, 156 files / 696 PASS + 4 expected later-phase RED, build, G1 187/0 PASS; isolated new/historical/corrupt/rollback fixture tests. See R6.01 checkpoint. |
+| R6 Persistence/perf/observability | IN_PROGRESS | G6 OPEN — R6.01 schema migration and R6.02 periodic class-aware retention VERIFIED; R6.03–R6.09 pending | 2026-09-21 | | R6.02 source/test TS, full 157 files / 699 PASS + 4 expected later-phase RED, production build and G1 strict 188/0 PASS; per-table policy, dry-run/report and periodic scheduler fixtures. See R6.02 checkpoint. |
 | R7 Config/deployment/CI | NOT_STARTED | — | | | |
 | R8 Verification/parallel/fuzz | NOT_STARTED | — | | | |
 | R9 Legacy deletion/docs/cutover | NOT_STARTED | — | | | |
@@ -56,9 +56,9 @@ Allowed phase status: `NOT_STARTED`, `IN_PROGRESS`, `BLOCKED`, `GATE_FAILED`, `G
 | Severity | Total | OPEN | TEST_ENCODED | IMPLEMENTING | IMPLEMENTED | VERIFIED_CLOSED | DEFERRED_BY_OWNER |
 |---|---:|---:|---:|---:|---:|---:|---:|
 | HIGH | 13 | 0 | 3 | 0 | 0 | 10 | 0 |
-| MEDIUM | 29 | 15 | 1 | 0 | 0 | 13 | 0 |
+| MEDIUM | 29 | 14 | 1 | 0 | 0 | 14 | 0 |
 | LOW | 12 | 11 | 0 | 0 | 0 | 1 | 0 |
-| **TOTAL** | **54** | **26** | **4** | **0** | **0** | **24** | **0** |
+| **TOTAL** | **54** | **25** | **4** | **0** | **0** | **25** | **0** |
 
 The detailed source is `20_FINDINGS_TRACEABILITY_MATRIX.md`; keep totals consistent.
 
@@ -68,8 +68,8 @@ The detailed source is `20_FINDINGS_TRACEABILITY_MATRIX.md`; keep totals consist
 
 ```text
 Completed phases: R0–R5 (G0–G5 VERIFIED PASS on isolated feature branch); R5.01–R5.12 code/fixture acceptance recorded in R5 G5 closure.
-Current phase: R6 IN_PROGRESS — R6.01 VERIFIED on isolated feature branch; R6.02 retention service is the next pending leaf. G6 stays OPEN until R6.02–R6.09 and the performance/observability acceptance criteria are verified.
-Findings: 24/54 VERIFIED_CLOSED (HIGH 10, MEDIUM 13, LOW 1); 26 OPEN, 4 TEST_ENCODED for later phases. HIGH-11/HIGH-12 and MED-03/LOW-07 remain cross-phase or platform-bound and are NOT closed by G5.
+Current phase: R6 IN_PROGRESS — R6.01–R6.02 VERIFIED on isolated feature branch; next pending leaf R6.03 representative metrics benchmark. G6 stays OPEN until R6.03–R6.09 and the performance/observability acceptance criteria are verified.
+Findings: 25/54 VERIFIED_CLOSED (HIGH 10, MEDIUM 14, LOW 1); 25 OPEN, 4 TEST_ENCODED for later phases. MED-18 closed by R6.02 retention fixtures. HIGH-11/HIGH-12 and MED-03/LOW-07 remain cross-phase or platform-bound and are NOT closed by G5.
 Gate: G0–G5 PASS on isolated branch; G6–G10 OPEN. HooshiX is NOT release-ready.
 Workspace: D:/workspace/hooshix-agent; isolated feature/r2-unified-tool-gateway-2026-09-20 branch.
 Local runtime DB observation (read-only SQLite query): schema migrations include v16; the running service may have applied migration automatically. This is NOT proof of a separately approved production migration rehearsal. No manual DB repair, deployment, push, merge, branch reset or removal of unrelated user files in this R5 work.
@@ -721,4 +721,17 @@ Finding IDs: architectural G1; no HIGH/MED/LOW finding independently closed.
 - **Isolated evidence:** `tests/core/r6-migration-only-schema.test.ts` verifies 0–16 ordered version history, repeated migration idempotence, SQLite `quick_check`, transactional rollback on a version-0 collision, preservation of a historical user row and unmarked version history, and fail-closed behavior for an unrelated existing SQLite schema without creating tables. Existing `tests/core/database-lifecycle.test.ts`, `tests/core/persistence-hardening.test.ts`, `tests/core/r4-file-backup-schema.test.ts`, and `tests/core/r4-project-canonical-identity.test.ts` also pass. Task `5199d957-50f6-4766-87c8-bd41513a79f7` passed TypeScript and 5 focused files / 26 tests.
 - **Full verification:** Task `5bff06fc-9d45-464d-9ee4-8dd68c2cdb1b`: source and test TypeScript PASS, all 156 Vitest files / 696 PASS + 4 expected RED assigned to later phases / zero unexpected failures; production build PASS; strict G1 187 scanned source files / zero violations PASS.
 - **Safety and scope:** Test subprocesses use marker-owned temporary databases; no manual migration of the live SQLite file, application restart, branch reset, deployment, push, merge, or mutation of unrelated backups, EAAP materials or prior recovery scripts. Existing production data migration/cutover requires separate operational approval and proof. Next planned leaf is R6.02 retention service.
+
+---
+
+## R6.02 — Periodic class-aware retention — VERIFIED 2026-09-22
+
+- **Decision:** R6.02 code/fixture acceptance VERIFIED on the isolated feature branch. G6 remains OPEN; the next leaf is R6.03 representative metrics-query benchmarking, followed by R6.04–R6.09.
+- **Explicit policy:** `src/adapters/outbound/persistence/sqlite/cleanup.adapter.ts` defines separate `toolCalls`, `checkpoints`, `recoveryEvents`, `approvals` and `restoredBackups` retention classes with independently validated whole-day lifetimes (default 90 days; optional per-class overrides through `createRetentionPolicy`). All SQL predicates are static and bound by cutoff; one SQLite transaction covers a deletion pass. Active task checkpoints, active recovery, unconsumed approvals, unrestored backups and backup records for absent files are preserved. Task plans, executions, OAuth's separate TTL repository, and other unlisted data have NO implicit deletion policy.
+- **Dry-run/report:** `runRetention({policy,nowMs,dryRun:true})` runs only COUNT queries and returns mode, per-class cutoff/count and total; delete mode returns the same report shape with actual affected rows. Legacy `cleanupAgentData(days)` retains its count-only return contract.
+- **Periodic scheduling:** `src/infrastructure/server/retention-scheduler.ts` provides startup + six-hour unref'd periodic cleanup with a cancellation handle, re-entrancy guard and error/report hooks. Both stdio and HTTP entrypoints register this scheduler using the existing `HOOSHIX_RETENTION_DAYS` setting. A logging failure does not alter the main server outcome; invalid/disabled legacy settings do not trigger cleanup. No live service was restarted, so operational cutover is not claimed.
+- **Isolated tests:** `tests/core/r6-retention-service.test.ts` verifies all five classes with old/recent, terminal/active and consumed/unconsumed fixture rows, nonmutating dry-run, idempotent actual deletion, per-class day overrides and input rejection, immediate/periodic execution, error continuation and stop. Task `0d490866-fd5d-42b8-bb1d-4725ce9eddb0`: source/test TypeScript PASS, three fixture files / 12 PASS.
+- **Full acceptance:** Task `17ac25db-6b19-40c6-9e62-10f08450d2da`: source/test TypeScript PASS; full 157 Vitest files / 699 PASS + 4 expected later-phase failures / 0 unexpected failures; production build PASS; strict G1 188 source files / zero violations PASS.
+- **Finding closure:** MED-18 (retention startup-only/incomplete) VERIFIED_CLOSED with the five-class dry-run/delete and periodic-scheduler regression evidence above. Finding matrix totals now 25/54 closed; HIGH 10/13, MEDIUM 14/29, LOW 1/12. MED-19 session metrics pruning remains R6.06 and is not silently included in this closure.
+- **Isolation:** Test runs use the Vitest dedicated test database and marker-owned child fixtures; the other assistant's existing untracked EAAP materials, runtime backups, diagnostic/recovery scripts and all active connector credentials are excluded. No manual live DB cleanup or migration, restart, push, merge or deployment. G6 and release readiness remain OPEN.
 

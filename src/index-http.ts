@@ -3,20 +3,24 @@ import { startHttpServer } from "./mcp/http-server.js";
 import { createRuntimeDependencies } from "./core/runtime/composition-root.js";
 import { restoreInterruptedTasks } from "./core/recovery/startup-recovery.js";
 import { recoverInterruptedTasks } from "./core/recovery/crash-recovery.js";
-import { cleanupAgentData } from "./core/memory/database.js";
+import { createRetentionPolicy } from "./core/memory/database/cleanup.js";
+import { startPeriodicRetention } from "./infrastructure/server/retention-scheduler.js";
 import { readLegacyRetentionDays } from "./infrastructure/config/legacy-retention.js";
 
 async function main() {
   console.error("Starting HooshiX Agent V1 (HTTP mode)");
 
   initializeDatabase();
-  // Retention cleanup — runs once at startup; keeps executions/tool_calls/
-  // file_backups/recovery_events from growing unboundedly (90-day retention).
+  // Run bounded, class-aware retention at startup and every six hours; never delete active records.
   const retentionDays = readLegacyRetentionDays();
   if (Number.isInteger(retentionDays) && retentionDays >= 1) {
-    const deleted = cleanupAgentData(retentionDays);
-    const total = Object.values(deleted).reduce((sum, n) => sum + n, 0);
-    if (total > 0) console.error(`🧹 Retention cleanup removed ${total} old row(s)`);
+    startPeriodicRetention({
+      policy:createRetentionPolicy(retentionDays),
+      onReport:report=>{
+        if(report.total>0)console.error("Retention cleanup removed "+report.total+" expired row(s)");
+      },
+      onError:error=>console.error("Retention cleanup failed:",error),
+    });
   }
   const deps = createRuntimeDependencies(); restoreInterruptedTasks(deps.recoveryProvider, deps.recoveryRepository);
 

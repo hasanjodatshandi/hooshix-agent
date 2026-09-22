@@ -48,7 +48,7 @@ Status values: `OPEN`, `TEST_ENCODED`, `IMPLEMENTING`, `IMPLEMENTED`, `VERIFIED_
 | MED-15 | Node/NVM PATH not reproducible | R7 | 17,18 | service-like preflight resolves exact supported Node/pnpm | OPEN |
 | MED-16 | Incompatible production runbooks | R7/R9 | 18,19 | one canonical runbook, legacy docs removed/deprecated | OPEN |
 | MED-17 | Metrics queries under-indexed/benchmarked | R6 | 13,14 | actual query EXPLAIN/latency at representative sizes | OPEN |
-| MED-18 | Retention startup-only/incomplete | R6 | 13,14,15 | periodic class-aware retention test | OPEN |
+| MED-18 | Retention startup-only/incomplete | R6 | 13,14,15 | periodic class-aware retention test | VERIFIED_CLOSED |
 | MED-19 | Session metrics accumulation | R6/R5 | 14,15 | churn test proves bounded active state | OPEN |
 | MED-20 | PRAGMA on hot path | R6 | 13,14,15 | grep/architecture test + benchmark confirms removed | OPEN |
 | MED-21 | Exploits lack regressions | R0/R8 | 16 | all HIGH exploit tests permanent | OPEN |
