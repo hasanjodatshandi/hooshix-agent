@@ -2,7 +2,7 @@
 
 **Project:** `D:/workspace/hooshix-agent`  
 **Program:** Full Hexagonal/Clean redesign + complete consolidated-audit remediation  
-**Status:** R0 GATE_PASSED; R1 GATE_PASSED (G1 PASS); R2 GATE_PASSED (G2 PASS on isolated feature branch); R3 GATE_PASSED (G3 PASS on isolated feature branch, 2026-09-21). R4 GATE_PASSED (R4.01–R4.07 VERIFIED; G4 PASS on isolated feature branch, 2026-09-21). R5 GATE_PASSED (R5.01–R5.12 VERIFIED; G5 PASS on isolated feature branch, 2026-09-21); R6–R10 NOT_STARTED.
+**Status:** R0 GATE_PASSED; R1 GATE_PASSED (G1 PASS); R2 GATE_PASSED (G2 PASS on isolated feature branch); R3 GATE_PASSED (G3 PASS on isolated feature branch, 2026-09-21). R4 GATE_PASSED (R4.01–R4.07 VERIFIED; G4 PASS on isolated feature branch, 2026-09-21). R5 GATE_PASSED (R5.01–R5.12 VERIFIED; G5 PASS on isolated feature branch, 2026-09-21); R6 IN_PROGRESS (R6.01 VERIFIED on isolated branch); R7–R10 NOT_STARTED.
 **Owner directive:** all 13 HIGH, 29 MEDIUM, 12 LOW findings must be fixed and verified.
 
 This file is intentionally a live execution ledger. The implementing assistant updates it during implementation. Do not erase previous evidence; append/update status while preserving history.
@@ -41,7 +41,7 @@ Notes on pre-existing dirty changes: none at R0 baseline; source hardening alrea
 | R3 Task/recovery/idempotency/lease | GATE_PASSED | G3 PASS — R3.01–R3.10 VERIFIED on isolated branch; no release/deployment claim | 2026-09-20 | 2026-09-21 | 142 files / 639 PASS + 11 expected RED; Typecheck, Build, strict G1 183/0 candidates, live-owner crash-recovery and real 2-process lease proofs PASS; see G3 completion record |
 | R4 Data integrity/compensation | GATE_PASSED | G4 PASS — immutable file restore, canonical project identity, clean Git snapshots/rollback and truthful package manifest compensation VERIFIED on isolated feature branch | 2026-09-21 | 2026-09-21 | 148 files / 673 PASS + 7 expected RED assigned to R5–R10; Typecheck, Build and strict G1 PASS; no live migration or deployment |
 | R5 HTTP/OAuth/MCP modern | GATE_PASSED | G5 PASS — isolated HTTP/OAuth process + v2 Stdio/HTTP, bounded contexts, fake-clock expiry, issuer and credential proofs | 2026-09-21 | 2026-09-21 | 155 files / 692 PASS + 4 expected later-phase RED; source/test TypeScript, build, G1 strict 186/0 PASS. Windows POSIX permission behavior remains conditional; live connector cutover and Docker/CI smoke not claimed. See R5 G5 closure record. |
-| R6 Persistence/perf/observability | NOT_STARTED | — | | | |
+| R6 Persistence/perf/observability | IN_PROGRESS | G6 OPEN — R6.01 migration-only initialization VERIFIED; R6.02–R6.09 pending | 2026-09-21 | | R6.01 source/test TS, 156 files / 696 PASS + 4 expected later-phase RED, build, G1 187/0 PASS; isolated new/historical/corrupt/rollback fixture tests. See R6.01 checkpoint. |
 | R7 Config/deployment/CI | NOT_STARTED | — | | | |
 | R8 Verification/parallel/fuzz | NOT_STARTED | — | | | |
 | R9 Legacy deletion/docs/cutover | NOT_STARTED | — | | | |
@@ -68,7 +68,7 @@ The detailed source is `20_FINDINGS_TRACEABILITY_MATRIX.md`; keep totals consist
 
 ```text
 Completed phases: R0–R5 (G0–G5 VERIFIED PASS on isolated feature branch); R5.01–R5.12 code/fixture acceptance recorded in R5 G5 closure.
-Current phase: R5 GATE_PASSED; next planned phase R6 NOT_STARTED. No R6 changes in this gate record.
+Current phase: R6 IN_PROGRESS — R6.01 VERIFIED on isolated feature branch; R6.02 retention service is the next pending leaf. G6 stays OPEN until R6.02–R6.09 and the performance/observability acceptance criteria are verified.
 Findings: 24/54 VERIFIED_CLOSED (HIGH 10, MEDIUM 13, LOW 1); 26 OPEN, 4 TEST_ENCODED for later phases. HIGH-11/HIGH-12 and MED-03/LOW-07 remain cross-phase or platform-bound and are NOT closed by G5.
 Gate: G0–G5 PASS on isolated branch; G6–G10 OPEN. HooshiX is NOT release-ready.
 Workspace: D:/workspace/hooshix-agent; isolated feature/r2-unified-tool-gateway-2026-09-20 branch.
@@ -711,3 +711,14 @@ Finding IDs: architectural G1; no HIGH/MED/LOW finding independently closed.
 - **Finding closure:** HIGH-04, MED-01, MED-22 and MED-29 upgraded to VERIFIED_CLOSED with persistent real HTTP/OAuth process and v2 client fixtures. Matrix total is 24/54 VERIFIED_CLOSED; HIGH 10/13, MEDIUM 13/29, LOW 1/12; 26 OPEN and 4 TEST_ENCODED for subsequent phases.
 - **Explicit remaining work outside G5:** HIGH-11/12 retain Docker/Compose/CI/config or real container smoke acceptance in R7; MED-03 retains independent expensive-operation concurrency evidence and R6 performance limits; LOW-07 requires actual POSIX owner-only creation/rejection proof on a POSIX-capable CI target (Windows fixture only checks available platform behavior). These findings are NOT marked closed. R8 retains repeated release-stage interoperability and parallel/fuzz gates; R9 owns v1 SDK compatibility retirement; production OAuth reauthorization and migration/cutover require a separate controlled operational plan.
 - **Isolation:** No live HooshiX server restart, production database migration/repair, existing-client re-registration, secret rotation, Git reset/merge/push, deployment or destructive cleanup. Existing untracked EAAP package, database backups and the other assistant's diagnostic/recovery scripts remain excluded from this phase checkpoint.
+
+---
+
+## R6.01 — Migration-only initial schema — VERIFIED 2026-09-21
+
+- **Decision:** R6.01 verified on the isolated feature branch; G6 remains OPEN, with R6.02–R6.09 and G6 benchmarks/observability evidence outstanding.
+- **Architecture:** The SQLite connection adapter delegates new-file base table creation to `src/adapters/outbound/persistence/sqlite/base-schema.migration.ts`, whose transaction installs the baseline and records version 0 atomically. Only previously absent database files get this baseline; existing databases retain historical versions 1–16 without a retroactive version-0 marker or unrequested repair. Incremental `ALTER TABLE` operations remain inside `src/core/memory/database/migrations.ts`, not the normal repository/tool path. Database singleton publication occurs only after initialization succeeds; a failed initialization closes its connection.
+- **Isolated evidence:** `tests/core/r6-migration-only-schema.test.ts` verifies 0–16 ordered version history, repeated migration idempotence, SQLite `quick_check`, transactional rollback on a version-0 collision, preservation of a historical user row and unmarked version history, and fail-closed behavior for an unrelated existing SQLite schema without creating tables. Existing `tests/core/database-lifecycle.test.ts`, `tests/core/persistence-hardening.test.ts`, `tests/core/r4-file-backup-schema.test.ts`, and `tests/core/r4-project-canonical-identity.test.ts` also pass. Task `5199d957-50f6-4766-87c8-bd41513a79f7` passed TypeScript and 5 focused files / 26 tests.
+- **Full verification:** Task `5bff06fc-9d45-464d-9ee4-8dd68c2cdb1b`: source and test TypeScript PASS, all 156 Vitest files / 696 PASS + 4 expected RED assigned to later phases / zero unexpected failures; production build PASS; strict G1 187 scanned source files / zero violations PASS.
+- **Safety and scope:** Test subprocesses use marker-owned temporary databases; no manual migration of the live SQLite file, application restart, branch reset, deployment, push, merge, or mutation of unrelated backups, EAAP materials or prior recovery scripts. Existing production data migration/cutover requires separate operational approval and proof. Next planned leaf is R6.02 retention service.
+
