@@ -8,7 +8,7 @@ import { getTaskPlan, saveTaskPlan } from "../../src/core/memory/task-repository
 describe("persistence hardening", () => {
   it("records ordered schema migrations and creates a consistent backup", async () => {
     const versions = withAgentDatabase((db) => db.prepare("SELECT version FROM schema_migrations ORDER BY version").all()) as Array<{ version: number }>;
-    expect(versions.map((row) => row.version)).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]);
+    expect(versions.map((row) => row.version)).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17]);
     const destination = path.resolve("data/test-backups/agent.db.bak");
     try {
       expect(await backupAgentDatabase(destination)).toBe(destination);

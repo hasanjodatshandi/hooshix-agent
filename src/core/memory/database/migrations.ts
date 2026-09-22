@@ -339,4 +339,11 @@ export function runMigrations(db: Database.Database): void {
     `);
   });
 
+  // R6.04: measured at 250k representative tool calls: task/category-scoped
+  // Metrics queries use the leading task_id/category keys and time ordering.
+  // Existing historical data is indexed transactionally by migrate().
+  migrate(db,17,"r6-metrics-task-category-created-index",()=>{
+    db.exec("CREATE INDEX idx_tool_calls_task_category_created_at ON tool_calls(task_id,category,created_at DESC)");
+  });
+
 }
