@@ -2,11 +2,12 @@ import { createRequire } from "node:module";
 import { afterEach, describe, expect, it } from "vitest";
 import { createDisposableFixture, spawnDisposableNode, type DisposableFixture } from "../helpers/r0-disposable-fixtures.js";
 import { runMigrations } from "../../src/core/memory/database/migrations.js";
+import { applyBaseSchemaMigration } from "../../src/adapters/outbound/persistence/sqlite/base-schema.migration.js";
 
 /**
  * The first test establishes a REAL two-OS-process shared SQLite race harness
  * isolated inside a disposable DB. It does NOT imply the production Task
- * scheduler has a durable lease. The second RED contract tracks that gap.
+ * scheduler has a durable lease. The second regression checks the actual R3 lease schema.
  */
 let fixture: DisposableFixture | undefined;
 afterEach(() => { fixture?.cleanup(); fixture = undefined; });
@@ -41,7 +42,7 @@ function compete(dbPath: string, owner: string): Promise<{ won: boolean; pid: nu
   });
 }
 
-describe("HIGH-13 real two-process fixture and pre-remediation lease contract", () => {
+describe("HIGH-13 real two-process fixture and migrated durable lease contract", () => {
   it("runs two OS processes against one isolated WAL DB with exactly one atomic write winner", async () => {
     fixture = createDisposableFixture("twoprocess");
     const db = fixture.openDatabase();
@@ -61,13 +62,14 @@ describe("HIGH-13 real two-process fixture and pre-remediation lease contract", 
     } finally { verify.close(); }
   }, 30000);
 
-  it.fails("HIGH-13: production schema must have a durable fenced task execution lease before R3 cutover", () => {
+  it("HIGH-13: production schema has a durable fenced task execution lease after R3 cutover", () => {
     fixture = createDisposableFixture("lease-schema");
     const db = fixture.openDatabase();
     try {
+      applyBaseSchemaMigration(db);
       runMigrations(db);
       const tables = db.prepare("SELECT name FROM sqlite_master WHERE type='table'").all() as Array<{ name: string }>;
-      expect(tables.some(({name}) => name === "task_execution_leases")).toBe(true);
+      expect(tables.some(({name}) => name === "task_leases")).toBe(true);
     } finally { db.close(); }
   });
 });

@@ -23,7 +23,7 @@ afterEach(() => {
 });
 
 describe("R0 MED-05 business effect versus audit failure contract", () => {
-  it.fails("a successful mutation must not report business failure solely because its audit sink failed", async () => {
+  it("a successful mutation must not report business failure solely because its audit sink failed", async () => {
     fixture = createDisposableFixture("auditsink");
     addWorkspaceRoots([fixture.root]);
     setActiveWorkspace(fixture.root);
@@ -31,5 +31,15 @@ describe("R0 MED-05 business effect versus audit failure contract", () => {
     const result = await createWorkspaceFile(target, "EFFECT_COMPLETED");
     expect(result.created).toBe(true);
     expect(fs.readFileSync(target, "utf8")).toBe("EFFECT_COMPLETED");
+  });
+  it("preserves the original business error if failure-audit persistence also rejects", async () => {
+    fixture = createDisposableFixture("auditerror");
+    addWorkspaceRoots([fixture.root]);
+    setActiveWorkspace(fixture.root);
+    const target = path.join(fixture.root, "already-exists.txt");
+    fs.writeFileSync(target, "ORIGINAL", {flag:"wx"});
+    await expect(createWorkspaceFile(target, "MUST_NOT_OVERWRITE"))
+      .rejects.toThrow("Target already exists");
+    expect(fs.readFileSync(target, "utf8")).toBe("ORIGINAL");
   });
 });

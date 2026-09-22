@@ -7,6 +7,7 @@ import { isSensitivePath } from "../../application/services/sensitive-path-polic
 import { policyDecisionPoint } from "../../core/governance/policy-decision-point.js";
 import { logFileAction } from "../../memory/file-audit.js";
 import { resolveCorrelationId } from "../../core/runtime/correlation-id.js";
+import { bestEffortAsyncTelemetry } from "../../core/trace/telemetry-degradation.js";
 import { SearchBudgetMeter, workspaceSearchLimiter } from "./search-budget.js";
 import { persistFileBackup, persistAbsentFileBackup, getStoredIdempotentResponse, persistIdempotentResponse, getStoredFileBackup, markFileBackupRestored, recordFileBackupPostcondition } from "../../adapters/outbound/persistence/sqlite/repositories/file-backup-idempotency.adapter.js";
 
@@ -70,14 +71,18 @@ export interface FileMutationResult {
 
 async function audit<T>(action: string, targetPath: string, correlationId: string | undefined, operation: (traceId: string) => Promise<T>): Promise<T> {
   const traceId = resolveCorrelationId(correlationId);
+  let result:T;
   try {
-    const result = await operation(traceId);
-    await logFileAction(action, targetPath, traceId, "success");
-    return result;
+    result = await operation(traceId);
   } catch (error) {
-    await logFileAction(action, targetPath, traceId, "failed");
+    // The audit sink must never mask the ORIGINAL business failure.
+    await bestEffortAsyncTelemetry(() => logFileAction(action, targetPath, traceId, "failed"));
     throw error;
   }
+  // The external effect is already known to have succeeded: a telemetry
+  // failure must not report the effect as failed or cause a duplicate retry.
+  await bestEffortAsyncTelemetry(() => logFileAction(action, targetPath, traceId, "success"));
+  return result;
 }
 
 async function assertReadableSize(filePath: string): Promise<void> {

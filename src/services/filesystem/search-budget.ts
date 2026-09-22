@@ -9,8 +9,12 @@ export const SEARCH_LIMITS=Object.freeze({
   maxElapsedMs:10_000,
   maxConcurrent:4
 });
-export type SearchBudgetLimits=Readonly<Pick<typeof SEARCH_LIMITS,
-  "maxScannedFiles"|"maxScannedBytes"|"maxResults"|"maxElapsedMs">>;
+export type SearchBudgetLimits=Readonly<{
+  maxScannedFiles:number;
+  maxScannedBytes:number;
+  maxResults:number;
+  maxElapsedMs:number;
+}>;
 
 /** Monotonic, aggregate budget shared by every directory and file in one search.
  * Count BEFORE reading each file to avoid returning partial over-budget results.

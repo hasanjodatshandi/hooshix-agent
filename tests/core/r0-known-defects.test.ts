@@ -9,7 +9,7 @@ import { readLegacyHttpAccessToken } from "../../src/infrastructure/config/legac
  * - It is NOT a passing security regression.
  * - It MUST be changed into an ordinary it(...) when the corresponding
  *   implementation is fixed; do not delete or ignore the assertion.
- * - G0/G2/G7 and public HTTP release remain blocked while any .fails remains.
+ * - Historical G0/G2 contracts are separately verified; the remaining HIGH-10\n *   expected failure blocks G7/container release, not the already-passed G0/G2 gates.
  */
 describe("R0 intentionally failing pre-remediation contracts", () => {
   it("HIGH-03: git diff --no-index cannot bypass scope policy as an auto-approved read", () => {

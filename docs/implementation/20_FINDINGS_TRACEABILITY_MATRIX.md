@@ -55,7 +55,7 @@ Status values: `OPEN`, `TEST_ENCODED`, `IMPLEMENTING`, `IMPLEMENTED`, `VERIFIED_
 | MED-22 | HTTP/OAuth transport under-tested | R5/R8 | 10,16,31 | process/in-process modern HTTP E2E release gate | VERIFIED_CLOSED |
 | MED-23 | Global coverage hides critical gaps | R8 | 16 | critical per-file/glob thresholds | OPEN |
 | MED-24 | Test harness not parallel-isolated | R8 | 16 | 2/4 worker repeated runs after unique fixture state | OPEN |
-| MED-25 | Prometheus HELP/TYPE malformed | R6 | 15,16 | golden grammar + promtool where available | OPEN |
+| MED-25 | Prometheus HELP/TYPE malformed | R6 | 15,16 | golden grammar + promtool where available | VERIFIED_CLOSED |
 | MED-26 | Dependency inversion incomplete | R1-R9 | 02,03,06,07,22 | architecture import gates; zero forbidden edges | OPEN |
 | MED-27 | Runtime/loop broad responsibilities | R1-R9 | 02,05,06,11 | use-case/port split + architecture tests | OPEN |
 | MED-28 | Direct/Task adapter drift | R2/R9 | 02,08,19 | one catalog + one ExecuteTool gateway + completeness test | VERIFIED_CLOSED |
