@@ -60,6 +60,7 @@ async function stop(child:ChildProcess):Promise<void>{
 function drainLog(child:ChildProcess):string{
   let out="";
   for(const stream of [child.stdout,child.stderr]){
+    if(!stream)continue;
     const chunks:Buffer[]=[];
     let chunk:Buffer|null=null;
     while((chunk=stream.read())!==null)chunks.push(chunk);
@@ -78,7 +79,8 @@ describe("R9.01 adapter boundary (SQL confined to persistence adapters)",()=>{
     const child=startServer(fixture,port,crypto.randomBytes(32).toString("base64url"));
     try{
       const base=`http://127.0.0.1:${port}`;
-      expect(await awaitLive(base,child),()=>drainLog(child)).toBe(true);
+      const booted=await awaitLive(base,child);
+      expect(booted,booted?"":"server failed to boot: "+drainLog(child)).toBe(true);
       const ready=await fetch(base+"/health/ready");
       expect(ready.status).toBe(200);
       const body=await ready.json() as {status:string};
