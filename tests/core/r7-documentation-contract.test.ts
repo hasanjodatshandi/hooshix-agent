@@ -6,12 +6,15 @@ import { ALL_REGISTERED_TOOLS } from "../../src/application/services/operation-c
  * R7.10 — documentation/tool-catalog contract. The README is the public tool
  * reference; it must never advertise a tool the gateway does not actually
  * register, because a stale entry would mislead an integrator into calling a
- * non-existent operation. (The reverse — README omitting some tools — is a
- * completeness gap owned by R9, not a safety defect.)
+ * non-existent operation.
  *
- * The catalog is the single source of truth: this reads the SAME
- * ALL_REGISTERED_TOOLS the MCP `tools/list` response is generated from, so the
- * README is checked against the runtime reality rather than a hand-copied list.
+ * R9.04 — completeness: the reverse direction is now ALSO enforced. A README
+ * that silently omits newly registered tools hides them from integrators, and
+ * that is how the original five-tool gap (project_get/delete/archive,
+ * memory_get/delete) went unnoticed. The catalog is the single source of truth:
+ * these tests read the SAME ALL_REGISTERED_TOOLS the MCP `tools/list` response
+ * is generated from, so the README is checked against the runtime reality
+ * rather than a hand-copied list.
  */
 describe("R7.10 README tool catalog contract", () => {
   it("every tool named in README is really registered (no stale documentation)", () => {
@@ -27,6 +30,16 @@ describe("R7.10 README tool catalog contract", () => {
     expect(mentioned.length, "README must reference at least the core tool set").toBeGreaterThan(0);
     const stale = [...new Set(mentioned)].filter((name) => !registered.has(name));
     expect(stale).toEqual([]);
+  });
+
+  it("R9.04 every registered tool is documented in the README (no silent omissions)", () => {
+    const readme = fs.readFileSync("README.md", "utf8");
+    const mentioned = new Set([...readme.matchAll(/`([a-z_]+)`/g)].map((m) => m[1]));
+    const unlisted = (ALL_REGISTERED_TOOLS as readonly string[]).filter((t) => !mentioned.has(t));
+    // The README tool list is the public contract. A tool that ships but is not
+    // listed is invisible to an integrator reading the docs; the five-tool gap
+    // fixed in R9.04 is exactly how this regresses.
+    expect(unlisted, `README omits registered tools: ${unlisted.join(", ")}`).toEqual([]);
   });
 
   it("README command allowlist matches the executable allowlist in code", () => {
