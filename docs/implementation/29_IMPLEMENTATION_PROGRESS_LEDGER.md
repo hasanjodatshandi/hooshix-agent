@@ -2,7 +2,7 @@
 
 **Project:** `D:/workspace/hooshix-agent`  
 **Program:** Full Hexagonal/Clean redesign + complete consolidated-audit remediation  
-**Status:** R0 GATE_PASSED; R1 GATE_PASSED (G1 PASS); R2 GATE_PASSED (G2 PASS on isolated feature branch); R3 GATE_PASSED (G3 PASS on isolated feature branch, 2026-09-21). R4 GATE_PASSED (R4.01–R4.07 VERIFIED; G4 PASS on isolated feature branch, 2026-09-21). R5 GATE_PASSED (R5.01–R5.12 VERIFIED; G5 PASS on isolated feature branch, 2026-09-21); R6 IN_PROGRESS (R6.01–R6.09 code/fixture verified; final TypeScript compiler and test suite PASS; G6 performance trade-off acceptance pending); R7–R10 NOT_STARTED.
+**Status:** R0 GATE_PASSED; R1 GATE_PASSED (G1 PASS); R2 GATE_PASSED (G2 PASS on isolated feature branch); R3 GATE_PASSED (G3 PASS on isolated feature branch, 2026-09-21). R4 GATE_PASSED (R4.01–R4.07 VERIFIED; G4 PASS on isolated feature branch, 2026-09-21). R5 GATE_PASSED (R5.01–R5.12 VERIFIED; G5 PASS on isolated feature branch, 2026-09-21); R6 GATE_PASSED (R6.01–R6.09 verified; measured v17 query/write trade-off explicitly accepted by owner, 2026-09-23); R7 IN_PROGRESS (R7.04 HIGH-10 implementation started); R8–R10 NOT_STARTED.
 **Owner directive:** all 13 HIGH, 29 MEDIUM, 12 LOW findings must be fixed and verified.
 
 This file is intentionally a live execution ledger. The implementing assistant updates it during implementation. Do not erase previous evidence; append/update status while preserving history.
@@ -41,8 +41,8 @@ Notes on pre-existing dirty changes: none at R0 baseline; source hardening alrea
 | R3 Task/recovery/idempotency/lease | GATE_PASSED | G3 PASS — R3.01–R3.10 VERIFIED on isolated branch; no release/deployment claim | 2026-09-20 | 2026-09-21 | 142 files / 639 PASS + 11 expected RED; Typecheck, Build, strict G1 183/0 candidates, live-owner crash-recovery and real 2-process lease proofs PASS; see G3 completion record |
 | R4 Data integrity/compensation | GATE_PASSED | G4 PASS — immutable file restore, canonical project identity, clean Git snapshots/rollback and truthful package manifest compensation VERIFIED on isolated feature branch | 2026-09-21 | 2026-09-21 | 148 files / 673 PASS + 7 expected RED assigned to R5–R10; Typecheck, Build and strict G1 PASS; no live migration or deployment |
 | R5 HTTP/OAuth/MCP modern | GATE_PASSED | G5 PASS — isolated HTTP/OAuth process + v2 Stdio/HTTP, bounded contexts, fake-clock expiry, issuer and credential proofs | 2026-09-21 | 2026-09-21 | 155 files / 692 PASS + 4 expected later-phase RED; source/test TypeScript, build, G1 strict 186/0 PASS. Windows POSIX permission behavior remains conditional; live connector cutover and Docker/CI smoke not claimed. See R5 G5 closure record. |
-| R6 Persistence/perf/observability | IN_PROGRESS | G6 OPEN — R6.01–R6.09 checkpoints implemented; compiler and regression PASS; R6.04 index write-cost trade-off and production-workload acceptance unresolved | 2026-09-21 | | HEAD 40fdcb1 includes the R0–R6 reconciliation on top of R6.07 checkpoint 412ca3e; source/test TypeScript PASS (task 0e6308a3), 163 files / 714 PASS + 1 expected R7 HIGH-10 RED (audit reconciliation task 055c74e0); earlier 711+3 was superseded after repairing MED-05 and HIGH-13 fixtures, build and G1 strict 189/0 PASS. R6.04 54–128% measured fixture write overhead still requires a documented workload/acceptance decision; G6 NOT PASSED. |
-| R7 Config/deployment/CI | NOT_STARTED | — | | | |
+| R6 Persistence/perf/observability | GATE_PASSED | G6 PASS — R6.01–R6.09 verified; owner explicitly accepted the measured v17 query/write trade-off | 2026-09-21 | 2026-09-23 | Full validation: source/test TypeScript PASS, 163 files / 714 PASS + 1 expected R7 HIGH-10 RED / 0 unexpected failures, build PASS, strict G1 189/0 PASS. Pinned 250k A/B preserves result/integrity and filtered query improves ~45–76x; five of six paired write medians exceed +20%, explicitly accepted as residual R6 risk on 2026-09-23. No live migration/deployment implied. |
+| R7 Config/deployment/CI | IN_PROGRESS | G7 OPEN — R7.04 HIGH-10 implementation started; full R7.01–R7.10 and clean-checkout/container/CI acceptance pending | 2026-09-23 | | Docker frozen-install fallback removed; focused HIGH-10 contract and production TypeScript build PASS. |
 | R8 Verification/parallel/fuzz | NOT_STARTED | — | | | |
 | R9 Legacy deletion/docs/cutover | NOT_STARTED | — | | | |
 | R10 Final release validation | NOT_STARTED | — | | | |
@@ -55,10 +55,10 @@ Allowed phase status: `NOT_STARTED`, `IN_PROGRESS`, `BLOCKED`, `GATE_FAILED`, `G
 
 | Severity | Total | OPEN | TEST_ENCODED | IMPLEMENTING | IMPLEMENTED | VERIFIED_CLOSED | DEFERRED_BY_OWNER |
 |---|---:|---:|---:|---:|---:|---:|---:|
-| HIGH | 13 | 0 | 3 | 0 | 0 | 10 | 0 |
+| HIGH | 13 | 0 | 2 | 0 | 1 | 10 | 0 |
 | MEDIUM | 29 | 10 | 0 | 0 | 0 | 19 | 0 |
 | LOW | 12 | 11 | 0 | 0 | 0 | 1 | 0 |
-| **TOTAL** | **54** | **21** | **3** | **0** | **0** | **30** | **0** |
+| **TOTAL** | **54** | **21** | **2** | **0** | **1** | **30** | **0** |
 
 The detailed source is `20_FINDINGS_TRACEABILITY_MATRIX.md`; keep totals consistent.
 
@@ -835,6 +835,21 @@ Finding IDs: architectural G1; no HIGH/MED/LOW finding independently closed.
 - Pinned v16/current v17 temporary-fixture repeat Task `3d075107-05b8-40ae-ac35-cffb65f37dff`: two PASS, 250k rows each, real Metrics adapter, identical normalized payloads, `quick_check=ok` and task/category/time index plan. Filtered query improved ~47.6x/~55.6x; v17 3,000-row insert medians regressed +40.7%/+34.9%. Together with original +54.2%/+54.9%/+127.8% and one noisy inverse follow-up run, 5/6 matched samples show a >20% write penalty. See `R6_G6_WORKLOAD_EVIDENCE_2026-09-23.md` for sample data and limitations.
 - Read-only existing `agent_metrics` observation: three preceding UTC days contained 4,149 / 1,782 / 2,118 tool-call records, respectively; maximum in the last complete day was 58 calls/minute and five calls in one timestamp second. This is historical local/development traffic, **not** an accepted future public workload or per-autocommit latency measurement.
 - **G6 IN_PROGRESS, NOT PASS:** all R6 functional/compiler/build/G1 gates remain verified, but existing scope's real v17 query/write acceptance still needs an owner-backed operating envelope/explicit risk decision. No change to candidate index, matrix finding statuses or stage count. Do not start R7 on this evidence alone.
+
+### G6 owner acceptance and phase closure — 2026-09-23
+
+- Owner decision: **Option 1 accepted** — retain migration v17 index `(task_id, category, created_at DESC)` and accept its measured write-maintenance cost in exchange for the verified filtered Metrics query improvement.
+- Residual risk is explicit, not erased: 5/6 paired write medians showed >20% synthetic regression; global/paged timing is noisy; observed local traffic is not a future production SLO. G10 migration rehearsal and later deployment/release gates remain mandatory.
+- **R6 GATE_PASSED / G6 PASS on isolated feature branch.** R6.01–R6.09 are complete under the existing Definition of Done because the material local regression is now explained, measured, documented and explicitly accepted by the owner.
+- No live DB migration, service restart, deployment, merge, push or release was performed by this acceptance. **Next planned phase: R7 Config / Deployment / CI.**
+
+### R7.04 checkpoint — HIGH-10 implementation started (2026-09-23)
+
+- Scope stayed inside existing R7.04. Docker builder install is now exactly `pnpm install --frozen-lockfile`; production install is exactly `pnpm install --prod --frozen-lockfile`. The permissive `|| pnpm install` fallback was removed from both stages.
+- Existing R0 HIGH-10 contract was promoted from `it.fails(...)` to an ordinary permanent regression. Focused result: `tests/core/r0-known-defects.test.ts` **5/5 PASS**. Production TypeScript build PASS. Task: `21d0968c-6513-408c-b6a5-f025011f3497`.
+- Matrix state is **IMPLEMENTED**, not yet VERIFIED_CLOSED: the R7 acceptance contract also requires a real frozen-install/container failure proof. That proof and the remaining R7.01–R7.10 work are still pending. No Docker daemon result, clean-checkout CI, deployment, push or merge is claimed.
+
+
 
 ### G6 experimental index alternatives — isolated fixtures only (2026-09-23)
 

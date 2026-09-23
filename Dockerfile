@@ -7,7 +7,7 @@ WORKDIR /app
 
 # Install dependencies (cached layer)
 COPY package.json pnpm-lock.yaml* ./
-RUN pnpm install --frozen-lockfile 2>/dev/null || pnpm install
+RUN pnpm install --frozen-lockfile
 
 # Copy source and build
 COPY tsconfig.json ./
@@ -23,7 +23,7 @@ WORKDIR /app
 
 # Install production dependencies only
 COPY package.json pnpm-lock.yaml* ./
-RUN pnpm install --prod --frozen-lockfile 2>/dev/null || pnpm install --prod
+RUN pnpm install --prod --frozen-lockfile
 
 # Copy built output
 COPY --from=builder /app/dist ./dist

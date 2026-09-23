@@ -19,7 +19,7 @@ describe("R0 intentionally failing pre-remediation contracts", () => {
     expect(["blocked", "approval_required"]).toContain(decision);
   });
 
-  it.fails("HIGH-10: Dockerfile must never fall back from a failed frozen-lockfile install", () => {
+  it("HIGH-10: Dockerfile must never fall back from a failed frozen-lockfile install", () => {
     const dockerfile = fs.readFileSync(path.resolve("Dockerfile"), "utf8");
     expect(dockerfile).not.toMatch(/\bRUN\s+pnpm\s+install[^\r\n]*\|\|\s*pnpm\s+install/);
   });

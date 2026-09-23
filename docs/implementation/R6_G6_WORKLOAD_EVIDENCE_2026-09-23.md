@@ -61,3 +61,17 @@ All 2,118 calls from the last complete period were read through five 500-result 
 **Extrapolation boundary:** Even a small per-row index-maintenance cost can be material to write-heavy future use. Batch measurements do **not** establish per-autocommit latency, disk saturation, event-loop p95, planned public traffic, or any future workload SLO. Historical current-local activity does not constitute owner acceptance of v17 for production deployment. Do not use the current-low observed traffic to silently waive the G6 >20% material-regression review.
 
 **Current G6 decision:** All functional, migration, query-plan, typecheck, full-test, build and static architecture evidence remains PASS. The v17 query-vs-write performance choice is documented but **NOT OWNER-ACCEPTED**. G6 stays OPEN pending explicit acceptance of the measured overhead for an agreed deployment workload or an owner-directed, separately verified existing-scope code alternative; no live DB migration, workload replay against live data, new phase or index change is authorized by this report.
+
+## Owner acceptance and G6 closure — 2026-09-23
+
+The project owner explicitly selected **Option 1: accept the measured v17 trade-off** after the evidence above was presented. This is acceptance of the known R6.04 index-maintenance overhead in exchange for the measured task/category/date Metrics query improvement; it is **not** a claim that the write penalty disappeared.
+
+Accepted residual risk:
+- five of six paired benchmark medians showed >20% synthetic 3,000-row insert regression; original repeats were +54.2%, +54.9%, +127.8%, and the two latest confirmation repeats were +40.7% and +34.9%;
+- the same selected index improved the intended filtered Metrics query by ~45–76x while preserving normalized results and integrity;
+- global/paged timing remains noisy and must continue to be observed;
+- current local/development traffic is not a production SLO and does not prove future peak capacity;
+- G10 still requires a migration rehearsal on a copy of current data and all later release gates. This acceptance does not authorize a live migration, deployment, merge or release.
+
+With this explicit owner disposition, the G6 requirement **“no unexplained >20% regression in key local baseline unless justified”** is satisfied as a documented, measured and owner-accepted query/write trade-off. R6.01–R6.09 implementation/evidence and the previously recorded full validation therefore satisfy **G6 PASS on the isolated feature branch**. R7 may start according to the existing phased backlog; public/release readiness remains false until later gates pass.
+
