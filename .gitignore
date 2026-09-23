@@ -3,6 +3,7 @@ node_modules/
 dist/
 coverage/
 data/*.db*
+data/test-*
 data/release-validation/
 data/test-logs/
 /database/

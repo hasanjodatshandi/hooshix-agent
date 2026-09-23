@@ -6,6 +6,7 @@ import {writeWorkspaceFile,modifyWorkspaceFile,createWorkspaceFile,deleteWorkspa
 import {runWithPolicyApproval} from "../../src/core/governance/policy-decision-point.js";
 import {withAgentDatabase,backupAgentDatabase,runMigrations} from "../../src/core/memory/database.js";
 import {createDisposableFixture,type DisposableFixture} from "../helpers/r0-disposable-fixtures.js";
+import {RUNTIME_FILES_ROOT} from "../helpers/runtime-files.js";
 const sha=(content:string)=>createHash("sha256").update(content).digest("hex");
 let fixture:DisposableFixture|undefined;
 afterEach(()=>{fixture?.cleanup();fixture=undefined;});
@@ -18,7 +19,7 @@ function backup(id:string):BackupRow {
 }
 describe("R4.01 immutable, complete file snapshot schema",()=>{
   it("captures existing-file content, absolute target, byte-exact hash, pre and observed post revision on a write",async()=>{
-    const file="tests/runtime-files/r4-existing-"+randomUUID()+".txt";
+    const file=RUNTIME_FILES_ROOT+"/r4-existing-"+randomUUID()+".txt";
     try{
       await writeWorkspaceFile(file,"before");
       const result=await writeWorkspaceFile(file,"after");
@@ -43,7 +44,7 @@ describe("R4.01 immutable, complete file snapshot schema",()=>{
     }finally{await fs.rm(file,{force:true});}
   });
   it("represents an absent pre-state without treating an empty buffer as a previously existing file",async()=>{
-    const file="tests/runtime-files/r4-absent-"+randomUUID()+".txt";
+    const file=RUNTIME_FILES_ROOT+"/r4-absent-"+randomUUID()+".txt";
     try{
       const result=await writeWorkspaceFile(file,"new bytes");
       const row=backup(result.backupId!);
@@ -57,8 +58,8 @@ describe("R4.01 immutable, complete file snapshot schema",()=>{
     }finally{await fs.rm(file,{force:true});}
   });
   it("records observed postconditions for modify, create and delete without guessing a deleted-file hash",async()=>{
-    const modified="tests/runtime-files/r4-modify-"+randomUUID()+".txt";
-    const created="tests/runtime-files/r4-create-"+randomUUID()+".txt";
+    const modified=RUNTIME_FILES_ROOT+"/r4-modify-"+randomUUID()+".txt";
+    const created=RUNTIME_FILES_ROOT+"/r4-create-"+randomUUID()+".txt";
     try{
       await writeWorkspaceFile(modified,"old");
       const m=await modifyWorkspaceFile(modified,"old","new");

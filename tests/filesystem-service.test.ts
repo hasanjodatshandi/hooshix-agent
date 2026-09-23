@@ -13,16 +13,17 @@ import {
 } from "../src/services/filesystem/filesystem-service.js";
 import { runWithPolicyApproval } from "../src/core/governance/policy-decision-point.js";
 import { withAgentDatabase } from "../src/core/memory/database.js";
+import { RUNTIME_FILES_ROOT } from "./helpers/runtime-files.js";
 
 describe("filesystem service", () => {
-  const file = "tests/runtime-files/test.txt";
+  const file = `${RUNTIME_FILES_ROOT}/test.txt`;
 
   beforeEach(async () => {
-    await fs.rm("tests/runtime-files", { recursive: true, force: true });
+    await fs.rm(RUNTIME_FILES_ROOT, { recursive: true, force: true });
   });
 
   afterEach(async () => {
-    await fs.rm("tests/runtime-files", { recursive: true, force: true });
+    await fs.rm(RUNTIME_FILES_ROOT, { recursive: true, force: true });
   });
 
   it("writes and reads files", async () => {

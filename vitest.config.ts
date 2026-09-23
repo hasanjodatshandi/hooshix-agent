@@ -2,10 +2,10 @@ import { defineConfig } from "vitest/config";
 
 export default defineConfig({
   test: {
+    // R8.06: the SQLite/log/memory paths are owned by the setup file so each
+    // parallel Vitest worker gets an isolated tree; a single shared database
+    // file here would let workers delete each other's open database.
     env: {
-      HOOSHIX_DB_PATH: "./data/test-agent-memory.db",
-      HOOSHIX_LOG_DIR: "./data/test-logs",
-      HOOSHIX_MEMORY_FILE: "./data/test-agent-memory.json",
       HOOSHIX_WORKSPACE: process.cwd(),
       HOOSHIX_PERMISSION_LEVEL: "DEVELOPER_MODE"
     },
@@ -27,8 +27,7 @@ export default defineConfig({
         functions: 85,
         lines: 85
       }
-    },
-    maxWorkers: 1
+    }
   }
 });
 

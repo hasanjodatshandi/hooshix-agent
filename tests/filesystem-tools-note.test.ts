@@ -1,10 +1,11 @@
 import fs from "node:fs/promises";
 import { describe, expect, it } from "vitest";
 import { listWorkspaceDirectory } from "../src/services/filesystem/filesystem-service.js";
+import { RUNTIME_FILES_ROOT } from "./helpers/runtime-files.js";
 
 describe("filesystem list service", () => {
   it("distinguishes files and directories", async () => {
-    const root = "tests/runtime-files/list";
+    const root = `${RUNTIME_FILES_ROOT}/list`;
     await fs.mkdir(`${root}/folder`, { recursive: true });
     await fs.writeFile(`${root}/file.txt`, "ok");
     try {
@@ -12,7 +13,7 @@ describe("filesystem list service", () => {
         "[DIR] folder", "[FILE] file.txt"
       ]);
     } finally {
-      await fs.rm("tests/runtime-files", { recursive: true, force: true });
+      await fs.rm(RUNTIME_FILES_ROOT, { recursive: true, force: true });
     }
   });
 });
