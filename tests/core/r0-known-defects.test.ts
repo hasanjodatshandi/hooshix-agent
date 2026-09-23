@@ -5,11 +5,16 @@ import { evaluateCommandPermission } from "../../src/security/permissions/comman
 import { readLegacyHttpAccessToken } from "../../src/infrastructure/config/legacy-http-server.js";
 
 /**
- * R0 baseline RED contracts. Each .fails is a KNOWN, LIVE release blocker:
- * - It is NOT a passing security regression.
- * - It MUST be changed into an ordinary it(...) when the corresponding
- *   implementation is fixed; do not delete or ignore the assertion.
- * - Historical G0/G2 contracts are separately verified; the remaining HIGH-10\n *   expected failure blocks G7/container release, not the already-passed G0/G2 gates.
+ * R0 baseline remediated contracts. These were originally written as `it.fails`
+ * RED contracts for known, live release blockers; each was converted into an
+ * ordinary passing regression once its fix landed. Do not delete, skip or weaken
+ * them: they pin the remediated behavior permanently.
+ * - HIGH-10's frozen-lock negative execution now lives in
+ *   tests/core/r8-frozen-lockfile-executed.test.ts (this file keeps the static
+ *   Dockerfile recipe assertion).
+ * - HIGH-12's endpoint behavior is executed against a real spawned server in
+ *   tests/e2e/r5-http-edge-contracts.test.ts (this file keeps the static
+ *   source assertion that the route exists).
  */
 describe("R0 intentionally failing pre-remediation contracts", () => {
   it("HIGH-03: git diff --no-index cannot bypass scope policy as an auto-approved read", () => {
