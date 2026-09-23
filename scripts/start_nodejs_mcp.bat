@@ -33,10 +33,10 @@ if %errorlevel%==0 (
 
 REM Start the Node.js MCP HTTP server
 echo Starting Node.js MCP server on port 3001...
-set MCP_PORT=3001
+set HOOSHIX_HTTP_PORT=3001
 REM Public base URL so OAuth discovery advertises the tunnel host (required
 REM for ChatGPT connector registration; localhost issuer breaks RFC 7591 flow).
-REM MCP_PUBLIC_BASE_URL is supplied by the operator environment for an approved HTTPS edge.
+REM HOOSHIX_PUBLIC_BASE_URL is supplied by the operator environment for an approved HTTPS edge.
 node dist\index-http.js
 
 echo.

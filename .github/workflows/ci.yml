@@ -41,9 +41,9 @@ jobs:
       - name: Architecture boundary gate
         run: node scripts/verify-g1-global.mjs
       - name: Test security, migrations and HTTP process contracts
-        run: pnpm exec vitest run
+        run: pnpm exec vitest run --maxWorkers=1 --no-file-parallelism
       - name: Per-file coverage evidence
-        run: pnpm run test:coverage
+        run: pnpm run test:coverage --maxWorkers=1 --no-file-parallelism
       - name: Active deployment and tracked secret policy
         run: node scripts/r7-secret-policy-check.mjs
       - name: Dependency advisory gate

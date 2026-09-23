@@ -112,12 +112,12 @@ function Start-NodeMcpServer {
     $psi.WindowStyle = [System.Diagnostics.ProcessWindowStyle]::Hidden
     # Do not redirect without an async reader: a full stderr pipe can block the child.
     $psi.RedirectStandardError = $false
-    $psi.EnvironmentVariables["MCP_PORT"] = "$McpPort"
+    $psi.EnvironmentVariables["HOOSHIX_HTTP_PORT"] = "$McpPort"
     # OAuth discovery/issuer base URL — REQUIRED so discovery documents
     # advertise the public tunnel host (agent.hooshix.com), not localhost.
     # Without it, ChatGPT rejects the connector with "doesn't support
     # RFC 7591 Dynamic Client Registration" (issuer/endpoint mismatch).
-    # Public URL is inherited only from the operator's approved service environment.
+    # HOOSHIX_PUBLIC_BASE_URL is inherited only from the operator's approved service environment.
     $psi.EnvironmentVariables["NODE_ENV"] = "production"
 
     $proc = [System.Diagnostics.Process]::new()

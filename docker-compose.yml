@@ -4,9 +4,9 @@ services:
     ports:
       - "127.0.0.1:3001:3001"
     environment:
-      - MCP_PORT=3001
-      - MCP_BIND_HOST=0.0.0.0
-      - MCP_PUBLIC_BASE_URL=${MCP_PUBLIC_BASE_URL:?Set a trusted HTTPS public base URL for the external TLS edge}
+      - HOOSHIX_HTTP_PORT=3001
+      - HOOSHIX_HTTP_HOST=0.0.0.0
+      - HOOSHIX_PUBLIC_BASE_URL=${HOOSHIX_PUBLIC_BASE_URL:?Set a trusted HTTPS public base URL for the external TLS edge}
     volumes:
       - mcp-data:/app/data
     restart: unless-stopped

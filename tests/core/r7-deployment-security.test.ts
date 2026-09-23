@@ -33,8 +33,8 @@ describe("R7 deployment security contracts", () => {
   it("Compose does not expose the MCP backend publicly or resurrect the retired key", () => {
     const compose = read("docker-compose.yml");
     expect(compose).toContain('127.0.0.1:3001:3001');
-    expect(compose).toContain("MCP_PUBLIC_BASE_URL=${MCP_PUBLIC_BASE_URL:?");
-    expect(compose).toContain("MCP_BIND_HOST=0.0.0.0");
+    expect(compose).toContain("HOOSHIX_PUBLIC_BASE_URL=${HOOSHIX_PUBLIC_BASE_URL:?");
+    expect(compose).toContain("HOOSHIX_HTTP_HOST=0.0.0.0");
     expect(compose).not.toMatch(/^\s*- MCP_API_KEY=/m);
     expect(compose).toContain("/health/live");
   });
