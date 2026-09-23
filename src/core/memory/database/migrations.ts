@@ -5,6 +5,14 @@ import { canonicalProjectPath } from "../../../infrastructure/project-path-ident
 
 const SAFE_IDENTIFIER = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
 
+/**
+ * Highest migration version applied by runMigrations. Exported so release
+ tooling (scripts/release-db-rehearsal.mjs) asserts a migrated copy reaches the
+ * CURRENT head instead of a hardcoded version that silently rots as new
+ * migrations land. If you add a migration, bump this to match it.
+ */
+export const LATEST_MIGRATION_VERSION = 17;
+
 export function ensureColumn(
   db: Database.Database,
   table: string,

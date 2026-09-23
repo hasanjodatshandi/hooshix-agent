@@ -5,7 +5,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import Database from "better-sqlite3";
-import { runMigrations } from "../dist/core/memory/database/migrations.js";
+import { runMigrations, LATEST_MIGRATION_VERSION } from "../dist/core/memory/database/migrations.js";
 
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const source = path.resolve(repo, process.env.HOOSHIX_DB_PATH ?? "data/agent-memory.db");
@@ -36,8 +36,8 @@ try {
   const after = copy.prepare("SELECT COUNT(*) AS count FROM tasks").get().count;
   const schemaVersion = copy.prepare("SELECT MAX(version) AS version FROM schema_migrations").get().version;
   const roots = copy.prepare("SELECT COUNT(*) AS count FROM workspace_roots").get().count;
-  if (integrityAfter !== "ok" || foreignKeyIssues || after !== before || schemaVersion !== 8) {
-    throw new Error(`Copy validation failed: integrity=${integrityAfter}; foreignKeys=${foreignKeyIssues}; tasks=${before}->${after}; schema=${schemaVersion}`);
+  if (integrityAfter !== "ok" || foreignKeyIssues || after !== before || schemaVersion !== LATEST_MIGRATION_VERSION) {
+    throw new Error(`Copy validation failed: integrity=${integrityAfter}; foreignKeys=${foreignKeyIssues}; tasks=${before}->${after}; schema=${schemaVersion} (expected ${LATEST_MIGRATION_VERSION})`);
   }
 
   // Restore-drill: produce a second online backup from the migrated copy and
