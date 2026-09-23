@@ -116,4 +116,84 @@ Historical secret disposition:
 
 ## Validation and boundary
 
-R7 acceptance requires an ACTUAL clean-checkout CI run, a real frozen image build and startup, non-root runtime and health probes, config/legacy migration tests, source/secret scan, and successful version preflight from a service-like environment. Passing static tests and a local TypeScript build alone is not G7 PASS. No live migration, restart, deployment, merge, push or release is authorized by this runbook.
+## Reference startup methods (one canonical path each)
+
+- **stdio (default for local/MCP client integration):** `node dist/index.js`. This is
+  the transport MCP clients use when they spawn the agent as a subprocess. There is no
+  HTTP listener in this mode; the bootstrap/HTTP endpoints are irrelevant.
+- **HTTP (local operator and remote client integration):** `node dist/index-http.js`.
+  This is the only mode that exposes `/mcp`, `/health/*`, `/operator/login`,
+  `/dashboard` and `/metrics`. Bind is loopback by default; an external endpoint REQUIRES
+  a trusted HTTPS edge and `HOOSHIX_PUBLIC_BASE_URL`.
+- Do not mix the two: choose the transport at startup via the entry point. Both load the
+  same immutable `loadAppConfig()` contract, so no environment variable differs between
+  them except transport-specific ones (`HOOSHIX_HTTP_*` are ignored by stdio).
+
+## Outcome unknown recovery
+
+A step is marked `outcome_unknown` when the process died or timed out mid-mutation and
+the side effect may or may not have happened (crash recovery, timeout finalization and
+package snapshot uncertainty all use this state). The original tool result stays unknown
+and is never automatically replayed.
+
+Resolution path (operator action required):
+
+1. Inspect the task: `task_get` / `task_report` show which steps are unresolved and the
+   recorded execution receipt (`termination: unknown`, `reconciliation: unresolved`).
+2. Verify the real world effect independently (read the file, query the package, run a
+   read-only command). Do not assume the step completed or failed.
+3. Call `task_reconcile` with the step id and an explicit operator decision:
+   `confirmed_succeeded` or `confirmed_failed` both require an independently completed
+   read-only verification Task with the same owner; `safe_to_retry` additionally requires
+   a durable idempotent `create_file` receipt.
+4. Until reconciled, the task is frozen: `task_run`/`task_resume` refuse to proceed
+   (`outcome_unknown_requires_reconciliation`) and `task_append_steps` is rejected.
+   This is deliberate — replaying an uncertain mutation risks a duplicate side effect.
+
+## Authentication, workspace and access troubleshooting
+
+| Symptom | Meaning | Correct response |
+|---|---|---|
+| Startup fails `MCP_API_KEY is unsupported` / `MCP_ACCESS_TOKEN is deprecated` | A retired credential name is still in the host/service environment | Remove it; supply `HOOSHIX_BOOTSTRAP_TOKEN` (>= 32 bytes) or a token file |
+| Startup fails `conflicting environment names` | A canonical name and its alias are both set with different values | Keep only the `HOOSHIX_*` canonical name |
+| Startup fails `MCP_PUBLIC_BASE_URL required for external HTTP binding` | External bind without a trusted public origin | Set `HOOSHIX_PUBLIC_BASE_URL` to the exact HTTPS origin, or bind loopback |
+| MCP client gets 401 `invalid_token` / 403 `insufficient_scope` | OAuth token missing, expired, wrong resource or insufficient scope | Re-run OAuth authorization-code/PKCE flow against `/mcp` resource; the bootstrap secret is NOT a client bearer and never goes in `Authorization` |
+| MCP client gets 403 on a file/command tool | Path outside allowed roots, sensitive file, or an operation that needs approval | Add the root via `add_workspace_roots`, or create a task step and approve it (`task_approve` then `task_resume`) |
+| `SECURITY_POLICY` / `blocked` status, `recoverable: false` | Denylist, workspace boundary or approval gate | Not retryable; change the request, not the retry count |
+| HTTP 429 with `Retry-After` | Rate limit hit (public, principal or login limiter) | Back off by the header value; raise the `HOOSHIX_*_RATE_LIMIT` budgets only with justification |
+| `/health` returns 401/403 but `/health/live` is 200 | Expected — `/health` is protected monitoring (operator session cookie or `hooshix:monitoring:read` scope) | Use `/health/live` for probes; authenticate via operator login or an OAuth token with the monitoring scope for `/health`, `/metrics`, `/dashboard` |
+
+## Data backup, integrity check and restore
+
+The authoritative state is the SQLite database at `HOOSHIX_DB_PATH` plus the audit JSONL
+under `HOOSHIX_LOG_DIR`. Treat both as the unit of backup.
+
+- **Backup (online-safe):** copy the database while the service is stopped, or use a
+  filesystem snapshot. If the service must stay up, prefer a SQLite `VACUUM INTO` or an
+  OS-level snapshot; a plain file copy of a WAL database may capture a torn state.
+  Include the whole `HOOSHIX_LOG_DIR` and the bootstrap token file in the same backup set.
+- **Integrity check:** `sqlite3 <db> "PRAGMA integrity_check;"` and `PRAGMA quick_check;`
+  against the copied database before trusting any backup. The R0 release preflight
+  (`pnpm run release:preflight`) performs the non-destructive source/build checks and
+  `pnpm run release:db-rehearsal` rehearses migration **only on a backup copy**.
+- **Restore:** stop the service, move the current database and logs aside (never delete),
+  place the verified backup at `HOOSHIX_DB_PATH`, then start. Confirm task/step records
+  and the tool catalog with `task_list`/`task_report` and `/tools` before resuming work.
+- **Rehearse on a copy first:** never restore or migrate against the operational database
+  to validate a change. The G10 migration exercise requires a copy of the current data.
+
+## Public deployment boundary
+
+This repository delivers the agent runtime only. TLS termination, the external tunnel and
+any edge proxy belong to a SEPARATE deployment project and must NOT be added to this
+repository or this branch without their own review:
+
+- The in-repo HTTP listener binds loopback by default. Publishing `-p 3001:3001` does NOT
+  create a secure public interface; the Compose example publishes only host
+  `127.0.0.1:3001` for a separately managed TLS edge.
+- `HOOSHIX_PUBLIC_BASE_URL` must be the exact trusted HTTPS origin of that edge; an
+  external bind without it is a hard startup error, and a credential-bearing or
+  non-HTTPS public origin is rejected.
+- Public exposure, TLS, authorization policy, capacity and rollback qualification remain
+  open release gates tracked in the audit matrix; none of them is satisfied by the
+  container or CI work in this branch.
