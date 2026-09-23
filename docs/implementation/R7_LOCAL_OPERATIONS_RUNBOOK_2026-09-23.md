@@ -62,6 +62,58 @@ Status: R7 implementation document. This is NOT a production release or a replac
 - For manual local use, `scripts/start_nodejs_mcp.bat` resolves the project relative to its own location. The watchdog remains intentionally separate from release cutover and must not be restarted against active operational data merely to test these changes.
 - An operator inspecting a token with `scripts/mcp-token.ps1 show` must keep the terminal output private. The generated/bootstrap secret is not a raw OAuth access token.
 
+## Bootstrap token generation and rotation (R7.03)
+
+The bootstrap secret is the single operator credential for the HTTP operator login
+and the OAuth authorization confirmation page. It is never an MCP bearer token.
+
+Generation (automatic, no operator action):
+
+- If `HOOSHIX_BOOTSTRAP_TOKEN` is set, it must be at least 32 UTF-8 bytes or startup fails.
+- Otherwise the server loads `HOOSHIX_BOOTSTRAP_TOKEN_FILE` (default `.token` in the
+  service working directory; container default `/app/data/.token`). The file must be a
+  regular file (symlinks are rejected), readable only by its owner (`0600` on POSIX) and
+  contain at least 32 bytes; any violation aborts startup with a named error.
+- If the file does not exist, the server generates a fresh 32-byte cryptographically
+  random `base64url` token and writes it with mode `0600` and exclusive-create (`wx`),
+  so an existing file is never silently clobbered.
+
+Rotation procedure (execute against the target environment only; do NOT rotate the
+active production credential without an authorized change window):
+
+1. Stop the service through the mechanism that owns the process (the planned Windows
+   service / Scheduled Task stop, or the operator process stop the watchdog performs
+   via its internal `Stop-NodeProcesses` path). Confirm the process and its lock on the
+   SQLite database are gone before proceeding; do not rotate while a writer is active.
+2. Replace the token file content — write the new value into the same path with `0600`
+   permissions, or set a new `HOOSHIX_BOOTSTRAP_TOKEN` (>= 32 bytes) in the service
+   environment and remove the file variable. On POSIX use `install -m 600` or
+   `chmod 600` after writing; never leave the secret world-readable.
+3. Restart the service. Only the NEW credential is accepted from that point on.
+   `tests/security/r7-bootstrap-secret-lifecycle.test.ts` proves this contract: after the
+   file is replaced and the process restarts, the old secret is rejected (HTTP 403) and
+   the new one is accepted.
+4. Re-issue the credential to the operator and confirm the old copy is destroyed.
+   Existing MCP client sessions are unaffected: MCP clients use OAuth
+   authorization-code/PKCE grants, not the bootstrap secret.
+
+Historical secret disposition:
+
+- The retired static bootstrap credential that earlier setup guidance contained was
+  removed from every active deployment surface (Dockerfile, Compose, watchdog,
+  `start_nodejs_mcp.bat`, SETUP guide, runbook). It remains only as quoted historical
+  evidence inside the consolidated audit document, which is deliberately not rewritten.
+  If any environment ever used that retired literal as a real credential, it MUST be
+  rotated using the procedure above before that environment is considered trusted; no
+  automated code change can substitute for operator rotation.
+- `scripts/r7-secret-policy-check.mjs` fail-closes CI on any reintroduction of the
+  retired literal, any `MCP_API_KEY`/`MCP_ACCESS_TOKEN` assignment, query-string
+  credential guidance, or a tracked `.token`/`.env`/`.db`/`.pem`/`.key` file.
+- The bootstrap secret is never written to logs, command arguments, or health responses;
+  the error handler logs only the error name, and `/health/live` returns only
+  `{"status":"ok"}` (verified by the lifecycle test above).
+
+
 ## Validation and boundary
 
 R7 acceptance requires an ACTUAL clean-checkout CI run, a real frozen image build and startup, non-root runtime and health probes, config/legacy migration tests, source/secret scan, and successful version preflight from a service-like environment. Passing static tests and a local TypeScript build alone is not G7 PASS. No live migration, restart, deployment, merge, push or release is authorized by this runbook.
