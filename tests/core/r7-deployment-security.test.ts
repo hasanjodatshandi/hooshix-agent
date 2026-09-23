@@ -43,6 +43,7 @@ describe("R7 deployment security contracts", () => {
     expect(ci).toContain("permissions:\n  contents: read");
     expect(ci).toMatch(/actions\/checkout@[a-f0-9]{40}/);
     expect(ci).toMatch(/actions\/setup-node@[a-f0-9]{40}/);
+    expect(ci).toContain("ERR_PNPM_OUTDATED_LOCKFILE");
     for (const gate of ["pnpm install --frozen-lockfile", "pnpm run typecheck", "pnpm exec vitest run",
       "pnpm run test:coverage", "pnpm audit --prod", "docker build", "docker exec",
       "scripts/verify-g1-global.mjs"]) expect(ci).toContain(gate);

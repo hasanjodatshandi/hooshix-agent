@@ -58,6 +58,19 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           persist-credentials: false
+      - name: Prove a stale lockfile cannot fall back during image build
+        shell: bash
+        run: |
+          set -euo pipefail
+          fixture="$(mktemp -d)"
+          trap 'rm -rf "$fixture"' EXIT
+          cp Dockerfile package.json pnpm-lock.yaml pnpm-workspace.yaml "$fixture/"
+          node -e 'const fs=require("node:fs");const f=process.argv[1];const p=JSON.parse(fs.readFileSync(f,"utf8"));p.dependencies={...p.dependencies,"hooshix-ci-lock-drift-fixture":"0.0.0"};fs.writeFileSync(f,JSON.stringify(p))' "$fixture/package.json"
+          if docker build --no-cache --progress=plain --file "$fixture/Dockerfile" "$fixture" >"$fixture/build.log" 2>&1; then
+            echo "UNSAFE: stale lockfile image build unexpectedly succeeded"
+            exit 1
+          fi
+          grep -q 'ERR_PNPM_OUTDATED_LOCKFILE' "$fixture/build.log"
       - name: Build immutable-source image
         run: docker build --pull --tag hooshix-r7-ci:${{ github.sha }} .
       - name: Verify non-root runtime and live health
