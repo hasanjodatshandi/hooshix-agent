@@ -8,6 +8,7 @@ export {
   backupAgentDatabase,
   cleanupAgentData,
   withAgentDatabase,
+  isDatabaseReady,
   ensureColumn,
   migrate,
   runMigrations,

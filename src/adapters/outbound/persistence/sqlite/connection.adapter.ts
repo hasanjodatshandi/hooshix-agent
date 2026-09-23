@@ -48,6 +48,23 @@ export function resetAgentDatabase(): void {
   closeAgentDatabase();
 }
 
+/**
+ * R9: executable SQL lives only in the SQLite adapters, never in transport or
+ * application code. This is the readiness probe: it opens the shared
+ * connection on first use (matching the historical lazy-initialization
+ * behaviour of the HTTP readiness endpoint) and pings it. Returning false
+ * rather than throwing lets the transport layer report 503 with no SQL.
+ */
+export function isDatabaseReady(): boolean {
+  try {
+    const db = openAgentDatabase();
+    const row = db.prepare("SELECT 1 AS ok").get() as { ok: number } | undefined;
+    return row?.ok === 1;
+  } catch {
+    return false;
+  }
+}
+
 function registerShutdownHook(): void {
   if (shutdownRegistered) return;
   shutdownRegistered = true;

@@ -16,7 +16,7 @@ import { createSessionWorkspaceContext, runWithSessionWorkspace, type SessionWor
 import { runWithTrustedInboundIdentity } from "../infrastructure/composition/r2-trusted-inbound-identity.js";
 import type { PrincipalId, SessionId } from "../domain/shared/ids.js";
 import {OperatorWebSessions,HttpWindowLimiter,HttpPrincipalContexts} from "../infrastructure/server/http-security.js";
-import {withAgentDatabase} from "../core/memory/database.js";
+import {isDatabaseReady} from "../core/memory/database.js";
 import {createMcpHandler} from "@modelcontextprotocol/server";
 import {toNodeHandler} from "@modelcontextprotocol/node";
 // R7.01: the HTTP transport never reads environment variables directly; the
@@ -151,10 +151,8 @@ async function handleRequest(
 
   if (path === "/health/live") {sendJSON(res,200,{status:"ok"});return;}
   if (path === "/health/ready") {
-    try{
-      const ready=withAgentDatabase(db=>db.prepare("SELECT 1 AS ok").get()) as {ok:number}|undefined;
-      sendJSON(res,ready?.ok===1?200:503,{status:ready?.ok===1?"ready":"not_ready"});
-    }catch{sendJSON(res,503,{status:"not_ready"});}
+    const ready=isDatabaseReady();
+    sendJSON(res,ready?200:503,{status:ready?"ready":"not_ready"});
     return;
   }
   // Historical /health is deliberately protected; use /health/live for probes.

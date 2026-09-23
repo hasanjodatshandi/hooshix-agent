@@ -7,6 +7,7 @@ export {
   openAgentDatabase,
   closeAgentDatabase,
   resetAgentDatabase,
+  isDatabaseReady,
 } from "./connection.js";
 
 // Re-export migrations
