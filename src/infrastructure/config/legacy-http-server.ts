@@ -30,11 +30,11 @@ export function readHttpSecurityConfig(
 ):HttpServerSettings{
   if(env.MCP_ACCESS_TOKEN!==undefined||env.MCP_API_KEY!==undefined)
     readHttpBootstrapSecret(env);
-  const port=Number(env.MCP_PORT??"3001");
+  const port=Number(env.HOOSHIX_HTTP_PORT??env.MCP_PORT??"3001");
   if(!Number.isSafeInteger(port)||port<0||port>65535)throw new Error("invalid MCP_PORT");
-  const host=env.MCP_BIND_HOST??"127.0.0.1";
+  const host=env.HOOSHIX_HTTP_HOST??env.MCP_BIND_HOST??"127.0.0.1";
   const local=["127.0.0.1","localhost","::1"].includes(host);
-  const raw=env.MCP_PUBLIC_BASE_URL?.trim()??"";
+  const raw=(env.HOOSHIX_PUBLIC_BASE_URL??env.MCP_PUBLIC_BASE_URL)?.trim()??"";
   if(!local&&!raw)throw new Error("MCP_PUBLIC_BASE_URL required for external HTTP binding");
   let publicBaseUrl="";
   if(raw){
@@ -47,7 +47,7 @@ export function readHttpSecurityConfig(
   }else{
     publicBaseUrl=`http://127.0.0.1:${port}`;
   }
-  const allowedOrigins=(env.MCP_ALLOWED_ORIGINS??"").split(",").map(s=>s.trim()).filter(Boolean);
+  const allowedOrigins=(env.HOOSHIX_ALLOWED_ORIGINS??env.MCP_ALLOWED_ORIGINS??"").split(",").map(s=>s.trim()).filter(Boolean);
   for(const origin of allowedOrigins){
     const url=new URL(origin);
     if(url.origin!==origin||url.username||url.password||url.protocol!=="https:"&&

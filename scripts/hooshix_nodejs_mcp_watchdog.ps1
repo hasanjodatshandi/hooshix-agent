@@ -1,17 +1,8 @@
 $ErrorActionPreference = "Stop"
 
 # --- Configuration ---
-$NodeJsDir = "D:\workspace\hooshix-agent"
+$NodeJsDir = Split-Path -Parent $PSScriptRoot
 $McpPort = 3001
-# Read token from .token file (persistent, survives restarts)
-$TokenFile = Join-Path $NodeJsDir ".token"
-if (Test-Path $TokenFile) {
-    $McpAccessToken = (Get-Content $TokenFile -Raw).Trim()
-} else {
-    $McpAccessToken = ""
-    Write-Host "WARNING: No .token file found. Run scripts/mcp-token.ps1 reset" -ForegroundColor Yellow
-}
-
 $LogPath = "D:\MCP\HooshiXBrainMCP\.brain\logs\nodejs_mcp.jsonl"
 $MaxLogBytes = 10MB
 $MaxLogFiles = 5
@@ -103,9 +94,7 @@ function Test-LocalNodeHealth {
     # HTTP-level health check. A frozen event loop still accepts TCP connections,
     # so Test-TcpPort alone cannot detect the hang that caused the 2026-09-06 outage.
     try {
-        $headers = @{}
-        if ($McpAccessToken) { $headers["Authorization"] = "Bearer $McpAccessToken" }
-        $response = Invoke-WebRequest -UseBasicParsing -Uri "http://127.0.0.1:${McpPort}/health" -Method Get -TimeoutSec 5 -Headers $headers
+        $response = Invoke-WebRequest -UseBasicParsing -Uri "http://127.0.0.1:${McpPort}/health/live" -Method Get -TimeoutSec 5
         if ([int]$response.StatusCode -ne 200) { return $false }
         $payload = $response.Content | ConvertFrom-Json
         return $payload.status -eq "ok"
@@ -115,7 +104,7 @@ function Test-LocalNodeHealth {
 
 function Start-NodeMcpServer {
     $psi = [System.Diagnostics.ProcessStartInfo]::new()
-    $psi.FileName = "node"
+    $psi.FileName = $script:NodeExecutable
     $psi.Arguments = "dist/index-http.js"
     $psi.WorkingDirectory = $NodeJsDir
     $psi.UseShellExecute = $false
@@ -124,12 +113,11 @@ function Start-NodeMcpServer {
     # Do not redirect without an async reader: a full stderr pipe can block the child.
     $psi.RedirectStandardError = $false
     $psi.EnvironmentVariables["MCP_PORT"] = "$McpPort"
-    $psi.EnvironmentVariables["MCP_ACCESS_TOKEN"] = $McpAccessToken
     # OAuth discovery/issuer base URL — REQUIRED so discovery documents
     # advertise the public tunnel host (agent.hooshix.com), not localhost.
     # Without it, ChatGPT rejects the connector with "doesn't support
     # RFC 7591 Dynamic Client Registration" (issuer/endpoint mismatch).
-    $psi.EnvironmentVariables["MCP_PUBLIC_BASE_URL"] = "https://agent.hooshix.com"
+    # Public URL is inherited only from the operator's approved service environment.
     $psi.EnvironmentVariables["NODE_ENV"] = "production"
 
     $proc = [System.Diagnostics.Process]::new()
@@ -155,6 +143,13 @@ if (-not $createdNew) {
 
 try {
     # Validate prerequisites
+    $nodeCommand = Get-Command node -ErrorAction Stop
+    $script:NodeExecutable = $nodeCommand.Source
+    $nodeVersion = & $script:NodeExecutable --version
+    if ($LASTEXITCODE -ne 0 -or $nodeVersion -notmatch '^v24[.]') { throw "HooshiX requires Node.js 24; detected $nodeVersion" }
+    $pnpmCommand = Get-Command pnpm -ErrorAction Stop
+    $pnpmVersion = & $pnpmCommand.Source --version
+    if ($LASTEXITCODE -ne 0 -or $pnpmVersion.Trim() -ne '11.24.0') { throw "HooshiX requires pnpm 11.24.0; detected $pnpmVersion" }
     if (-not (Test-Path -LiteralPath "$NodeJsDir\dist\index-http.js")) { throw "Node.js MCP build missing: $NodeJsDir\dist\index-http.js" }
 
     # Existing Node.js processes are not owned by this watchdog instance.

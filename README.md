@@ -8,7 +8,7 @@ HooshiX یک MCP server محلی و یک runtime قطعی برای اجرای wo
 
 ## نیازمندی‌ها و اجرا
 
-- Node.js 24 یا جدیدتر
+- Node.js 24 (نسخهٔ CI و `.nvmrc`: 24.18.0؛ نسخهٔ سرویس باید پیش از اجرا بررسی شود)
 - pnpm 11.24.0 (مطابق فیلد `packageManager` در `package.json`؛ نسخه نصب‌شده را با آن تطبیق دهید)
 - Git برای ابزارهای Git
 - ابزارهای اختیاری مربوط به package manager انتخابی: Python/pip، winget یا Chocolatey
@@ -16,7 +16,7 @@ HooshiX یک MCP server محلی و یک runtime قطعی برای اجرای wo
 در `pnpm-workspace.yaml` ساخت مجدد بومی `better-sqlite3` غیرفعال است؛ نسخهٔ قفل‌شده باینری آمادهٔ `win32-x64` دارد و بارگذاری آن با Node.js 24 روی ویندوز آزمایش شده است. اسکریپت ساخت `esbuild` همچنان مجاز است. نصب استاندارد از Checkout تمیز را با `pnpm install --frozen-lockfile` انجام دهید؛ اگر روی پلتفرمی باینری سازگار موجود نبود، روش ساخت بومی آن پلتفرم باید جداگانه بررسی و تأیید شود.
 
 ```sh
-pnpm install
+pnpm install --frozen-lockfile
 pnpm run build
 pnpm run typecheck
 pnpm test -- --run
@@ -253,7 +253,7 @@ HooshiX automatically recovers from failures when possible:
 
 ### HTTP endpoints و auth
 
-سرور HTTP علاوه بر `/mcp` این endpointها را دارد: `/health`, `/metrics`, `/dashboard`, `/tools`. اگر توکن دسترسی (env یا `.token`) وجود داشته باشد، **همهٔ این endpointها هم به همان Bearer token نیاز دارند** (از طریق header یا `?token=` برای مرورگر). بدون توکن (حالت local stdio) باز می‌مانند. توکن در لاگ استارتاپ به‌صورت masked چاپ می‌شود، نه کامل.
+سرور HTTP علاوه بر `/mcp` دارای `/health/live` (بدون احراز هویت، پاسخ حداقلی)، `/health/ready`، `/health` (محافظت‌شده)، `/metrics`، `/dashboard` و `/tools` است. Secret اولیه (`HOOSHIX_BOOTSTRAP_TOKEN` یا فایل `.token`) **Bearer access token نیست**؛ احراز هویت کلاینت MCP از OAuth/PKCE انجام می‌شود و ارسال credential در query string ممنوع است. راهنمای اجرایی R7: `docs/implementation/R7_LOCAL_OPERATIONS_RUNBOOK_2026-09-23.md`. توقف/راه‌اندازی مجدد سرویس عملیاتی به تأیید جداگانه نیاز دارد.
 
 HooshiX کد داخل workspace را با سطح دسترسی process سیستم‌عامل اجرا می‌کند. برای repository ناشناس یا غیرقابل‌اعتماد، process را داخل VM/container یا حساب OS محدود اجرا کنید.
 

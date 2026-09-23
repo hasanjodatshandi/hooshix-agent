@@ -5,7 +5,7 @@ echo ========================================
 echo.
 echo This will install a Windows scheduled task that:
 echo   - Starts the Node.js MCP server on login
-echo   - Monitors health (HTTP check with auth)
+echo   - Monitors health (unauthenticated /health/live check)
 echo   - Auto-restarts on failure or frozen event loop
 echo.
 echo Required: Run as Administrator

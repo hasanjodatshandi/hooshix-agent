@@ -11,8 +11,7 @@ import { getRecordedToolNames } from "../adapters/outbound/persistence/sqlite/re
 import http from "node:http";
 import crypto from "node:crypto";
 import fs from "node:fs";
-import path from "node:path";
-import {readHttpSecurityConfig,readHttpBootstrapSecret} from "../infrastructure/config/legacy-http-server.js";
+import {loadAppConfig} from "../infrastructure/config/app-config.js";
 import { createSessionWorkspaceContext, runWithSessionWorkspace, type SessionWorkspaceContext } from "../security/workspace-guard.js";
 import { runWithTrustedInboundIdentity } from "../infrastructure/composition/r2-trusted-inbound-identity.js";
 import { getConfiguredPermissionLevel } from "../infrastructure/config/permission-config.js";
@@ -21,14 +20,15 @@ import {OperatorWebSessions,HttpWindowLimiter,HttpPrincipalContexts} from "../in
 import {withAgentDatabase} from "../core/memory/database.js";
 import {createMcpHandler} from "@modelcontextprotocol/server";
 import {toNodeHandler} from "@modelcontextprotocol/node";
-const CONFIG=readHttpSecurityConfig();
+const APP_CONFIG=loadAppConfig();
+const CONFIG=APP_CONFIG.http;
 const PORT=CONFIG.port;
 const PUBLIC_BASE_URL=CONFIG.publicBaseUrl;
 let oauthProviderRef:OAuthProvider|null=null;
-const TOKEN_FILE=path.join(process.cwd(),".token");
+const TOKEN_FILE=APP_CONFIG.bootstrapTokenFile;
 /** Bootstrap is an operator-only credential. It is never accepted as MCP bearer. */
 function loadToken():string{
-  const supplied=readHttpBootstrapSecret();
+  const supplied=APP_CONFIG.bootstrapToken;
   if(supplied){
     if(Buffer.byteLength(supplied,"utf8")<32)throw new Error("HOOSHIX_BOOTSTRAP_TOKEN requires at least 32 bytes");
     return supplied;
