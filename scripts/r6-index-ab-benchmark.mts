@@ -1,6 +1,6 @@
 /**
  * R6.04 controlled A/B on ONE disposable SQLite database and real Metrics adapter.
- * Prior-to-candidate migrator is read from immutable committed HEAD (v16),
+ * Prior-to-candidate migrator is read from pinned committed R6.03 baseline (v16),
  * with no DROP INDEX, source reset, operational DB access or service restart.
  */
 import fs from "node:fs";
@@ -15,6 +15,7 @@ import {applyBaseSchemaMigration} from "../src/adapters/outbound/persistence/sql
 import {runMigrations as runCurrentMigrations} from "../src/core/memory/database/migrations.js";
 
 const repo=process.cwd();
+const historicalBaseline="ad96009"; // R6.03: real migration v16, before candidate v17
 const fixture=fs.mkdtempSync(path.join(os.tmpdir(),"hooshix-r6-index-ab-"));
 const marker=path.join(fixture,".r6-index-ab-fixture");
 fs.writeFileSync(marker,"R6.04 DISPOSABLE FIXTURE",{flag:"wx"});
@@ -33,13 +34,13 @@ function replaceOnce(source:string,search:string,replacement:string):string{
   return source.replace(search,replacement);
 }
 try{
-  const committed=spawnSync("git",["show","HEAD:src/core/memory/database/migrations.ts"],{
+  const committed=spawnSync("git",["show",`${historicalBaseline}:src/core/memory/database/migrations.ts`],{
     cwd:repo,encoding:"utf8",maxBuffer:1024*1024,timeout:20000,windowsHide:true
   });
-  if(committed.status!==0||!committed.stdout)throw new Error("committed v16 migrator unavailable: "+String(committed.error?.message||committed.stderr).slice(0,250));
+  if(committed.status!==0||!committed.stdout)throw new Error("pinned R6.03 v16 migrator unavailable: "+String(committed.error?.message||committed.stderr).slice(0,250));
   if(!committed.stdout.includes('migrate(db,16,"r5-oauth-credential-repository"')||
      committed.stdout.includes("r6-metrics-task-category-created-index"))
-    throw new Error("committed HEAD is not the independently verified v16 baseline");
+    throw new Error("pinned R6.03 commit is not the independently verified v16 baseline");
   const canonical=pathToFileURL(path.join(repo,"src","infrastructure","project-path-identity.ts")).href;
   const oldMigration=replaceOnce(committed.stdout,
     'from "../../../infrastructure/project-path-identity.js"',
@@ -149,7 +150,7 @@ try{
   const beforeWriteMedian=[...writesBefore].sort((a,b)=>a-b)[1];
   const afterWriteMedian=[...writesAfter].sort((a,b)=>a-b)[1];
   const results={
-    fixture:"marker-owned disposable 250k SQLite; imported committed HEAD v16 migrator",
+    fixture:"marker-owned disposable 250k SQLite; imported pinned ad96009 v16 migrator",
     platform:process.platform,node:process.version,
     rows:rows(),historicalVersion,candidateVersion:latest,
     baseline:before,candidate:after,beforePlan,afterPlan,
