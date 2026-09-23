@@ -67,12 +67,12 @@ The detailed source is `20_FINDINGS_TRACEABILITY_MATRIX.md`; keep totals consist
 ## 4. Current task
 
 ```text
-Completed phases: R0–R5 (G0–G5 VERIFIED PASS on isolated feature branch); R5.01–R5.12 code/fixture acceptance recorded in R5 G5 closure.
-Current phase: R6 IN_PROGRESS — R6.01–R6.09 implementation/evidence is committed through reconciliation HEAD 40fdcb1; R6.07's implementation checkpoint is 412ca3e. Source/test TypeScript VERIFIED PASS in task 0e6308a3; latest full suite 163 files / 714 PASS + 1 expected R7 HIGH-10 failure in task 055c74e0 (supersedes 1c2cbb91's 711+3); build and strict G1 189/0 PASS. G6 OPEN specifically for measured R6.04 index write amplification (+54–128% synthetic 3,000-row inserts) and workload/trade-off acceptance; no live database cutover or service restart is authorized.
-Findings: 30/54 VERIFIED_CLOSED (HIGH 10, MEDIUM 19, LOW 1); 21 OPEN, 3 TEST_ENCODED for later phases. MED-19 closed by R6.06 10k-session churn; MED-20 by 500 hot-path SQLite operations without schema PRAGMAs; MED-02 by committed R6.09 separated-secret argument redaction; MED-25 by R6.08 golden parser-contract and HELP/TYPE exposition regression (promtool optional, not claimed executed). HIGH-11/HIGH-12 and MED-03/LOW-07 remain cross-phase/platform-bound.
-Gate: G0–G5 PASS on isolated branch; G6–G10 OPEN. HooshiX is NOT release-ready.
-Workspace: D:/workspace/hooshix-agent; isolated feature/r2-unified-tool-gateway-2026-09-20 branch.
-Local runtime DB observation (read-only SQLite query): schema migrations include v16; the running service may have applied migration automatically. This is NOT proof of a separately approved production migration rehearsal. No manual DB repair, deployment, push, merge, branch reset or removal of unrelated user files in this R5 work.
+Completed phases: R0–R6 (G0–G6 VERIFIED PASS on isolated feature branch). G6's v17 Metrics index batch-write penalty is owner-accepted as an explicit R6 design trade-off, not removed or approved for live deployment; see R6_G6_OWNER_ACCEPTANCE_2026-09-23.md.
+Current phase: R7 IN_PROGRESS — existing R7.01–R7.10 configuration/deployment/CI backlog; R7.04 Docker frozen-install fallback removed in isolated branch, static HIGH-10 regression and focused build PASS. HIGH-10 remains IMPLEMENTED pending real frozen-install/container failure proof. G7 OPEN; R8–R10 NOT_STARTED.
+Latest R6 validation: task b71ac997-cd42-4785-b589-ac5975e79313 completed 250k disposable v16/v17 real-adapter A/B PASS with data/result parity and integrity; source/test TypeScript PASS; 163 test files / 714 PASS plus one expected HIGH-10 R7 RED on pre-R7.04 source; build PASS; strict G1 189/0 PASS. HIGH-10's later focused static test passes, but its full closure is not yet claimed.
+Findings: 30/54 VERIFIED_CLOSED (HIGH 10, MEDIUM 19, LOW 1); 21 OPEN, 2 TEST_ENCODED and 1 IMPLEMENTED (HIGH-10) for later phases. Authoritative states: 20_FINDINGS_TRACEABILITY_MATRIX.md. HIGH-11/HIGH-12 and MED-03/LOW-07 remain later-phase/platform-bound.
+Gate: G0–G6 PASS on isolated branch; G7–G10 OPEN. HooshiX is NOT release-ready.
+Workspace: D:/workspace/hooshix-agent; feature/r2-unified-tool-gateway-2026-09-20 branch. Neither the owner acceptance nor the R7.04 isolated code change authorizes a live database cutover, production deployment, service restart, push or merge.
 ```
 
 ---
