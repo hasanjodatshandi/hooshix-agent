@@ -36,3 +36,28 @@ No active local DB migration, service restart, deployment, push, merge, user-bac
 ## Validation on the current feature branch
 
 HooshiX Task `608d498c-3717-4e42-b503-2dd719b3798b` completed all five steps successfully on the current R6 source: pinned v16/v17 250k-row disposable benchmark PASS; `pnpm run typecheck` source and test TS PASS; `pnpm exec vitest run` 163 test files / 714 passing assertions + **one expected R7 HIGH-10 failing contract** / zero unexpected failures (exit 0); `pnpm run build` PASS; strict global G1: 189 scanned source files / zero verified violations PASS. This validates current implementation and benchmark reproducibility, **not G6 trade-off acceptance or G7**. R7 HIGH-10 remains intentionally unclosed.
+
+## Additional independent A/B repetitions and local observed workload — 2026-09-23
+
+Task `3d075107-05b8-40ae-ac35-cffb65f37dff` completed two further **independent** disposable 250k-row pinned v16/current v17 runs (both exit 0; `quick_check=ok`; identical normalized Metrics payloads; same planned task/category/time index). Comparisons below are paired within each run, not pooled samples across differing machine conditions:
+
+| Pinned run | Filtered v16 -> v17 median | 3,000-row insert v16 -> v17 median | Insert delta |
+|---|---|---|---|
+| Additional A | 285.802 -> 6.008 ms (~47.6x faster) | 18.441 -> 25.941 ms | +40.7% |
+| Additional B | 297.189 -> 5.342 ms (~55.6x faster) | 18.825 -> 25.387 ms | +34.9% |
+
+The earlier 2026-09-23 single replay observed an inverse median for three short, noisy insert samples (35.079 -> 28.716 ms) while both additional runs confirm a material index-maintenance write penalty. Together with three original R6.04 repetitions (+54.2%, +54.9%, +127.8%), **five of six paired median runs show >20% insert regression**. This is a genuine measured trade-off, not an unexplained failure or a confirmed safe production write SLA. Global/paged Metrics medians varied by run and are not certified regression-free at p95.
+
+A read-only query of existing HooshiX `agent_metrics` was used to assess **observed local activity**, without reading or mutating the operational DB file directly. UTC 24-hour historical periods:
+
+| UTC interval | Existing tool_calls reported |
+|---|---:|
+| 2026-09-20 00:00 -> 2026-09-21 00:00 | 4,149 |
+| 2026-09-21 00:00 -> 2026-09-22 00:00 | 1,782 |
+| 2026-09-22 00:00 -> 2026-09-23 00:00 | 2,118 |
+
+All 2,118 calls from the last complete period were read through five 500-result pages solely to aggregate timestamp/tool statistics; no individual call data or sensitive arguments were stored in this report. Observed maximum: **58 calls in one minute**, **5 calls in one timestamp second**, **800 with Task ID**; the 2,118 calls include 1,333 workflow-classified records. The call distribution is highly activity-dependent and includes tests and development operations. `agent_metrics` itself had zero calls in that historical day, so the frequency of future task-filtered dashboard requests cannot be inferred. `tool_calls` insertion frequency is a proxy, not proof of every SQLite write or concurrent production workload.
+
+**Extrapolation boundary:** Even a small per-row index-maintenance cost can be material to write-heavy future use. Batch measurements do **not** establish per-autocommit latency, disk saturation, event-loop p95, planned public traffic, or any future workload SLO. Historical current-local activity does not constitute owner acceptance of v17 for production deployment. Do not use the current-low observed traffic to silently waive the G6 >20% material-regression review.
+
+**Current G6 decision:** All functional, migration, query-plan, typecheck, full-test, build and static architecture evidence remains PASS. The v17 query-vs-write performance choice is documented but **NOT OWNER-ACCEPTED**. G6 stays OPEN pending explicit acceptance of the measured overhead for an agreed deployment workload or an owner-directed, separately verified existing-scope code alternative; no live DB migration, workload replay against live data, new phase or index change is authorized by this report.
