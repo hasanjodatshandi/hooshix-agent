@@ -1,16 +1,16 @@
 /**
- * Legacy runtime path settings live at the infrastructure/config boundary.
- * Reads are deliberately lazy to preserve the existing test/bootstrap
- * contract: callers may set environment variables before each operation.
- * R7 owns validation and replacement with a typed immutable config loader.
+ * R7.01 compatibility projection over the single runtime-path parser in
+ * `app-config.ts`. Reads stay lazy to preserve the existing bootstrap contract.
  */
+import { parseDatabasePath, parseLogDirectory } from "./app-config.js";
+
 export interface LegacyRuntimePathSettings {
   readonly databasePath: string;
   readonly logDirectory: string;
 }
-export function readLegacyRuntimePaths(env: Readonly<Record<string, string | undefined>> = process.env): LegacyRuntimePathSettings {
-  return {
-    databasePath: env.HOOSHIX_DB_PATH ?? "./data/agent-memory.db",
-    logDirectory: env.HOOSHIX_LOG_DIR ?? "./logs",
-  };
+
+export function readLegacyRuntimePaths(
+  env: Readonly<Record<string, string | undefined>> = process.env,
+): LegacyRuntimePathSettings {
+  return { databasePath: parseDatabasePath(env), logDirectory: parseLogDirectory(env) };
 }

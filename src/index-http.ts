@@ -5,17 +5,21 @@ import { restoreInterruptedTasks } from "./core/recovery/startup-recovery.js";
 import { recoverInterruptedTasks } from "./core/recovery/crash-recovery.js";
 import { createRetentionPolicy } from "./core/memory/database/cleanup.js";
 import { startPeriodicRetention } from "./infrastructure/server/retention-scheduler.js";
-import { readLegacyRetentionDays } from "./infrastructure/config/legacy-retention.js";
+import { loadAppConfig } from "./infrastructure/config/app-config.js";
 
 async function main() {
   console.error("Starting HooshiX Agent V1 (HTTP mode)");
 
+  // R7.01: the single immutable configuration contract is loaded and validated once
+  // at startup, so an invalid or conflicting setting fails immediately. Environment
+  // access stays inside the config boundary (R1 architecture contract).
+  const config = loadAppConfig(undefined, undefined, "http");
+
   initializeDatabase();
   // Run bounded, class-aware retention at startup and every six hours; never delete active records.
-  const retentionDays = readLegacyRetentionDays();
-  if (Number.isInteger(retentionDays) && retentionDays >= 1) {
+  if (config.retentionDays >= 1) {
     startPeriodicRetention({
-      policy:createRetentionPolicy(retentionDays),
+      policy:createRetentionPolicy(config.retentionDays),
       onReport:report=>{
         if(report.total>0)console.error("Retention cleanup removed "+report.total+" expired row(s)");
       },

@@ -17,6 +17,18 @@ describe("R7 deployment security contracts", () => {
     expect(docker).toContain("/health/live");
     expect(docker).not.toContain("MCP_API_KEY=your-secret");
   });
+  it("R7.06 pins both build stages to a digest of the exact Node line", () => {
+    const docker = read("Dockerfile");
+    const fromLines = [...docker.matchAll(/^FROM\s+(\S+)(?:\s+AS\s+\w+)?\s*$/gm)].map(m => m[1]);
+    expect(fromLines.length, docker).toBeGreaterThanOrEqual(2);
+    for (const ref of fromLines) {
+      expect(ref).toMatch(/^node:24\.18\.0-slim@sha256:[0-9a-f]{64}$/);
+    }
+    // Digest and provenance are recorded in the deployment pinning document.
+    const doc = read("docs/implementation/R7_DEPLOYMENT_PINNING_2026-09-23.md");
+    for (const ref of fromLines) expect(doc).toContain(ref);
+    expect(read(".nvmrc").trim()).toBe("24.18.0");
+  });
   it("Docker build context excludes operator secrets, workspaces and database backups", () => {
     const ignore = read(".dockerignore");
     for (const pattern of [".token", "**/.token", ".env", "**/.env", "data", "**/backups/**"]) {
@@ -46,7 +58,7 @@ describe("R7 deployment security contracts", () => {
     expect(ci).toContain("ERR_PNPM_OUTDATED_LOCKFILE");
     for (const gate of ["pnpm install --frozen-lockfile", "pnpm run typecheck", "pnpm exec vitest run",
       "pnpm run test:coverage", "pnpm audit --prod", "docker build", "docker exec",
-      "scripts/verify-g1-global.mjs"]) expect(ci).toContain(gate);
+      "scripts/verify-g1-global.mjs", "scripts/verify-runtime-versions.mjs"]) expect(ci).toContain(gate);
   });
   it("manual startup and service watchdog validate Node/pnpm versions before execution", () => {
     const watchdog = read("scripts/hooshix_nodejs_mcp_watchdog.ps1");

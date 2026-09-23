@@ -4,11 +4,14 @@ import {cleanupOAuthExpired,issueOAuthFamilyId,persistOAuthGrant,
   registerOAuthClient,verifyOAuthClientRedirect,
   type OAuthAccessClaims,type OAuthGrantRecord
 } from "../adapters/outbound/persistence/sqlite/repositories/oauth-token.adapter.js";
+import type { OAuthSettings } from "../infrastructure/config/app-config.js";
 
-const ACCESS_TTL_MS=3_600_000;
-const REFRESH_TTL_MS=30*24*3_600_000;
-const CODE_TTL_MS=300_000;
-const MAX_PENDING_CODES=128;
+/** R7.01: R5-era module constants are now injected from the AppConfig contract. */
+const DEFAULT_ACCESS_TTL_MS=3_600_000;
+const DEFAULT_REFRESH_TTL_MS=30*24*3_600_000;
+const DEFAULT_CODE_TTL_MS=300_000;
+const DEFAULT_MAX_PENDING_CODES=128;
+const DEFAULT_CLEANUP_INTERVAL_MS=60_000;
 const READ_SCOPE="hooshix:read";
 const REFRESH_SCOPE="offline_access"; // Standard OAuth scope; not an HooshiX authorization permission.
 export const OAUTH_SCOPES=Object.freeze([
@@ -41,17 +44,28 @@ export class OAuthProvider{
   private readonly pending=new Map<string,CodeRecord>();
   private readonly cleanupInterval:ReturnType<typeof setInterval>;
   private readonly now:()=>number;
-  constructor(bootstrapSecret:string,options:{now?:()=>number}={}){
+  private readonly accessTtlMs:number;
+  private readonly refreshTtlMs:number;
+  private readonly codeTtlMs:number;
+  private readonly maxPendingCodes:number;
+  private readonly maxRedirectUris:number;
+  constructor(bootstrapSecret:string,options:{now?:()=>number;settings?:Partial<OAuthSettings>}={}){
     if(!bootstrapSecret)throw new Error("bootstrap_secret_required");
     this.bootstrapSecret=bootstrapSecret;
     this.now=options.now??Date.now;
-    this.cleanupInterval=setInterval(()=>this.cleanup(),60_000);
+    const s=options.settings??{};
+    this.accessTtlMs=s.accessTtlMs??DEFAULT_ACCESS_TTL_MS;
+    this.refreshTtlMs=s.refreshTtlMs??DEFAULT_REFRESH_TTL_MS;
+    this.codeTtlMs=s.codeTtlMs??DEFAULT_CODE_TTL_MS;
+    this.maxPendingCodes=s.maxPendingCodes??DEFAULT_MAX_PENDING_CODES;
+    this.maxRedirectUris=s.maxRedirectUris??8;
+    this.cleanupInterval=setInterval(()=>this.cleanup(),s.cleanupIntervalMs??DEFAULT_CLEANUP_INTERVAL_MS);
     this.cleanupInterval.unref?.();
   }
   destroy():void{clearInterval(this.cleanupInterval);}
   /** DCR identity is persisted and bound to every accepted redirect. */
   registerClient(redirectUris:readonly string[]):string{
-    if(redirectUris.length<1||redirectUris.length>8||
+    if(redirectUris.length<1||redirectUris.length>this.maxRedirectUris||
        redirectUris.some(u=>typeof u!=="string"||u.length>2048)||
        new Set(redirectUris).size!==redirectUris.length)
       throw new Error("oauth_invalid_client_metadata");
@@ -82,11 +96,11 @@ export class OAuthProvider{
        clientId.length>256||redirectUri.length>2048)
       throw new Error("oauth_invalid_authorization_request");
     const chosen=validateRequestedScopes(scopes);
-    if(this.pending.size>=MAX_PENDING_CODES)this.cleanup();
-    if(this.pending.size>=MAX_PENDING_CODES)throw new Error("oauth_too_many_pending_codes");
+    if(this.pending.size>=this.maxPendingCodes)this.cleanup();
+    if(this.pending.size>=this.maxPendingCodes)throw new Error("oauth_too_many_pending_codes");
     const code=crypto.randomBytes(32).toString("base64url");
     this.pending.set(hash(code),{codeHash:hash(code),challenge,resource,redirectUri,
-      clientId,scopes:chosen,principalId,expiresAt:this.now()+CODE_TTL_MS});
+      clientId,scopes:chosen,principalId,expiresAt:this.now()+this.codeTtlMs});
     return code;
   }
   exchange(code:string|undefined,verifier:string|undefined,resource:string,
@@ -108,9 +122,9 @@ export class OAuthProvider{
     const newRefresh="hxr_"+crypto.randomBytes(32).toString("base64url");
     const outcome=rotateOAuthRefresh({oldHash:hash(refreshToken),newAccessHash:hash(newAccess),
       newRefreshHash:hash(newRefresh),resource,clientId,now:this.now(),
-      accessTtlMs:ACCESS_TTL_MS,refreshTtlMs:REFRESH_TTL_MS});
+      accessTtlMs:this.accessTtlMs,refreshTtlMs:this.refreshTtlMs});
     if(outcome.kind!=="rotated")return null;
-    return {access_token:newAccess,token_type:"Bearer",expires_in:ACCESS_TTL_MS/1000,
+    return {access_token:newAccess,token_type:"Bearer",expires_in:this.accessTtlMs/1000,
       refresh_token:newRefresh,scope:outcome.grant.scopes.join(" ")};
   }
   revoke(accessToken:string):void{revokeOAuthAccess(hash(accessToken),this.now());}
@@ -122,9 +136,9 @@ export class OAuthProvider{
     const grant:OAuthGrantRecord={tokenHash:hash(rawAccess),familyId:issueOAuthFamilyId(),
       generation:0,principalId:request.principalId,clientId:request.clientId,
       resource:request.resource,scopes:request.scopes,issuedAt:time,
-      accessExpiresAt:time+ACCESS_TTL_MS,refreshExpiresAt:time+REFRESH_TTL_MS};
+      accessExpiresAt:time+this.accessTtlMs,refreshExpiresAt:time+this.refreshTtlMs};
     persistOAuthGrant(grant,hash(rawRefresh));
-    return {access_token:rawAccess,token_type:"Bearer",expires_in:ACCESS_TTL_MS/1000,
+    return {access_token:rawAccess,token_type:"Bearer",expires_in:this.accessTtlMs/1000,
       refresh_token:rawRefresh,scope:grant.scopes.join(" ")};
   }
   private cleanup():void{

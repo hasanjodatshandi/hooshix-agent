@@ -32,6 +32,8 @@ jobs:
           corepack prepare pnpm@11.24.0 --activate
           test "$(pnpm --version)" = "11.24.0"
           node --version
+      - name: Runtime toolchain gate
+        run: node scripts/verify-runtime-versions.mjs
       - name: Install frozen dependencies
         run: pnpm install --frozen-lockfile
       - name: Typecheck and compile

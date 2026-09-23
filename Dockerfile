@@ -1,5 +1,8 @@
 # Stage 1: Build
-FROM node:24-slim AS builder
+# R7.06: base image pinned by digest to the exact Node line declared in .nvmrc
+# (24.18.0) and used by CI. Digest captured from Docker Hub on 2026-09-23; see
+# docs/implementation/R7_DEPLOYMENT_PINNING_2026-09-23.md for the update procedure.
+FROM node:24.18.0-slim@sha256:6f7b03f7c2c8e2e784dcf9295400527b9b1270fd37b7e9a7285cf83b6951452d AS builder
 
 RUN corepack enable && corepack prepare pnpm@11.24.0 --activate
 
@@ -15,7 +18,7 @@ COPY src ./src
 RUN pnpm run build
 
 # Stage 2: Production
-FROM node:24-slim AS production
+FROM node:24.18.0-slim@sha256:6f7b03f7c2c8e2e784dcf9295400527b9b1270fd37b7e9a7285cf83b6951452d AS production
 
 RUN corepack enable && corepack prepare pnpm@11.24.0 --activate
 

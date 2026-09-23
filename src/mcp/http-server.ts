@@ -14,13 +14,15 @@ import fs from "node:fs";
 import {loadAppConfig} from "../infrastructure/config/app-config.js";
 import { createSessionWorkspaceContext, runWithSessionWorkspace, type SessionWorkspaceContext } from "../security/workspace-guard.js";
 import { runWithTrustedInboundIdentity } from "../infrastructure/composition/r2-trusted-inbound-identity.js";
-import { getConfiguredPermissionLevel } from "../infrastructure/config/permission-config.js";
 import type { PrincipalId, SessionId } from "../domain/shared/ids.js";
 import {OperatorWebSessions,HttpWindowLimiter,HttpPrincipalContexts} from "../infrastructure/server/http-security.js";
 import {withAgentDatabase} from "../core/memory/database.js";
 import {createMcpHandler} from "@modelcontextprotocol/server";
 import {toNodeHandler} from "@modelcontextprotocol/node";
-const APP_CONFIG=loadAppConfig();
+// R7.01: the HTTP transport never reads environment variables directly; the
+// single immutable AppConfig contract owns that boundary (runtime mode is the
+// only transport-specific input and is passed explicitly here).
+const APP_CONFIG=loadAppConfig(undefined,undefined,"http");
 const CONFIG=APP_CONFIG.http;
 const PORT=CONFIG.port;
 const PUBLIC_BASE_URL=CONFIG.publicBaseUrl;
@@ -48,15 +50,21 @@ function loadToken():string{
   fs.writeFileSync(TOKEN_FILE,generated,{flag:"wx",mode:0o600,encoding:"utf8"});
   return generated;
 }
-// Grace period before cleaning up closed sessions (ms)
-const SESSION_GRACE_MS = 5 * 60 * 1000;
-const SESSION_IDLE_MS = 30 * 60_000;
-const SESSION_ABSOLUTE_MS = 8 * 60 * 60_000;
-const MAX_MCP_SESSIONS = 64;
-const operatorSessions=new OperatorWebSessions();
-const publicLimiter=new HttpWindowLimiter(60,60_000);
-const principalLimiter=new HttpWindowLimiter(120,60_000);
-const operatorLoginLimiter=new HttpWindowLimiter(5,60_000);
+// R7.01: session, rate-limit and concurrency budgets come from the single
+// immutable AppConfig contract, not duplicated module constants.
+const SESSION_GRACE_MS = APP_CONFIG.session.graceMs;
+const SESSION_IDLE_MS = APP_CONFIG.session.idleMs;
+const SESSION_ABSOLUTE_MS = APP_CONFIG.session.absoluteMs;
+const MAX_MCP_SESSIONS = APP_CONFIG.session.maxMcpSessions;
+const operatorSessions=new OperatorWebSessions(undefined,
+  APP_CONFIG.session.idleMs,APP_CONFIG.session.absoluteMs,APP_CONFIG.session.operatorCap);
+const publicLimiter=new HttpWindowLimiter(APP_CONFIG.rateLimit.publicRequestsPerWindow,
+  APP_CONFIG.rateLimit.windowMs,undefined,APP_CONFIG.rateLimit.maxLimiterKeys);
+const principalLimiter=new HttpWindowLimiter(APP_CONFIG.rateLimit.principalRequestsPerWindow,
+  APP_CONFIG.rateLimit.windowMs,undefined,APP_CONFIG.rateLimit.maxLimiterKeys);
+const operatorLoginLimiter=new HttpWindowLimiter(APP_CONFIG.rateLimit.operatorLoginAttemptsPerWindow,
+  APP_CONFIG.rateLimit.windowMs,undefined,APP_CONFIG.rateLimit.maxLimiterKeys);
+const MAX_CONCURRENT_REQUESTS_PER_PRINCIPAL = APP_CONFIG.rateLimit.maxConcurrentRequestsPerPrincipal;
 const expensiveInflight=new Map<string,number>();
 
 interface SessionEntry {
@@ -72,7 +80,8 @@ interface SessionEntry {
 const sessions = new Map<string, SessionEntry>();
 /** 2026 protocol is per request; application workspace selection is a
  * bounded, authenticated principal+client context, NOT an MCP session ID. */
-const modernContexts=new HttpPrincipalContexts<SessionWorkspaceContext>();
+const modernContexts=new HttpPrincipalContexts<SessionWorkspaceContext>(undefined,
+  APP_CONFIG.session.idleMs,APP_CONFIG.session.absoluteMs,APP_CONFIG.session.contextCap);
 const modernHandler=toNodeHandler(createMcpHandler(()=>createServer(),{legacy:"reject"}));
 
 
@@ -92,7 +101,7 @@ function cleanupStaleSessions():void{
   }
   operatorSessions.prune();
 }
-setInterval(cleanupStaleSessions,60_000).unref?.();
+setInterval(cleanupStaleSessions,APP_CONFIG.session.cleanupIntervalMs).unref?.();
 
 function createServer(): McpServer {
   return createMetricsServer(
@@ -306,7 +315,7 @@ async function handleRequest(
     .digest("hex");
   const verifiedGrant=grant;
   const grantedScopes=verifiedGrant.scopes;
-  const permission=({READ_ONLY:"READ",PROJECT_ACCESS:"PROJECT_ACCESS",DEVELOPER_MODE:"DEVELOPER",ADMIN_MODE:"ADMIN"} as const)[getConfiguredPermissionLevel()];
+  const permission=({READ_ONLY:"READ",PROJECT_ACCESS:"PROJECT_ACCESS",DEVELOPER_MODE:"DEVELOPER",ADMIN_MODE:"ADMIN"} as const)[APP_CONFIG.permissionLevel];
   function runAuthorizedSession<T>(sessionId:string,entry:SessionEntry,operation:()=>T):T{
     entry.lastActiveAt=Date.now();
     return runWithTrustedInboundIdentity({
@@ -316,7 +325,7 @@ async function handleRequest(
   }
   // Global bounded concurrency for expensive protected MCP requests.
   const count=expensiveInflight.get(principalBinding)??0;
-  if(count>=8){res.setHeader("Retry-After","1");sendJSON(res,429,{error:"concurrency_limited"});return;}
+  if(count>=MAX_CONCURRENT_REQUESTS_PER_PRINCIPAL){res.setHeader("Retry-After","1");sendJSON(res,429,{error:"concurrency_limited"});return;}
   expensiveInflight.set(principalBinding,count+1);
   let released=false;
   const release=()=>{
@@ -1209,7 +1218,7 @@ async function handleRegisterPOST(
 
 export function startHttpServer():Promise<void>{
   const bootstrap=loadToken();
-  const oauth=new OAuthProvider(bootstrap);
+  const oauth=new OAuthProvider(bootstrap,{settings:APP_CONFIG.oauth});
   return new Promise((resolve,reject)=>{
     const server=http.createServer(async(req,res)=>{
       try{await handleRequest(req,res,oauth);}

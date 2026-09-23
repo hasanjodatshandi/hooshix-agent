@@ -1,6 +1,4 @@
-/** R1 compatibility-only startup settings. R7 replaces with validated immutable configuration. */
-export function readLegacyRetentionDays(
-  env: Readonly<Record<string, string | undefined>> = process.env,
-): number {
-  return Number(env.HOOSHIX_RETENTION_DAYS ?? 90);
-}
+/** R7.01 compatibility projection over the single retention parser in `app-config.ts`. */
+import { parseRetentionDaysRaw } from "./app-config.js";
+
+export const readLegacyRetentionDays = parseRetentionDaysRaw;

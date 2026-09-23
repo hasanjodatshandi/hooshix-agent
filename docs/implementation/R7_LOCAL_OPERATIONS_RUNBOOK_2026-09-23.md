@@ -11,17 +11,54 @@ Status: R7 implementation document. This is NOT a production release or a replac
 - `MCP_API_KEY` and `MCP_ACCESS_TOKEN` are REMOVED legacy input names and cause explicit startup failure; eliminate them from host/service environments. Neither an empty legacy variable nor an old watchdog configuration is permitted.
 - To use a trusted external TLS edge, explicitly set `HOOSHIX_PUBLIC_BASE_URL=https://your-approved-host` for the running process. Do not embed an endpoint or token in tracked scripts. Public exposure, TLS, authorization, rollback and workload qualification remain separate release gates.
 
+## Unified typed configuration (R7.01)
+
+- Every operational setting is parsed and validated exactly once by
+  `loadAppConfig()` in `src/infrastructure/config/app-config.ts`, which returns a
+  deeply frozen immutable contract. There is no other parsing path: the historical
+  `readLegacy*` helpers are compatibility projections of the same parsers.
+- Invalid or contradictory settings fail loudly at startup instead of being silently
+  coerced or ignored. Examples: a non-integer `HOOSHIX_RETENTION_DAYS`, an OAuth access
+  TTL that is not shorter than the refresh TTL, a session idle TTL that is not shorter
+  than the absolute TTL, or a lease heartbeat that is not under half the lease TTL.
+- Canonical names are the `HOOSHIX_*` variables. The deprecated HTTP aliases
+  (`MCP_PORT`, `MCP_BIND_HOST`, `MCP_PUBLIC_BASE_URL`, `MCP_ALLOWED_ORIGINS`) still
+  resolve for a migration window, but setting an alias AND its canonical name with
+  DIFFERENT values is a hard startup error (`conflicting environment names`).
+- The operator-tunable budgets that were previously hardcoded are now part of the
+  contract and may be overridden without code changes, all defaulting to the previously
+  shipped values: OAuth TTLs and limits (`HOOSHIX_OAUTH_*`), request budgets
+  (`HOOSHIX_PUBLIC_RATE_LIMIT`, `HOOSHIX_PRINCIPAL_RATE_LIMIT`,
+  `HOOSHIX_OPERATOR_LOGIN_RATE_LIMIT`, `HOOSHIX_RATE_LIMIT_WINDOW_MS`,
+  `HOOSHIX_RATE_LIMIT_MAX_KEYS`, `HOOSHIX_MAX_CONCURRENT_REQUESTS`), session lifecycles
+  (`HOOSHIX_SESSION_IDLE_MS`, `HOOSHIX_SESSION_ABSOLUTE_MS`, `HOOSHIX_SESSION_GRACE_MS`,
+  `HOOSHIX_MAX_MCP_SESSIONS`, `HOOSHIX_OPERATOR_SESSION_LIMIT`,
+  `HOOSHIX_MODERN_CONTEXT_LIMIT`), task lease tuning (`HOOSHIX_TASK_LEASE_TTL_MS`,
+  `HOOSHIX_TASK_LEASE_HEARTBEAT_MS`) and search budgets (`HOOSHIX_SEARCH_MAX_*`).
+- `HOOSHIX_RETENTION_DAYS=0` explicitly disables cleanup; a missing or invalid value
+  fails startup. Reference: `tests/core/r7-unified-config.test.ts`.
+
 ## Docker / Compose
 
 - `docker build -t hooshix-agent:reviewed .` uses frozen dependency resolution in BOTH build and runtime layers. The production image runs as user `node`; only `/app/data` is prepared as a writable persistent directory. Its SQLite path, logs and bootstrap file live there.
 - Direct `docker run` without a configured HTTPS edge is for an INTERNAL local health/process smoke only: Docker's default in-container HTTP bind is loopback. Do not claim that publishing `-p` alone makes a secure or reachable remote MCP interface.
 - For the existing Compose example, supply an approved external `HOOSHIX_PUBLIC_BASE_URL` through the operator environment. Compose binds the container to `0.0.0.0:3001` internally, but publishes only host `127.0.0.1:3001` for the separately managed TLS edge. Do NOT publish the container port publicly or expose the local HTTP backend directly to the Internet.
 - Keep `mcp-data` persistent and protect its contents, including OAuth tokens, SQLite files and `.token`. Do not change/migrate live data to validate R7. Rehearse migration on a copy during G10.
-- The Docker image base currently uses the controlled major tag `node:24-slim`. Before public release, select and record the reviewed immutable upstream digest, refresh it on reviewed dependency-update PRs, and run the entire CI/container smoke gate. Do not claim image-level byte-for-byte reproducibility until the digest is pinned and checked.
+- The Docker image base is pinned by digest to the exact Node line declared in `.nvmrc`:
+  `node:24.18.0-slim@sha256:6f7b03f7…6951452d`. Digest provenance, the exact reference and the
+  controlled base-image update procedure are recorded in
+  `docs/implementation/R7_DEPLOYMENT_PINNING_2026-09-23.md`. Refresh the digest only through
+  that procedure and re-run the container smoke gate afterwards; do not revert to a rolling tag.
 
 ## Windows watchdog / manual startup
 
 - The watchdog probes unauthenticated `/health/live` and must NEVER pass the obsolete `MCP_ACCESS_TOKEN` variable into the server. The operator supplies an optional public base URL in the service environment. Check OS process ownership before stopping/restarting; unowned Node processes cannot be terminated by the watchdog.
+- Both the watchdog and `scripts/start_nodejs_mcp.bat` validate the toolchain before launch
+  (Node.js 24 line, pnpm `11.24.0`). The shared machine-independent gate is
+  `node scripts/verify-runtime-versions.mjs`, which reads the same pins (`.nvmrc` and
+  `package.json` `packageManager`) and exits non-zero on a wrong Node line, a missing pnpm,
+  or a pnpm version mismatch. Its failure paths are executed by
+  `tests/core/r7-runtime-version-gate.test.ts`.
 - For manual local use, `scripts/start_nodejs_mcp.bat` resolves the project relative to its own location. The watchdog remains intentionally separate from release cutover and must not be restarted against active operational data merely to test these changes.
 - An operator inspecting a token with `scripts/mcp-token.ps1 show` must keep the terminal output private. The generated/bootstrap secret is not a raw OAuth access token.
 
