@@ -20,9 +20,9 @@ Status values: `OPEN`, `TEST_ENCODED`, `IMPLEMENTING`, `IMPLEMENTED`, `VERIFIED_
 | HIGH-07 | Crash hydration incomplete | R3 | 11, 13, 16 | all-fields Task round-trip + recovery uses canonical get | VERIFIED_CLOSED |
 | HIGH-08 | Dirty Git rollback destroys work | R4 | 12, 16 | dirty repo snapshot rejected; clean rollback verified | VERIFIED_CLOSED |
 | HIGH-09 | Package rollback overstates guarantee | R4 | 12, 16 | manifest-only result wording + environment evidence requirement | VERIFIED_CLOSED |
-| HIGH-10 | Docker frozen-lock fallback | R7 | 17 | static Docker assertion + real frozen build failure test | IMPLEMENTED |
-| HIGH-11 | Auth config/env/static secret drift | R7/R5 | 10, 17, 18, 19 | stale var failure, no literal secret, one config contract | TEST_ENCODED |
-| HIGH-12 | Authenticated health vs unauth probe | R7/R5 | 10, 17, 18 | container live/ready smoke without credential leakage | TEST_ENCODED |
+| HIGH-10 | Docker frozen-lock fallback | R7 | 17 | static Docker assertion + real frozen build failure test | IMPLEMENTED — frozen install is exact in both Dockerfile stages and the disposable mismatched-manifest fixture fails closed with `ERR_PNPM_OUTDATED_LOCKFILE`; the REAL container build remains pending a Docker-capable target (daemon unreachable on the dev host), so this is not yet VERIFIED_CLOSED |
+| HIGH-11 | Auth config/env/static secret drift | R7/R5 | 10, 17, 18, 19 | stale var failure, no literal secret, one config contract | IMPLEMENTED — one immutable `loadAppConfig()` contract, retired names hard-fail, the retired static literal is absent from all 8 active deployment surfaces (policy check PASS over 489 tracked paths), secret length/symlink/POSIX-0600 enforced, rotation procedure documented and tested; not yet VERIFIED_CLOSED because the clean-checkout CI run and the container smoke are still pending |
+| HIGH-12 | Authenticated health vs unauth probe | R7/R5 | 10, 17, 18 | container live/ready smoke without credential leakage | TEST_ENCODED — `/health/live` unauthenticated minimal response and protected `/health` are covered by static and spawned-server contracts (liveness never echoes the secret); the real container live/ready smoke is still pending a Docker-capable target, so this is not yet VERIFIED_CLOSED |
 | HIGH-13 | Same-task guard process-local | R3 | 06, 11, 13, 16 | two-process lease race exactly one winner | VERIFIED_CLOSED |
 
 ---
