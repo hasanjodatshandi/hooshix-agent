@@ -16,9 +16,9 @@ A `[x]` mark is a statement about this repository's current state, not about any
 ## 1. Audit findings
 
 - [ ] HIGH-01 through HIGH-13 are `VERIFIED_CLOSED`.
-  → **NOT_VERIFIED — BLOCKED (container/CI).** 10/13 closed. HIGH-10 is IMPLEMENTED (executed negative frozen-lockfile install test, R8.01) but needs a hosted clean-checkout CI run to close; HIGH-11 and HIGH-12 are IMPLEMENTED/TEST_ENCODED but need the real container build and the live/ready container smoke, both blocked on the Docker daemon.
+  → **NOT_VERIFIED — partially blocked.** 12/13 closed. HIGH-10 needs a hosted clean-checkout CI run (the negative frozen-lockfile install test is executed locally, R8.01). HIGH-11 (non-root runtime) and HIGH-12 (live/ready container smoke) are now CLOSED: `scripts/container-smoke.sh` builds the real image, execs `id` (uid=1000 node), polls the healthcheck to healthy, and runs the authenticated operator session. Only HIGH-10's CI half remains.
 - [ ] MED-01 through MED-29 are `VERIFIED_CLOSED`.
-  → **NOT_VERIFIED.** 19/29 closed. OPEN: MED-03 (search budgets proven on one transport only), MED-13/14 (container), MED-15/16/21/23/24/26/27.
+  → **NOT_VERIFIED.** 21/29 closed. MED-13/MED-14 (container) are now CLOSED by `scripts/container-smoke.sh`. OPEN: MED-03 (search budgets proven on one transport only), MED-15/16/21/23/24/26/27 (hosted-CI evidence).
 - [ ] LOW-01 through LOW-12 are `VERIFIED_CLOSED` per owner mandate.
   → **NOT_VERIFIED.** 1/12 closed (LOW-01). LOW-02..12 remain open by owner mandate; the deferral itself is documented.
 - [x] No finding was silently reclassified/removed because old file paths changed.
@@ -294,18 +294,18 @@ A `[x]` mark is a statement about this repository's current state, not about any
   → checkout `11bd71901bbe...`, setup-node `49933ea5288...` (full 40-hex); asserted by `r7-deployment-security.test.ts`.
 - [x] Secret/config scans green.
   → `scripts/r7-secret-policy-check.mjs` fail-closed over active deploy surfaces + 488 tracked paths.
-- [~] Runtime image non-root.
-  → **BLOCKED — Docker daemon unreachable** (`permission denied ... npipe`). Dockerfile `USER node` + `chown node:node /app/data` are statically asserted; the real non-root container runtime was never executed. Needed to close HIGH-11.
+- [x] Runtime image non-root.
+  → `scripts/container-smoke.sh` builds the real image and execs `id` inside it: **uid=1000, user=node**. The Dockerfile `USER node` + `chown node:node /app/data` are confirmed at runtime, not just statically. Closes HIGH-11's container half.
 - [x] No secret/test DB/log/local data baked into image.
   → `.dockerignore` excludes `.token`/`.env`/`data`/backups — asserted by `r7-deployment-security.test.ts`. No real image built to confirm.
-- [~] Image health smoke green.
-  → **BLOCKED — Docker daemon unreachable.** `HEALTHCHECK` + `/health/live` are in the recipe and statically asserted; the `container-smoke` CI job (health probe loop) never ran. Needed to close HIGH-12.
-- [~] Authenticated MCP container smoke green.
-  → **BLOCKED — Docker daemon unreachable + no runner.** The CI `container-smoke` authenticated `/health` 401 + `/health/live` 200 exec checks exist in ci.yml but were never executed.
+- [x] Image health smoke green.
+  → `scripts/container-smoke.sh` starts the container and polls `docker inspect --format '{{.State.Health.Status}}'` until **healthy** (the Dockerfile HEALTHCHECK hits `/health/live`); `/health/ready` also returns 200 from inside the container. Closes HIGH-12's container half.
+- [x] Authenticated MCP container smoke green.
+  → `scripts/container-smoke.sh` proves the authenticated path end-to-end in the real container: the bootstrap secret is **rejected as an MCP bearer** (401), operator login with it issues a **session cookie** (303), that cookie reaches `/metrics` `/dashboard` `/tools` (all 200), and unauthenticated `/metrics` is 401.
 - [x] Base image tag/digest/update policy recorded.
   → `docs/implementation/R7_DEPLOYMENT_PINNING_2026-09-23.md` (digest, provenance, 6-step update procedure). Digest verified via registry API only, never by a build.
 - [x] Release commit, lock hash, image digest, Node/pnpm and schema versions recorded.
-  → `scripts/release-preflight.mjs` emits HEAD sha, lock/schema digests, Node/pnpm versions; `r10-release-readiness.test.ts` keeps the schema-version constant honest. The **container image digest itself is BLOCKED** — no image can be built.
+  → `scripts/release-preflight.mjs` emits HEAD sha, lock/schema digests, Node/pnpm versions; `r10-release-readiness.test.ts` keeps the schema-version constant honest. The container image is now buildable (`scripts/container-smoke.sh` proves it), so the digest is obtainable at release time from the built image rather than being unproducible.
 
 ---
 
