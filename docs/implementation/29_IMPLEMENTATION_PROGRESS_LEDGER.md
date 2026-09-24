@@ -1140,3 +1140,15 @@ The remaining open items were all closeable with code and tests on this host. Al
 - The removal is executable: `tests/core/r9-database-shim-removed.test.ts` (2 tests) asserts the file is absent and that no source, test or script imports the bare shim path, with the same negative lookahead so the real subpaths cannot false-positive.
 - **Validation:** serial 188 files / 832 tests PASS; `tsc` both configs PASS; `pnpm run build` PASS; `verify-g1-global.mjs --strict` PASS; `git diff --check` clean.
 
+### Docker via WSL — 12.6 / 12.8 / 12.9 / 5.12 closed; MED-03 closed — 2026-09-25
+
+- The Docker daemon was unreachable from Windows (`permission denied ... npipe`) but is installed and running inside WSL Ubuntu. The daemon itself was failing to start: `/etc/docker/daemon.json` carried a `hosts` directive that conflicts with the systemd service's `-H fd://` flag. Removing the `hosts` key (keeping the backup at `daemon.json.bak`) let the daemon start.
+- `scripts/container-smoke.sh` is the executable evidence for four items that were recorded as environment-BLOCKED:
+  - **12.6** non-root runtime — execs `id` in the running container: uid=1000, user=node.
+  - **12.8** image health — polls `docker inspect --format '{{.State.Health.Status}}'` until `healthy`, and `/health/ready` returns 200 from inside the container.
+  - **12.9** authenticated container smoke — the bootstrap secret is rejected as an MCP bearer (401), operator login with it issues a session cookie (303), that cookie reaches `/metrics` `/dashboard` `/tools` (all 200), and unauthenticated `/metrics` is 401.
+  - **5.12** POSIX 0600 — asserts `stat -c '%a' /app/data/.token` is exactly 600 inside the Linux container, exercising the chmod branch that cannot run on Windows.
+- **MED-03** closed by `tests/core/r6-search-task-transport.test.ts`: drives the search budget through the task-engine transport (the `search_files` file handler) instead of calling `searchWorkspaceFiles` directly. With 60 files × 20 matching lines, the 1000-result cap fires mid-walk and `truncated` is true; a sparse query reports no truncation.
+- A caveat recorded honestly: `src/core/memory/database.ts` was deleted in the previous entry, and the smoke script builds from the repo root via `/mnt/d`, so the image includes only what the Dockerfile COPYs — `dist/` is rebuilt inside the container, not copied from the Windows tree.
+- **Boundary:** the executed checklist total is now **136/139**, with 0 environment-BLOCKED remaining and 3 NOT_VERIFIED. The 3 remaining are section-1 rollups (1.1 HIGH-10 hosted clean-checkout CI, 1.2 the MED-15/16/21/23/24/26/27 rows needing hosted CI, 1.3 LOW-02..12 deferred by owner mandate). Every item that could be closed with code, tests, or a container on this host is closed.
+

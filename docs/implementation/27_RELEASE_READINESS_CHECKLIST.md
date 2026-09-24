@@ -18,7 +18,7 @@ A `[x]` mark is a statement about this repository's current state, not about any
 - [ ] HIGH-01 through HIGH-13 are `VERIFIED_CLOSED`.
   → **NOT_VERIFIED — partially blocked.** 12/13 closed. HIGH-10 needs a hosted clean-checkout CI run (the negative frozen-lockfile install test is executed locally, R8.01). HIGH-11 (non-root runtime) and HIGH-12 (live/ready container smoke) are now CLOSED: `scripts/container-smoke.sh` builds the real image, execs `id` (uid=1000 node), polls the healthcheck to healthy, and runs the authenticated operator session. Only HIGH-10's CI half remains.
 - [ ] MED-01 through MED-29 are `VERIFIED_CLOSED`.
-  → **NOT_VERIFIED.** 21/29 closed. MED-13/MED-14 (container) are now CLOSED by `scripts/container-smoke.sh`. OPEN: MED-03 (search budgets proven on one transport only), MED-15/16/21/23/24/26/27 (hosted-CI evidence).
+  → **NOT_VERIFIED.** 22/29 closed. MED-13/MED-14 (container) are CLOSED by `scripts/container-smoke.sh`. MED-03 is CLOSED by `tests/core/r6-search-task-transport.test.ts`, which drives the search budget through the task-engine transport (the `search_files` file handler) rather than calling `searchWorkspaceFiles` directly, and observes the same 1000-result cap and truncation flag. OPEN: MED-15/16/21/23/24/26/27 (hosted-CI evidence).
 - [ ] LOW-01 through LOW-12 are `VERIFIED_CLOSED` per owner mandate.
   → **NOT_VERIFIED.** 1/12 closed (LOW-01). LOW-02..12 remain open by owner mandate; the deferral itself is documented.
 - [x] No finding was silently reclassified/removed because old file paths changed.
