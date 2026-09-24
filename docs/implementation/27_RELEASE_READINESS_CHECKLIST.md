@@ -92,8 +92,8 @@ A `[x]` mark is a statement about this repository's current state, not about any
   → `tests/security/r2-command-cwd-bypass.test.ts`, `r2-direct-command-workspace.test.ts`.
 - [x] Unknown command shapes fail closed to approval/block.
   → `tests/shell/command-validator.test.ts`, `command-permission.test.ts`, `r2-execute-tool-gateway.test.ts`.
-- [ ] Child process environment excludes unrelated sensitive credentials.
-  → **NOT_VERIFIED.** `src/services/shell/shell-service.ts:44-52` passes no `env` to execa, so the child inherits the full parent environment including `HOOSHIX_BOOTSTRAP_TOKEN`. No test covers it.
+- [x] Child process environment excludes unrelated sensitive credentials.
+  → `tests/security/r4-child-env-excludes-secrets.test.ts` — the real `executeShellCommand` hands the child only an allowlisted env; a probe subprocess confirms no `HOOSHIX_*` reaches it and PATH does. (Was the only section-4 item with no test; the underlying leak was real — execa's `env` extends `process.env` by default.)
 - [x] Direct and Task file CAS/idempotency behavior is identical.
   → `tests/e2e/r2-file-cas-real-parity.test.ts`, `r2-direct-file-parity.test.ts`.
 
@@ -368,7 +368,7 @@ The sign-off block below is deliberately **NOT filled**. It is an owner decision
 - Section 1 (Audit findings): 5 items — **2 executed, 0 blocked, 3 open**. 24/54 findings closed; the matrix cannot be closed without container/CI evidence.
 - Section 2 (Architecture): 10 items — **10 executed** (+1 documented deviation with expiry owner/date).
 - Section 3 (MCP protocol/SDK): 8 items — **6 executed, 2 open**. Open: v1 SDK dependency + test helper import (3.2), `docs/PROTOCOL_COMPATIBILITY.md` missing (3.8).
-- Section 4 (Authorization/filesystem): 10 items — **9 executed, 1 open**. Open: child-process env not filtered (4.9).
+- Section 4 (Authorization/filesystem): 10 items — **10 executed**. (4.9 was the last open item; fixed and executed in R10.03.)
 - Section 5 (OAuth/HTTP): 12 items — **11 executed, 1 BLOCKED** (POSIX `0600` permission proof, 5.12).
 - Section 6 (Task execution/recovery): 12 items — **12 executed**.
 - Section 7 (Data integrity): 10 items — **10 executed**.
@@ -379,7 +379,7 @@ The sign-off block below is deliberately **NOT filled**. It is an owner decision
 - Section 12 (CI/supply chain/container): 11 items — **8 executed, 3 BLOCKED** (12.6/12.8/12.9); 12.11 is `[x]` because the release-preflight emits every version/digest it can, with the container image digest itself noted in-place as blocked.
 - Section 13 (Configuration/operations): 10 items — **9 executed, 1 open** (incident-response procedures, 13.10).
 - Section 14 (Documentation): 11 items — **3 executed, 8 open**. Largest gap: 7 of 8 required `docs/*.md` do not exist.
-- **Total: 139 items — 115 executed, 4 BLOCKED, 20 NOT_VERIFIED.**
+- **Total: 139 items — 116 executed, 4 BLOCKED, 19 NOT_VERIFIED.**
 
 ```text
 Release candidate commit:

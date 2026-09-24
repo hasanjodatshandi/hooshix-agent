@@ -63,7 +63,20 @@ export function createDisposableFixture(name = "test"): DisposableFixture {
           fs.lstatSync(marker).isSymbolicLink() || fs.readFileSync(marker, "utf8") !== identity) {
         throw new Error("R0 fixture ownership marker has changed; refusing cleanup");
       }
-      fs.rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+      // Windows holds open handles (child processes, antivirus, the indexer)
+      // longer than POSIX, and the parallel suite can delete a fixture tree
+      // while one is still settling. Node only retries EPERM/EBUSY up to
+      // maxRetries*retryDelay, which proved too short under parallel load; a
+      // bounded outer retry keeps cleanup deterministic without masking a
+      // genuinely stuck handle forever.
+      for (let attempt = 0; attempt < 5; attempt++) {
+        try {
+          fs.rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+          return;
+        } catch (error) {
+          if (attempt === 4) throw error;
+        }
+      }
     },
   };
 }

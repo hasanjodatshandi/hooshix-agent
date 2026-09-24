@@ -5,6 +5,7 @@ import { logCommandAction } from "../../memory/command-audit.js";
 import { resolveCorrelationId } from "../../core/runtime/correlation-id.js";
 import { assertCwdExists } from "../execa-result.js";
 import { validateCommandCwd, getActiveWorkspace } from "../../security/workspace-guard.js";
+import { buildChildProcessEnvironment } from "../../infrastructure/config/app-config.js";
 import path from "node:path";
 
 export async function executeShellCommand(
@@ -46,7 +47,16 @@ export async function executeShellCommand(
       timeout,
       shell: false,
       reject: false,
-      maxBuffer: 1024 * 1024
+      maxBuffer: 1024 * 1024,
+      // A subprocess is an untrusted command author's code. execa's `env`
+      // option EXTENDS the parent environment by default (extendEnv: true), so
+      // listing keys there does nothing to withhold them. Setting extendEnv to
+      // false makes env the complete environment, so the allowlist built by
+      // buildChildProcessEnvironment is then the whole story. Every HOOSHIX_*
+      // value — bootstrap token, OAuth client secret, database and log paths —
+      // is withheld by omission.
+      extendEnv: false,
+      env: buildChildProcessEnvironment()
     };
     if (signal) execaOpts.cancelSignal = signal;
     const result = await execa(command, args, execaOpts);

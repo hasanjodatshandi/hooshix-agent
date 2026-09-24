@@ -168,6 +168,40 @@ export function parseLogDirectory(env: Readonly<Record<string, string | undefine
   return env.HOOSHIX_LOG_DIR ?? "./logs";
 }
 
+/**
+ * The environment handed to a shell-spawned subprocess. A command author is
+ * untrusted code, so the child must never inherit this process's secrets —
+ * not the bootstrap token, not the OAuth client secret, not the database and
+ * log paths. This is an allowlist, not a denylist: a command gets only what it
+ * needs to be found and to run (the executable search path plus the handful of
+ * OS-level variables Node and the platform loader depend on). Everything else,
+ * including every HOOSHIX_*, is withheld by omission.
+ */
+const ALLOWED_CHILD_ENV_KEYS = [
+  "PATH",
+  "PATHEXT",        // Windows executable-resolution suffixes
+  "SystemRoot",     // Windows: where the system DLLs live
+  "WINDIR",
+  "COMSPEC",        // Windows default command interpreter
+  "PSModulePath",   // PowerShell module discovery
+  "LANG",
+  "LC_ALL",
+  "TZ",
+  "HOME",
+  "USERPROFILE",
+  "TEMP",
+  "TMP",
+] as const;
+
+export function buildChildProcessEnvironment(env: Readonly<Record<string, string | undefined>> = process.env): Record<string, string> {
+  const childEnv: Record<string, string> = {};
+  for (const key of ALLOWED_CHILD_ENV_KEYS) {
+    const value = env[key];
+    if (value !== undefined && value !== "") childEnv[key] = value;
+  }
+  return childEnv;
+}
+
 export function parsePermissionLevel(env: Readonly<Record<string, string | undefined>> = process.env): LegacyPermissionLevel {
   const configured = env.HOOSHIX_PERMISSION_LEVEL ?? "DEVELOPER_MODE";
   if (!PERMISSION_LEVELS.has(configured as LegacyPermissionLevel))

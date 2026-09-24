@@ -30,7 +30,13 @@ describe("R8.06 parallel worker isolation", () => {
     // No test may write to a fixed shared runtime-files tree ever again.
     const offenders: string[] = [];
     const visit = (dir: string): void => {
-      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      // A parallel test may create/delete a scratch directory under tests/
+      // while this scan runs (e.g. tests/tool-coverage); a vanished directory
+      // is not an offender.
+      let entries: fs.Dirent[];
+      try { entries = fs.readdirSync(dir, { withFileTypes: true }); }
+      catch { return; }
+      for (const entry of entries) {
         const location = path.join(dir, entry.name);
         if (entry.isDirectory()) visit(location);
         else if (entry.isFile() && /\.test\.ts$/.test(entry.name)) {
