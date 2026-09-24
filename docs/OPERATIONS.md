@@ -87,7 +87,38 @@ The executed migration/restore drill is `scripts/release-db-rehearsal.mjs`.
 
 ## Incident response
 
-- **Token leak:** rotate the bootstrap secret (above); revoke OAuth families via the credential repository.
-- **Unknown outcome:** follow reconciliation above.
-- **DB issue:** `PRAGMA integrity_check` + `foreign_key_check`; restore from backup.
-- **Edge outage:** health endpoints degrade to 503 without crashing; the service does not serve on a misconfigured public bind.
+These are the operator procedures to run first when something goes wrong. Each one names the tool or command that resolves it, and the invariant that procedure protects.
+
+### Bootstrap token leaked
+
+**Invariant:** the operator credential never becomes an MCP bearer.
+
+1. Revoke nothing yet — the token file is the only recovery path if the leak is only suspected.
+2. Rotate: stop the service, replace `HOOSHIX_BOOTSTRAP_TOKEN` or the token file, restart. The old secret returns 403 immediately.
+3. Check the audit logs under `HOOSHIX_LOG_DIR` for any `command-actions.log` line written while the leaked token was valid — a bearer-shaped string in a redacted argument field means the leak reached a command author.
+4. The bootstrap secret is never accepted as `Authorization: Bearer`, so a leaked token cannot be replayed as an MCP credential. It can only read `/health/monitoring`.
+
+### Unknown task outcome (`outcome_unknown`)
+
+**Invariant:** a non-idempotent effect is never retried blindly.
+
+1. `task_get` / `task_report` — read the step state and the execution/recovery timeline.
+2. Verify the real-world effect **read-only**. Do not re-run the step.
+3. `task_reconcile` with `confirmed_succeeded`, `confirmed_failed`, or `safe_to_retry`.
+4. The task stays frozen until reconciled. This is the freeze, not a bug.
+
+### Database issue
+
+**Invariant:** the database is the source of truth for tasks, approvals, snapshots and OAuth credentials.
+
+1. `PRAGMA integrity_check` and `PRAGMA foreign_key_check` (the release rehearsal runs both).
+2. If either fails: stop the service, restore from the backup procedure above.
+3. If the service cannot open the database at startup, `/health/ready` returns 503 rather than crashing — that is the degradation signal, not the failure.
+
+### Edge / exposure outage
+
+**Invariant:** the service never serves on a misconfigured public bind.
+
+1. Check `/health/live`. A 200 with the service unreachable from the edge means the edge is the problem, not this service.
+2. `HOOSHIX_PUBLIC_BASE_URL` must be an exact trusted HTTPS origin; anything else is refused at startup.
+3. A 503 from `/health/ready` with `/health/live` at 200 means the database is the problem — see above.

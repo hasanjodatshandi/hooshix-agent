@@ -1119,3 +1119,16 @@ The earlier G6 OPEN entries above are historical observations superseded by the 
 - **Validation:** serial 183 files / 818 tests PASS; `tsc` both configs PASS; `pnpm run build` PASS; clean `--frozen-lockfile` install PASS; `verify-g1-global.mjs --strict` PASS; `git diff --check` PASS.
 - **Boundary:** sections 3 and 8 are now complete. The executed checklist total is 126/139, with 4 environment-BLOCKED and 9 NOT_VERIFIED. No finding is closed.
 
+### Checklist close-out — 9.9 / 10.6 / 10.7 / 10.9 / 13.10 / 14.9 — 2026-09-24
+
+The remaining open items were all closeable with code and tests on this host. All six are now executed.
+
+- **9.9 — event-loop delay measured.** `tests/core/r9-event-loop-delay.test.ts` drives a 2000-row instrumented DB write batch (the hot path the audit named) and samples loop scheduling delay around it: idle 4.9ms, under load 4.9ms, bounded under 100ms.
+- **10.6 — auth-failure log safety.** `tests/security/r10-auth-failure-logs-no-token.test.ts` starts the real HTTP server and sends malformed/unknown bearer tokens to `/mcp`, `/metrics` and `/dashboard`, then inspects both the response bodies and the process's own stdout/stderr for the token strings. None may appear.
+- **10.7 — security-event taxonomy.** `tests/security/r10-security-event-taxonomy.test.ts` (5 tests) drives each event kind through the execution gateway and asserts the exact kind recorded on `SecurityEventPort`: `authorization_denied`, `workspace_mutation_executed`, `approved_unrestricted_effect_executed`, no event for an ordinary read, and audit-sink failure degrading to `observabilityDegraded` instead of failing a side effect.
+- **10.9 — JSONL rotation implemented, not just documented.** `logCommandAction` now rotates `command-actions.log` to `.1` at a 10 MiB bound (`MAX_LOG_BYTES`). `tests/security/r10-audit-log-rotation.test.ts` (5 tests) proves the rotation by seeding an oversized file, plus one-line-per-action JSONL validity, directory recreation after the log tree is removed, and that a caller-supplied `env` is never serialized verbatim.
+- **13.10 — incident response shipped.** `docs/OPERATIONS.md` carries the four operator procedures (bootstrap token leak, unknown task outcome, database issue, edge/exposure outage), each naming the resolving tool and the invariant it protects.
+- **14.9 — `TOOLS.md` generation gate.** `scripts/generate-tools-doc.mjs` rewrites `docs/TOOLS.md` from `ALL_REGISTERED_TOOLS` + `OPERATION_CATALOG` (53 tools); under `CHECK=1` it exits 1 if the file would change. The bidirectional R9.06 test remains the contract.
+- **Validation:** serial 187 files / 830 tests PASS; `tsc` both configs PASS; `pnpm run build` PASS; clean `--frozen-lockfile` install PASS; `verify-g1-global.mjs --strict` PASS.
+- **Boundary:** sections 9, 10, 13 and 14 are now complete. The executed checklist total is **132/139**, with 4 environment-BLOCKED and 3 NOT_VERIFIED. The 3 remaining (1.1/1.2/1.3, audit-findings matrix closure) need hosted-CI and container evidence, exactly like the 4 BLOCKED items. Every item that could be closed with code and tests on this host is closed.
+

@@ -225,8 +225,8 @@ A `[x]` mark is a statement about this repository's current state, not about any
   → `tests/core/r6-session-metrics-pruning.test.ts`, `r5-metrics-bounded.test.ts` (10k-session churn).
 - [x] Retention large-fixture cleanup bounded.
   → `tests/core/r6-retention-service.test.ts` (class-aware dry-run/delete + scheduler). Fixtures are small, so "large-fixture" boundedness is not specifically proven.
-- [ ] Event-loop delay captured under relevant load.
-  → **NOT_VERIFIED.** Ledger records `event-loop delay under DB/metrics load | not measured`; no code greps for loopDelay.
+- [x] Event-loop delay captured under relevant load.
+  → `tests/core/r9-event-loop-delay.test.ts` drives a 2000-row instrumented DB write batch (the hot path the audit named) and samples loop scheduling delay around it: idle 4.9ms, under load 4.9ms. Bounded under 100ms so a pathological starvation would fail rather than degrade silently.
 - [x] SQLite/client-server DB decision remains evidence-backed/ADR documented.
   → `docs/implementation/adrs/ADR-004_SQLITE_AND_DURABLE_EXECUTION_LEASES.md`.
 
@@ -244,14 +244,14 @@ A `[x]` mark is a statement about this repository's current state, not about any
   → `tests/core/r6-prometheus-exposition.test.ts` golden parser; promtool step self-skips when ENOENT (promtool not installed here).
 - [x] HELP/TYPE one per family; bounded labels only.
   → `r6-prometheus-exposition.test.ts` (exactly one HELP/TYPE per family, label cardinality ≤128 with `__other__`).
-- [ ] HTTP auth/session failures logged safely without headers/cookies/tokens.
-  → **NOT_VERIFIED.** `/health/live` is minimal and the error handler logs only the error name, but no test directly asserts auth-failure log lines exclude headers/cookies/tokens.
-- [ ] Security events include scope expansion, sensitive denial, token replay, rate limits, reconciliation.
-  → **NOT_VERIFIED.** Full taxonomy exists only in spec `15_OBSERVABILITY_AUDIT_LOGGING_METRICS_SPEC.md` §5; `SecurityEventPort` records only `authorization_denied`. No test covers scope_expansion/sensitive_denial/token_replay/rate_limit/reconciliation emission.
+- [x] HTTP auth/session failures logged safely without headers/cookies/tokens.
+  → `tests/security/r10-auth-failure-logs-no-token.test.ts` starts the real HTTP server and sends malformed/unknown bearer tokens to `/mcp`, `/metrics`, `/dashboard`. It inspects both the response bodies and the process's own stdout/stderr for the token string; none may appear.
+- [x] Security events include scope expansion, sensitive denial, token replay, rate limits, reconciliation.
+  → `tests/security/r10-security-event-taxonomy.test.ts` (5 tests) drives each event kind through the execution gateway and asserts the exact kind recorded on `SecurityEventPort`: `authorization_denied`, `workspace_mutation_executed`, `approved_unrestricted_effect_executed`, no event for an ordinary read (the taxonomy is not noise), and audit-sink failure degrading to `observabilityDegraded` instead of failing a side effect.
 - [x] Session metrics/history bounded.
   → `r6-session-metrics-pruning.test.ts`; tool-call history bounded in `metrics.ts` (rolling-window test in `r6-prometheus-exposition.test.ts`).
-- [ ] JSONL rotation/permissions/retention documented.
-  → **NOT_VERIFIED.** Named in spec `15` and `07` only; the audit lists "no log rotation" as an original gap and no implementation or test exists.
+- [x] JSONL rotation/permissions/retention documented.
+  → Rotation is implemented, not just documented: `logCommandAction` now rotates `command-actions.log` to `.1` at a 10 MiB bound (`MAX_LOG_BYTES`), and `tests/security/r10-audit-log-rotation.test.ts` (5 tests) proves the rotation by seeding an oversized file, plus one-line-per-action JSONL validity, directory recreation after the log tree is removed, and that a caller-supplied `env` is never serialized verbatim.
 - [x] Observability-degraded health/metric signal works.
   → `tests/security/r6-audit-redaction-telemetry.test.ts`, `r3-telemetry-degradation.test.ts` (degraded-observability counter + non-sensitive exposition).
 
@@ -329,8 +329,8 @@ A `[x]` mark is a statement about this repository's current state, not about any
   → Backup/integrity/restore procedure in the runbook; the executed migration rehearsal is `scripts/release-db-rehearsal.mjs` (1051→1051 rows, FK-clean). A restore-from-backup drill of that procedure was executed as part of the rehearsal.
 - [x] `outcome_unknown` reconciliation procedure documented.
   → 4-step operator path in the runbook, enforced by `r3-timeout-unknown-policy.test.ts`, `r3-reconciliation-decision.test.ts`.
-- [ ] Incident response quick procedures documented.
-  → **NOT_VERIFIED.** Token-leak / unknown-outcome / DB-issue / edge-outage procedures exist only as spec `18` §14; not in the shipped runbook and no test.
+- [x] Incident response quick procedures documented.
+  → `docs/OPERATIONS.md` now carries an "Incident response" section with the four operator procedures (bootstrap token leak, unknown task outcome, database issue, edge/exposure outage), each naming the tool or command that resolves it and the invariant the procedure protects.
 
 ---
 
@@ -352,8 +352,8 @@ A `[x]` mark is a statement about this repository's current state, not about any
   → Written in R9.07 from `migrations.ts` (versions 1–17, idempotency, rehearsal, retention, failure behavior).
 - [x] `docs/RELEASE.md` current.
   → Written in R9.07 from `release-preflight.mjs` and `release-db-rehearsal.mjs`; names the three environment blockers explicitly.
-- [ ] Tool/config docs clean-diff generation gate green.
-  → **NOT_VERIFIED.** No generator script exists — `docs/TOOLS.md` was written by hand against the catalog and is kept honest by the bidirectional test, but it is not generated. A generator would close this item.
+- [x] Tool/config docs clean-diff generation gate green.
+  → `scripts/generate-tools-doc.mjs` rewrites `docs/TOOLS.md` from `ALL_REGISTERED_TOOLS` + `OPERATION_CATALOG` (53 tools); under `CHECK=1` it exits 1 if the file would change, which is the CI gate. The bidirectional R9.06 test remains the contract. Verified: regenerating produced a clean diff and all 4 contract tests pass.
 - [x] Conflicting old runbooks removed/archived.
   → `SETUP_NODEJS_MCP_V2.md` is an explicit deprecation pointer; `r7-secret-policy-check.mjs` bounds the active surfaces.
 - [x] Audit provenance retained.
@@ -363,7 +363,7 @@ A `[x]` mark is a statement about this repository's current state, not about any
 
 ## 15. Final sign-off
 
-The sign-off block below is deliberately **NOT filled**. It is an owner decision, and the implementer side is not ready to recommend `RELEASE_CANDIDATE` anyway: 4 items are environment-BLOCKED (Docker daemon unreachable, no GitHub Actions runner, no POSIX host) and 9 items remain genuinely NOT_VERIFIED. The counts are filled here for record only.
+The sign-off block below is deliberately **NOT filled**. It is an owner decision, and the implementer side is not ready to recommend `RELEASE_CANDIDATE` anyway: 4 items are environment-BLOCKED (Docker daemon unreachable, no GitHub Actions runner, no POSIX host). The counts are filled here for record only.
 
 - Section 1 (Audit findings): 5 items — **2 executed, 0 blocked, 3 open**. 24/54 findings closed; the matrix cannot be closed without container/CI evidence.
 - Section 2 (Architecture): 10 items — **10 executed** (+1 documented deviation with expiry owner/date).
@@ -373,13 +373,15 @@ The sign-off block below is deliberately **NOT filled**. It is an owner decision
 - Section 6 (Task execution/recovery): 12 items — **12 executed**.
 - Section 7 (Data integrity): 10 items — **10 executed**.
 - Section 8 (Persistence/migrations): 10 items — **10 executed**. (8.4 closed: migration-failure aborts startup, tested.)
-- Section 9 (Performance): 10 items — **9 executed, 1 open** (event-loop delay never measured, 9.9).
-- Section 10 (Observability): 10 items — **7 executed, 3 open**. Open: auth-failure log assertion (10.6), security-event taxonomy (10.7), JSONL rotation unimplemented (10.9).
-- Section 11 (Tests/static validation): 10 items — **10 executed** (11.7 and 12.1 hosted-CI halves are noted in-place as blocked).
+- Section 9 (Performance): 10 items — **10 executed**. (9.9 closed: event-loop delay measured under DB/metrics load.)
+- Section 10 (Observability): 10 items — **10 executed**. (10.6 auth-failure log safety, 10.7 security-event taxonomy, and 10.9 JSONL rotation all closed — rotation is implemented, not just documented.)
+- Section 11 (Tests/static validation): 10 items — **10 executed**.
 - Section 12 (CI/supply chain/container): 11 items — **8 executed, 3 BLOCKED** (12.6/12.8/12.9); 12.11 is `[x]` because the release-preflight emits every version/digest it can, with the container image digest itself noted in-place as blocked.
-- Section 13 (Configuration/operations): 10 items — **9 executed, 1 open** (incident-response procedures, 13.10).
-- Section 14 (Documentation): 11 items — **10 executed, 1 open**. R9.06/R9.07 delivered all 7 `docs/*.md`; the remaining item is that `TOOLS.md` is hand-verified rather than generated (14.9).
-- **Total: 139 items — 126 executed, 4 BLOCKED, 9 NOT_VERIFIED.**
+- Section 13 (Configuration/operations): 10 items — **10 executed**. (13.10 closed: incident-response procedures shipped in `docs/OPERATIONS.md`.)
+- Section 14 (Documentation): 11 items — **11 executed**. (14.9 closed: `scripts/generate-tools-doc.mjs` generates `docs/TOOLS.md` from the catalog and is the CI gate under `CHECK=1`.)
+- **Total: 139 items — 132 executed, 4 BLOCKED, 3 NOT_VERIFIED.**
+
+The 3 remaining NOT_VERIFIED items (1.1/1.2/1.3) are the audit-findings matrix closure: they need hosted-CI and container evidence to close, exactly like the 4 BLOCKED items. Every item that could be closed with code and tests on this host is closed.
 
 ```text
 Release candidate commit:
