@@ -57,8 +57,8 @@ A `[x]` mark is a statement about this repository's current state, not about any
 
 - [x] Production code uses MCP TypeScript SDK v2 split packages.
   → `src/adapters/inbound/mcp/legacy-sdk-bridge.ts` imports only `@modelcontextprotocol/{server,node}`; all three v2 packages declared in `package.json`.
-- [ ] Monolithic `@modelcontextprotocol/sdk` v1 has zero remaining production/test/script imports after final migration.
-  → **NOT_VERIFIED.** `tests/helpers/mcp-client.ts` still imports `@modelcontextprotocol/sdk/client/stdio.js`, and v1 `1.30.0` remains a production dependency. Production code is migrated; the test helper and the dependency are not.
+- [x] Monolithic `@modelcontextprotocol/sdk` v1 has zero remaining production/test/script imports after final migration.
+  → The dependency is removed from `package.json` (rebuilt lockfile, frozen install verified from a clean node_modules). The last consumer, `tests/helpers/mcp-client.ts`, loads the v2 `StdioClientTransport` through `createRequire`. `tests/security/r3-no-v1-monolith-imports.test.ts` asserts both the absence from `package.json` and that no source/test/script imports it, with the defensive references that *name* the monolith to forbid it listed as exceptions.
 - [x] Modern MCP 2026-07-28 HTTP E2E passes.
   → `tests/e2e/r8-http-task-lifecycle.test.ts`, `r5-http-security.test.ts`, `r5-http-edge-contracts.test.ts`.
 - [x] Modern stdio serving E2E passes.
@@ -190,8 +190,8 @@ A `[x]` mark is a statement about this repository's current state, not about any
   → `scripts/release-db-rehearsal.mjs` — real online backup of the live DB: 1051→1051 tasks, 8 roots, schema 17, 0 FK violations, restore drill PASS (executed this session).
 - [x] Pre-migration backup + integrity check procedure tested.
   → Same rehearsal script performs the backup and `integrity_check` before and after; procedure in `R7_LOCAL_OPERATIONS_RUNBOOK_2026-09-23.md`.
-- [ ] Migration failure blocks startup; no silent catch-ignore drift.
-  → **NOT_VERIFIED.** `r6-migration-only-schema.test.ts` proves unrelated DBs are not healed, but no test asserts a startup abort on migration failure. LOW-02 open.
+- [x] Migration failure blocks startup; no silent catch-ignore drift.
+  → `tests/core/r8-migration-failure-aborts.test.ts` (3 tests): a poisoned database makes `openAgentDatabase` throw rather than swallow; `runMigrations` reaches head and is idempotent; an applied migration is never re-applied. The connection adapter's try/close/throw is the mechanism.
 - [x] Canonical Task mapper is singular.
   → `tests/core/r3-canonical-task-hydration.test.ts` (sole `hydrateTaskById`).
 - [x] Execution lease/idempotency/OAuth/backup/project migrations green.
@@ -363,23 +363,23 @@ A `[x]` mark is a statement about this repository's current state, not about any
 
 ## 15. Final sign-off
 
-The sign-off block below is deliberately **NOT filled**. It is an owner decision, and the implementer side is not ready to recommend `RELEASE_CANDIDATE` anyway: 4 items are environment-BLOCKED (Docker daemon unreachable, no GitHub Actions runner, no POSIX host) and 11 items remain genuinely NOT_VERIFIED. The counts are filled here for record only.
+The sign-off block below is deliberately **NOT filled**. It is an owner decision, and the implementer side is not ready to recommend `RELEASE_CANDIDATE` anyway: 4 items are environment-BLOCKED (Docker daemon unreachable, no GitHub Actions runner, no POSIX host) and 9 items remain genuinely NOT_VERIFIED. The counts are filled here for record only.
 
 - Section 1 (Audit findings): 5 items — **2 executed, 0 blocked, 3 open**. 24/54 findings closed; the matrix cannot be closed without container/CI evidence.
 - Section 2 (Architecture): 10 items — **10 executed** (+1 documented deviation with expiry owner/date).
-- Section 3 (MCP protocol/SDK): 8 items — **7 executed, 1 open**. Open: v1 SDK dependency + test helper import (3.2).
-- Section 4 (Authorization/filesystem): 10 items — **10 executed**. (4.9 was the last open item; fixed and executed in R10.03.)
+- Section 3 (MCP protocol/SDK): 8 items — **8 executed**. (3.2 closed: v1 monolith removed and absence enforced.)
+- Section 4 (Authorization/filesystem): 10 items — **10 executed**.
 - Section 5 (OAuth/HTTP): 12 items — **11 executed, 1 BLOCKED** (POSIX `0600` permission proof, 5.12).
 - Section 6 (Task execution/recovery): 12 items — **12 executed**.
 - Section 7 (Data integrity): 10 items — **10 executed**.
-- Section 8 (Persistence/migrations): 10 items — **9 executed, 1 open** (startup-abort-on-migration-failure, 8.4).
+- Section 8 (Persistence/migrations): 10 items — **10 executed**. (8.4 closed: migration-failure aborts startup, tested.)
 - Section 9 (Performance): 10 items — **9 executed, 1 open** (event-loop delay never measured, 9.9).
 - Section 10 (Observability): 10 items — **7 executed, 3 open**. Open: auth-failure log assertion (10.6), security-event taxonomy (10.7), JSONL rotation unimplemented (10.9).
 - Section 11 (Tests/static validation): 10 items — **10 executed** (11.7 and 12.1 hosted-CI halves are noted in-place as blocked).
 - Section 12 (CI/supply chain/container): 11 items — **8 executed, 3 BLOCKED** (12.6/12.8/12.9); 12.11 is `[x]` because the release-preflight emits every version/digest it can, with the container image digest itself noted in-place as blocked.
 - Section 13 (Configuration/operations): 10 items — **9 executed, 1 open** (incident-response procedures, 13.10).
 - Section 14 (Documentation): 11 items — **10 executed, 1 open**. R9.06/R9.07 delivered all 7 `docs/*.md`; the remaining item is that `TOOLS.md` is hand-verified rather than generated (14.9).
-- **Total: 139 items — 124 executed, 4 BLOCKED, 11 NOT_VERIFIED.**
+- **Total: 139 items — 126 executed, 4 BLOCKED, 9 NOT_VERIFIED.**
 
 ```text
 Release candidate commit:

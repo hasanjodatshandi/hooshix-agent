@@ -9,9 +9,8 @@ This document states the exact SDK and protocol versions shipped. The registry a
 | `@modelcontextprotocol/server` | 2.0.0 | Server + stdio transport (production) |
 | `@modelcontextprotocol/node` | 2.0.0 | Node streamable HTTP transport (production) |
 | `@modelcontextprotocol/client` | 2.0.0 | Test client (dev) |
-| `@modelcontextprotocol/sdk` | 1.30.0 | Legacy monolithic SDK — **still present**; see below |
 
-**Open item (checklist §3.2):** the monolithic v1 SDK remains a production dependency and `tests/helpers/mcp-client.ts` still imports `@modelcontextprotocol/sdk/client/stdio.js`. Production code is fully migrated to the v2 split packages; the dependency and the test helper are not. This must reach zero v1 imports before release.
+The monolithic v1 SDK (`@modelcontextprotocol/sdk` 1.30.0) is **removed**. Its last consumer, `tests/helpers/mcp-client.ts`, loads the v2 `StdioClientTransport` through `createRequire` — TypeScript 7's NodeNext resolution will not follow the client subpath's bundled declaration, so the runtime load is typed against the `Transport` the `Client` accepts. `tests/security/r3-no-v1-monolith-imports.test.ts` keeps the absence enforced.
 
 All v2 imports are funneled through `src/adapters/inbound/mcp/legacy-sdk-bridge.ts`, which re-exports `McpServer`, `NodeStreamableHTTPServerTransport` (as `StreamableHTTPServerTransport`) and `StdioServerTransport`.
 

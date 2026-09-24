@@ -1,6 +1,21 @@
 import path from "node:path";
+import { createRequire } from "node:module";
 import { Client } from "@modelcontextprotocol/client";
-import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
+
+// The client's stdio subpath cannot be imported by its package subpath under
+// TypeScript 7's NodeNext resolution (its bundled declaration re-exports from
+// a hashed .mjs, which TS will not follow), so the transport is loaded through
+// createRequire — which resolves the exports map correctly at runtime — and
+// typed against the Transport the Client accepts.
+const require = createRequire(import.meta.url);
+const { StdioClientTransport } = require("@modelcontextprotocol/client/stdio") as {
+  StdioClientTransport: new (options: {
+    command: string;
+    args: string[];
+    cwd?: string;
+    env?: Record<string, string>;
+  }) => Client extends { connect(transport: infer T): unknown } ? T : never;
+};
 
 export async function connectTestMcpClient(): Promise<Client> {
   const env = Object.fromEntries(Object.entries(process.env).filter((entry): entry is [string, string] => entry[1] !== undefined));
