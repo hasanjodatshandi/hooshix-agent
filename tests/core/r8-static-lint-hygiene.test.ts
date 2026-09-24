@@ -69,7 +69,12 @@ describe("R8.07 static and lint hygiene",()=>{
     const testsDir=path.resolve(REPO,"tests");
     const violations:string[]=[];
     function walk(dir:string):void{
-      for(const entry of fs.readdirSync(dir,{withFileTypes:true})){
+      // A parallel test may create/delete a scratch directory under tests/
+      // while this scan runs; a vanished directory is not a violation.
+      let entries:fs.Dirent[];
+      try{entries=fs.readdirSync(dir,{withFileTypes:true});}
+      catch{return;}
+      for(const entry of entries){
         const target=path.join(dir,entry.name);
         if(entry.isDirectory()){walk(target);continue;}
         if(!entry.name.endsWith(".ts"))continue;
