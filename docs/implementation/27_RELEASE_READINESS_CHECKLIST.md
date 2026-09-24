@@ -123,8 +123,8 @@ A `[x]` mark is a statement about this repository's current state, not about any
   → `tests/e2e/r5-http-security.test.ts` (CSRF/logout, monitoring scope, separate operator session).
 - [x] `/health/live` and `/health/ready` expose no sensitive data and work as documented.
   → `tests/e2e/r5-http-edge-contracts.test.ts`, `r9-adapter-boundary.test.ts` (200 ready / 503 not_ready), `r7-bootstrap-secret-lifecycle.test.ts` (token never echoed).
-- [~] Token/bootstrap file permission behavior verified on relevant OS.
-  → **BLOCKED — no POSIX host.** Length/symlink/rotation/atomic-create are executed by `r7-bootstrap-secret-lifecycle.test.ts`; the POSIX `0600` chmod branch exists but cannot run on Windows. Needed to close LOW-07.
+- [x] Token/bootstrap file permission behavior verified on relevant OS.
+  → `scripts/container-smoke.sh` runs the POSIX branch inside the Linux container and asserts `stat -c '%a' /app/data/.token` is exactly **600**. The 0600 chmod branch in `loadToken()` is now exercised, not just present. Closes LOW-07.
 
 ---
 
