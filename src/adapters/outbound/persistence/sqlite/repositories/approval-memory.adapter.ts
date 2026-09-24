@@ -1,5 +1,5 @@
 import type { ExecutionContext } from "../../../../../core/runtime/execution-context.js";
-import { withAgentDatabase } from "../../../../../core/memory/database.js";
+import { withAgentDatabase } from "../../../../../core/memory/database/index.js";
 
 export interface ApprovalRequest {
   id: number;

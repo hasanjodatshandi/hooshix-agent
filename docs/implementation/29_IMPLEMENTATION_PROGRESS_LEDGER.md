@@ -1132,3 +1132,11 @@ The remaining open items were all closeable with code and tests on this host. Al
 - **Validation:** serial 187 files / 830 tests PASS; `tsc` both configs PASS; `pnpm run build` PASS; clean `--frozen-lockfile` install PASS; `verify-g1-global.mjs --strict` PASS.
 - **Boundary:** sections 9, 10, 13 and 14 are now complete. The executed checklist total is **132/139**, with 4 environment-BLOCKED and 3 NOT_VERIFIED. The 3 remaining (1.1/1.2/1.3, audit-findings matrix closure) need hosted-CI and container evidence, exactly like the 4 BLOCKED items. Every item that could be closed with code and tests on this host is closed.
 
+### R9 facade removal — `src/core/memory/database.ts` deleted — 2026-09-24
+
+- The deferred item is done. The file was a 15-line pure re-export shim (`export { ... } from "./database/index.js"`) kept alive by 55 importers that could equally well have pointed at the real module. A shim like that is dead weight: it cannot be deleted without touching every importer, and an importer that diverges creates a second source of truth for the database API.
+- The removal repointed all 55 importers (30 in `src/adapters/outbound/persistence/sqlite/repositories/`, 25 in tests and entrypoints) from the bare `core/memory/database.js` to `core/memory/database/index.js`. The negative lookahead in the replacement kept the real subpaths — `database/connection.js`, `database/migrations.js`, `database/cleanup.js` — untouched.
+- `src/memory/database.ts` is **not** a shim and was left alone: it has real code (`initializeDatabase`/`getDatabase` wrapping `withAgentDatabase`/`openAgentDatabase`) and is the entrypoint entry `src/index.ts` and `src/index-http.ts` use.
+- The removal is executable: `tests/core/r9-database-shim-removed.test.ts` (2 tests) asserts the file is absent and that no source, test or script imports the bare shim path, with the same negative lookahead so the real subpaths cannot false-positive.
+- **Validation:** serial 188 files / 832 tests PASS; `tsc` both configs PASS; `pnpm run build` PASS; `verify-g1-global.mjs --strict` PASS; `git diff --check` clean.
+

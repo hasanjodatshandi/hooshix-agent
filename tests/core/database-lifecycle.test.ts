@@ -4,7 +4,7 @@ import {
   closeAgentDatabase,
   resetAgentDatabase,
   withAgentDatabase,
-} from "../../src/core/memory/database.js";
+} from "../../src/core/memory/database/index.js";
 
 afterEach(() => {
   resetAgentDatabase();

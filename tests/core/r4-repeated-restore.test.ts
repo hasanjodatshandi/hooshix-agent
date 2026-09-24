@@ -3,7 +3,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { createDisposableFixture, type DisposableFixture } from "../helpers/r0-disposable-fixtures.js";
 import { addWorkspaceRoots, removeWorkspaceRoot, setActiveWorkspace } from "../../src/security/workspace-guard.js";
-import { withAgentDatabase } from "../../src/core/memory/database.js";
+import { withAgentDatabase } from "../../src/core/memory/database/index.js";
 import { createWorkspaceFile, restoreWorkspaceFile, writeWorkspaceFile } from "../../src/services/filesystem/filesystem-service.js";
 
 let fixture: DisposableFixture | undefined;

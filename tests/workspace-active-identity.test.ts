@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { withAgentDatabase } from "../src/core/memory/database.js";
+import { withAgentDatabase } from "../src/core/memory/database/index.js";
 import { workspaceIdentity } from "../src/security/workspace-policy-repository.js";
 import {
   __clearWorkspaceStateForTests,

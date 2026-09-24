@@ -1,4 +1,4 @@
-import { withAgentDatabase } from "../../../../../core/memory/database.js";
+import { withAgentDatabase } from "../../../../../core/memory/database/index.js";
 
 /** SQLite-only persistence; classification and result semantics belong to the caller. */
 export interface ToolCallAuditRow {

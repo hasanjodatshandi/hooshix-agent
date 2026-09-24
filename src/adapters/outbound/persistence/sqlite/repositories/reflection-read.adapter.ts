@@ -1,4 +1,4 @@
-import { withAgentDatabase } from "../../../../../core/memory/database.js";
+import { withAgentDatabase } from "../../../../../core/memory/database/index.js";
 export interface TaskReflectionExecutionRow {
   readonly action: string;
   readonly result: string | null;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { withAgentDatabase } from "../../src/core/memory/database.js";
+import { withAgentDatabase } from "../../src/core/memory/database/index.js";
 import {
   getPersistedTaskLinks, persistAppendedTaskSteps, persistTaskLink,
 } from "../../src/adapters/outbound/persistence/sqlite/repositories/task-tool-persistence.adapter.js";

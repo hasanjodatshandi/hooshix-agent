@@ -1,5 +1,5 @@
 import {describe,expect,it,vi,afterEach} from "vitest";
-import {withAgentDatabase} from "../../src/core/memory/database.js";
+import {withAgentDatabase} from "../../src/core/memory/database/index.js";
 import {createRetentionPolicy,runRetention,type RetentionReport}
   from "../../src/core/memory/database/cleanup.js";
 import {startPeriodicRetention} from "../../src/infrastructure/server/retention-scheduler.js";

@@ -4,7 +4,7 @@ import {createHash,randomUUID} from "node:crypto";
 import {afterEach,describe,expect,it} from "vitest";
 import {writeWorkspaceFile,modifyWorkspaceFile,createWorkspaceFile,deleteWorkspaceFile} from "../../src/services/filesystem/filesystem-service.js";
 import {runWithPolicyApproval} from "../../src/core/governance/policy-decision-point.js";
-import {withAgentDatabase,backupAgentDatabase,runMigrations} from "../../src/core/memory/database.js";
+import {withAgentDatabase,backupAgentDatabase,runMigrations} from "../../src/core/memory/database/index.js";
 import {createDisposableFixture,type DisposableFixture} from "../helpers/r0-disposable-fixtures.js";
 import {RUNTIME_FILES_ROOT} from "../helpers/runtime-files.js";
 const sha=(content:string)=>createHash("sha256").update(content).digest("hex");

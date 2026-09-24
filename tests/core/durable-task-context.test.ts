@@ -528,7 +528,7 @@ describe("Stage 13 E2E enhancements", () => {
     // Take snapshot
     // Use execSync directly for snapshot (simulating the tool)
     const snapshotId = require("node:crypto").randomUUID();
-    const { withAgentDatabase } = await import("../../src/core/memory/database.js");
+    const { withAgentDatabase } = await import("../../src/core/memory/database/index.js");
     withAgentDatabase((db) => db.prepare(
       "INSERT INTO file_backups(id, correlation_id, path, content, created_at) VALUES (?, ?, ?, ?, ?)"
     ).run(snapshotId, "test-snap", `__task_snapshot__:${testDir}`, Buffer.from(JSON.stringify({ head: baseHead, branch: "main", clean: true, cwd: testDir })), new Date().toISOString()));
@@ -555,7 +555,7 @@ describe("Stage 13 E2E enhancements", () => {
 
   it("success reflection includes summary for completed tasks", async () => {
     const { analyzeTaskHistory } = await import("../../src/core/reflection/reflection-engine.js");
-    const { withAgentDatabase } = await import("../../src/core/memory/database.js");
+    const { withAgentDatabase } = await import("../../src/core/memory/database/index.js");
 
     const taskId = "22222222-2222-4222-8222-222222222222";
     const corr = "test-reflection-success";
@@ -629,7 +629,7 @@ describe("Stage 14 autonomous debugging features", () => {
 
   it("correctiveAction in reflection identifies the actual fix", async () => {
     const { analyzeTaskHistory } = await import("../../src/core/reflection/reflection-engine.js");
-    const { withAgentDatabase } = await import("../../src/core/memory/database.js");
+    const { withAgentDatabase } = await import("../../src/core/memory/database/index.js");
 
     const taskId = "33333333-3333-4333-8333-333333333333";
     const corr = "test-reflection-corrective";
@@ -1171,7 +1171,7 @@ describe("Stage 24 idempotency and transaction semantics", () => {
       "../../src/services/filesystem/filesystem-service.js"
     );
     const { withAgentDatabase } = await import(
-      "../../src/core/memory/database.js"
+      "../../src/core/memory/database/index.js"
     );
     const testPath = path.resolve("stage24-revision-test.txt");
     try {

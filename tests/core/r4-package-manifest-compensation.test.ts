@@ -91,7 +91,7 @@ describe("R4.07 truthful manifest-only compensation",()=>{
       manager:"npm",action:"install",name:"fixture-package",cwd:root,correlationId:"r4-timeout"
     }))).rejects.toThrow(/outcome unknown/i);
     expect(fs.readFileSync(manifest,"utf8")).toBe('{"name":"baseline"}');
-    const rows=(await import("../../src/core/memory/database.js")).withAgentDatabase(db=>
+    const rows=(await import("../../src/core/memory/database/index.js")).withAgentDatabase(db=>
       db.prepare("SELECT status,restored_at FROM package_snapshots WHERE correlation_id='r4-timeout'").all()
     ) as Array<{status:string;restored_at:string|null}>;
     expect(rows).toEqual([{status:"outcome_unknown",restored_at:null}]);

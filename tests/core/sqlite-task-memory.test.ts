@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { saveTaskMemory, saveDecisionMemory } from "../../src/core/memory/sqlite-memory.js";
-import { withAgentDatabase } from "../../src/core/memory/database.js";
+import { withAgentDatabase } from "../../src/core/memory/database/index.js";
 
 describe("sqlite task memory", () => {
   it("stores task and decision history", () => {

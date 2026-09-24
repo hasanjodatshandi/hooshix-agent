@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { backupAgentDatabase, cleanupAgentData, withAgentDatabase } from "../../src/core/memory/database.js";
+import { backupAgentDatabase, cleanupAgentData, withAgentDatabase } from "../../src/core/memory/database/index.js";
 import { createTaskPlan } from "../../src/core/planner/task-planner.js";
 import { getTaskPlan, saveTaskPlan } from "../../src/core/memory/task-repository.js";
 

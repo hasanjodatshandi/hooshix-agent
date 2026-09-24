@@ -1,4 +1,4 @@
-import { withAgentDatabase } from "../../../../../core/memory/database.js";
+import { withAgentDatabase } from "../../../../../core/memory/database/index.js";
 import {createHash} from "node:crypto";
 import path from "node:path";
 

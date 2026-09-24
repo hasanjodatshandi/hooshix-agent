@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { withAgentDatabase } from "../../src/core/memory/database.js";
+import { withAgentDatabase } from "../../src/core/memory/database/index.js";
 import { createApprovalRequest } from "../../src/core/governance/approval-memory.js";
 
 describe("approval workflow memory", () => {

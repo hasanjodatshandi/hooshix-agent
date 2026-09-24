@@ -4,7 +4,7 @@ const { execaMock } = vi.hoisted(() => ({ execaMock: vi.fn() }));
 vi.mock("execa", () => ({ execa: execaMock }));
 
 import { managePackage } from "../../src/services/package/package-service.js";
-import { withAgentDatabase } from "../../src/core/memory/database.js";
+import { withAgentDatabase } from "../../src/core/memory/database/index.js";
 import { runWithPolicyApproval } from "../../src/core/governance/policy-decision-point.js";
 
 function approvedManage(input: Parameters<typeof managePackage>[0]) {

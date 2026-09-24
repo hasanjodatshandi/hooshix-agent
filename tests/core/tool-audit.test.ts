@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { auditToolCall } from "../../src/core/memory/tool-audit.js";
-import { withAgentDatabase } from "../../src/core/memory/database.js";
+import { withAgentDatabase } from "../../src/core/memory/database/index.js";
 
 describe("MCP tool audit", () => {
   it("records successful and failed calls without arguments or results", async () => {

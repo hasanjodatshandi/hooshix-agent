@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { withAgentDatabase } from "../../src/core/memory/database.js";
+import { withAgentDatabase } from "../../src/core/memory/database/index.js";
 
 const TOOLS = ["read_file", "write_file", "execute_command", "search_files", "list_directory"];
 const RECOVERY_STATUSES = ["started", "completed", "failed"];

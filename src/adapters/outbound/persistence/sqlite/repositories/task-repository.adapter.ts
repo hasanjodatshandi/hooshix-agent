@@ -1,6 +1,6 @@
 import type { TaskPlan, TaskStep, TaskStepStatus, TaskExecutionContext, StepAttempt } from "../../../../../application/dto/legacy-task-plan.js";
 import type { TaskState } from "../../../../../core/state/task-state-machine.js";
-import { withAgentDatabase } from "../../../../../core/memory/database.js";
+import { withAgentDatabase } from "../../../../../core/memory/database/index.js";
 import { canonicalProjectPath } from "../../../../../infrastructure/project-path-identity.js";
 import type Database from "better-sqlite3";
 import {assertTaskLeaseWrite} from "./task-lease.adapter.js";

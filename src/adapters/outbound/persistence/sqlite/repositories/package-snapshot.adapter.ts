@@ -1,4 +1,4 @@
-import { withAgentDatabase } from "../../../../../core/memory/database.js";
+import { withAgentDatabase } from "../../../../../core/memory/database/index.js";
 
 /** Manifest snapshot persistence. Installed packages are never represented as restored here. */
 export interface StoredPackageSnapshot {

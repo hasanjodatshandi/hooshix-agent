@@ -12,7 +12,7 @@ import {
   writeWorkspaceFile
 } from "../src/services/filesystem/filesystem-service.js";
 import { runWithPolicyApproval } from "../src/core/governance/policy-decision-point.js";
-import { withAgentDatabase } from "../src/core/memory/database.js";
+import { withAgentDatabase } from "../src/core/memory/database/index.js";
 import { RUNTIME_FILES_ROOT } from "./helpers/runtime-files.js";
 
 describe("filesystem service", () => {

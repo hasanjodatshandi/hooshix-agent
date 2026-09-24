@@ -30,7 +30,7 @@ describe("TR-01: task_append_steps lifecycle", () => {
     expect(runtime.get(plan.id)!.state).toBe("completed");
 
     // Use the tool handler directly
-    const { withAgentDatabase } = await import("../../src/core/memory/database.js");
+    const { withAgentDatabase } = await import("../../src/core/memory/database/index.js");
     const maxId = Math.max(0, ...runtime.get(plan.id)!.steps.map((s: any) => s.id));
     withAgentDatabase((db) => {
       db.prepare(
@@ -74,7 +74,7 @@ describe("TR-01: task_append_steps lifecycle", () => {
 
     // Append corrective step — use runWhen: "always" so it runs after the
     // dependency failed (corrective step pattern).
-    const { withAgentDatabase } = await import("../../src/core/memory/database.js");
+    const { withAgentDatabase } = await import("../../src/core/memory/database/index.js");
     const { saveTaskPlan: save } = await import("../../src/core/memory/task-repository.js");
     const maxId = Math.max(0, ...runtime.get(plan.id)!.steps.map((s: any) => s.id));
     withAgentDatabase((db) => {
@@ -106,7 +106,7 @@ describe("TR-01: task_append_steps lifecycle", () => {
     expect(runtime.get(plan.id)!.state).toBe("cancelled");
 
     // Append and transition
-    const { withAgentDatabase } = await import("../../src/core/memory/database.js");
+    const { withAgentDatabase } = await import("../../src/core/memory/database/index.js");
     const { saveTaskPlan: save } = await import("../../src/core/memory/task-repository.js");
     const maxId = Math.max(0, ...runtime.get(plan.id)!.steps.map((s: any) => s.id));
     withAgentDatabase((db) => {
@@ -167,7 +167,7 @@ describe("TR-03: Append preserves runWhen", () => {
     expect(r.status).toBe("completed");
 
     // Append three steps with different runWhen values
-    const { withAgentDatabase } = await import("../../src/core/memory/database.js");
+    const { withAgentDatabase } = await import("../../src/core/memory/database/index.js");
     const { saveTaskPlan: save } = await import("../../src/core/memory/task-repository.js");
     const baseId = 1;
     withAgentDatabase((db) => {
@@ -216,7 +216,7 @@ describe("TR-04: Corrective append unlocks retry gate", () => {
     await expect(runtime.run(plan.id, 0)).rejects.toThrow("maxConsecutiveFailures");
 
     // Append corrective step and transition
-    const { withAgentDatabase } = await import("../../src/core/memory/database.js");
+    const { withAgentDatabase } = await import("../../src/core/memory/database/index.js");
     const { saveTaskPlan: save } = await import("../../src/core/memory/task-repository.js");
     const maxId = Math.max(0, ...runtime.get(plan.id)!.steps.map((s: any) => s.id));
     withAgentDatabase((db) => {
@@ -665,7 +665,7 @@ describe("State machine", () => {
     expect(runtime.get(plan.id)!.state).toBe("completed");
 
     // Simulate append + transition
-    const { withAgentDatabase } = await import("../../src/core/memory/database.js");
+    const { withAgentDatabase } = await import("../../src/core/memory/database/index.js");
     const { saveTaskPlan: save } = await import("../../src/core/memory/task-repository.js");
     const maxId = 1;
     withAgentDatabase((db) => {

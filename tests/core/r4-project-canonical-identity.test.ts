@@ -3,7 +3,7 @@ import path from "node:path";
 import {randomUUID} from "node:crypto";
 import {afterEach,describe,expect,it} from "vitest";
 import {saveProject} from "../../src/core/memory/task-repository.js";
-import {backupAgentDatabase,runMigrations,withAgentDatabase} from "../../src/core/memory/database.js";
+import {backupAgentDatabase,runMigrations,withAgentDatabase} from "../../src/core/memory/database/index.js";
 import {createDisposableFixture,type DisposableFixture} from "../helpers/r0-disposable-fixtures.js";
 import {canonicalProjectPath} from "../../src/infrastructure/project-path-identity.js";
 

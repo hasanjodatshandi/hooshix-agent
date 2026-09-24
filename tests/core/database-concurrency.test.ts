@@ -1,5 +1,5 @@
 import { describe, expect, it, afterEach } from "vitest";
-import { withAgentDatabase, resetAgentDatabase } from "../../src/core/memory/database.js";
+import { withAgentDatabase, resetAgentDatabase } from "../../src/core/memory/database/index.js";
 
 afterEach(() => {
   resetAgentDatabase();

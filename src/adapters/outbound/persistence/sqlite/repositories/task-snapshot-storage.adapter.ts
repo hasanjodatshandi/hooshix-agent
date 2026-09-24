@@ -1,4 +1,4 @@
-import { withAgentDatabase } from "../../../../../core/memory/database.js";
+import { withAgentDatabase } from "../../../../../core/memory/database/index.js";
 
 /** Durable storage only; Git snapshot validity and rollback policy stay with their caller. */
 export function storeTaskGitSnapshot(

@@ -3,7 +3,7 @@ import {describe,expect,it} from "vitest";
 import {createTaskRuntimeService} from "../../src/core/runtime/composition-root.js";
 import {getTaskPlan,saveTaskPlan} from "../../src/core/memory/task-repository.js";
 import {createTaskPlan} from "../../src/core/planner/task-planner.js";
-import {backupAgentDatabase,runMigrations} from "../../src/core/memory/database.js";
+import {backupAgentDatabase,runMigrations} from "../../src/core/memory/database/index.js";
 import {createDisposableFixture} from "../helpers/r0-disposable-fixtures.js";
 
 describe("R3.08 canonical Task creation idempotency",()=>{

@@ -2,7 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { withAgentDatabase } from "../../src/core/memory/database.js";
+import { withAgentDatabase } from "../../src/core/memory/database/index.js";
 import { isDirectApprovalBypassEnabled, runWithPolicyApproval } from "../../src/core/governance/policy-decision-point.js";
 import { executeShellCommand } from "../../src/services/shell/shell-service.js";
 import { readWorkspaceFile } from "../../src/services/filesystem/filesystem-service.js";

@@ -1,4 +1,4 @@
-import { withAgentDatabase } from "../../../../../core/memory/database.js";
+import { withAgentDatabase } from "../../../../../core/memory/database/index.js";
 
 /** Dashboard read model owned by SQLite adapter; no SQL in HTTP inbound path. */
 export function getRecordedToolNames(): string[] {

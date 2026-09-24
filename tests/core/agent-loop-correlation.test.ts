@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { withAgentDatabase } from "../../src/core/memory/database.js";
+import { withAgentDatabase } from "../../src/core/memory/database/index.js";
 import { runClosedAgentLoop } from "../../src/core/loop/closed-agent-loop.js";
 import { createExecutionContext } from "../../src/core/runtime/execution-context.js";
 

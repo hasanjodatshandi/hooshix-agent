@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { createTaskPlan } from "../../src/core/planner/task-planner.js";
 import { runClosedAgentLoop } from "../../src/core/loop/closed-agent-loop.js";
 import { getTaskPlan, saveTaskPlan, listStepExecutionReceipts } from "../../src/core/memory/task-repository.js";
-import { backupAgentDatabase, runMigrations } from "../../src/core/memory/database.js";
+import { backupAgentDatabase, runMigrations } from "../../src/core/memory/database/index.js";
 import { createDisposableFixture } from "../helpers/r0-disposable-fixtures.js";
 
 describe("R3.02 durable mutation execution receipts",()=>{

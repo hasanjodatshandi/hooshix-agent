@@ -1,7 +1,7 @@
 import { beforeEach } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
-import { resetAgentDatabase, resetMigrationsFlag } from "../../src/core/memory/database.js";
+import { resetAgentDatabase, resetMigrationsFlag } from "../../src/core/memory/database/index.js";
 import { resetColumnsFlag } from "../../src/core/memory/task-repository.js";
 import { resetRecoveryTaskIdFlag } from "../../src/core/trace/recovery-repository.js";
 import { replaceWorkspaceRoots } from "../../src/security/workspace-guard.js";

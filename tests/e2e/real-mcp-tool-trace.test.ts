@@ -3,7 +3,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { connectTestMcpClient } from "../helpers/mcp-client.js";
 import { RUNTIME_FILES_ROOT } from "../helpers/runtime-files.js";
-import { withAgentDatabase } from "../../src/core/memory/database.js";
+import { withAgentDatabase } from "../../src/core/memory/database/index.js";
 
 describe("real mcp write tool trace", () => {
   it("propagates correlationId through write_file call", async () => {

@@ -1,6 +1,6 @@
 import {randomUUID} from "node:crypto";
 import type Database from "better-sqlite3";
-import {withAgentDatabase} from "../../../../../core/memory/database.js";
+import {withAgentDatabase} from "../../../../../core/memory/database/index.js";
 import {getTaskLeaseContext, type TaskLeaseContext} from "../../../../../infrastructure/composition/r3-task-lease-context.js";
 
 export type TaskLease=TaskLeaseContext;

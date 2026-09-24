@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { auditToolCall } from "../../src/core/memory/tool-audit.js";
 import { saveExecutionMemory } from "../../src/core/memory/sqlite-memory.js";
 import { getAgentMetrics } from "../../src/core/trace/metrics-service.js";
-import { withAgentDatabase } from "../../src/core/memory/database.js";
+import { withAgentDatabase } from "../../src/core/memory/database/index.js";
 
 describe("observability metrics", () => {
   it("reports zero metrics for empty database", () => {

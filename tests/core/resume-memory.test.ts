@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { withAgentDatabase } from "../../src/core/memory/database.js";
+import { withAgentDatabase } from "../../src/core/memory/database/index.js";
 import { getResumableTasks, getResumePoint } from "../../src/core/memory/resume-memory.js";
 
 describe("resume memory", () => {

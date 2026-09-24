@@ -1,5 +1,5 @@
 import type { RecoveryEvent } from "../../../../../core/trace/recovery-observability.js";
-import { withAgentDatabase } from "../../../../../core/memory/database.js";
+import { withAgentDatabase } from "../../../../../core/memory/database/index.js";
 
 /** Backward-compatible test hook; schema is owned by migrations. */
 export function resetRecoveryTaskIdFlag(): void { /* no-op */ }

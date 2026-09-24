@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 import { afterEach,describe,expect,it } from "vitest";
 import {OAuthProvider} from "../../src/mcp/oauth.js";
-import {withAgentDatabase} from "../../src/core/memory/database.js";
+import {withAgentDatabase} from "../../src/core/memory/database/index.js";
 
 const resource="http://127.0.0.1:34567/mcp";
 const bootstrap="r5-isolated-fixture-operator-bootstrap-0123456789";

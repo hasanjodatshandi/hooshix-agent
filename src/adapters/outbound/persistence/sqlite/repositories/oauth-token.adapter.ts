@@ -1,4 +1,4 @@
-import { withAgentDatabase } from "../../../../../core/memory/database.js";
+import { withAgentDatabase } from "../../../../../core/memory/database/index.js";
 import { randomUUID } from "node:crypto";
 import type Database from "better-sqlite3";
 

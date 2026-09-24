@@ -16,7 +16,7 @@ import { createSessionWorkspaceContext, runWithSessionWorkspace, type SessionWor
 import { runWithTrustedInboundIdentity } from "../infrastructure/composition/r2-trusted-inbound-identity.js";
 import type { PrincipalId, SessionId } from "../domain/shared/ids.js";
 import {OperatorWebSessions,HttpWindowLimiter,HttpPrincipalContexts} from "../infrastructure/server/http-security.js";
-import {isDatabaseReady} from "../core/memory/database.js";
+import {isDatabaseReady} from "../core/memory/database/index.js";
 import {createMcpHandler} from "@modelcontextprotocol/server";
 import {toNodeHandler} from "@modelcontextprotocol/node";
 // R7.01: the HTTP transport never reads environment variables directly; the

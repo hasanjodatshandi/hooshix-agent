@@ -4,7 +4,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { afterEach, describe, expect, it } from "vitest";
 import { addWorkspaceRoots, removeWorkspaceRoot, setActiveWorkspace } from "../../src/security/workspace-guard.js";
 import { createDisposableFixture, type DisposableFixture } from "../helpers/r0-disposable-fixtures.js";
-import { withAgentDatabase } from "../../src/core/memory/database.js";
+import { withAgentDatabase } from "../../src/core/memory/database/index.js";
 import { persistFileBackup } from "../../src/adapters/outbound/persistence/sqlite/repositories/file-backup-idempotency.adapter.js";
 import {
   createWorkspaceFile, deleteWorkspaceFile, restoreWorkspaceFile, writeWorkspaceFile,

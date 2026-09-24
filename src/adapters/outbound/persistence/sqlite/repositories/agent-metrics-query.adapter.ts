@@ -1,4 +1,4 @@
-import { withAgentDatabase } from "../../../../../core/memory/database.js";
+import { withAgentDatabase } from "../../../../../core/memory/database/index.js";
 import { parseTimestamp } from "../../../../../core/executor/handlers/metrics-arguments.js";
 
 export interface AgentMetrics {

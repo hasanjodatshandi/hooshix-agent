@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { withAgentDatabase } from "../../../../../core/memory/database.js";
+import { withAgentDatabase } from "../../../../../core/memory/database/index.js";
 
 export interface PersistedWorkspaceRoot {
   path: string;

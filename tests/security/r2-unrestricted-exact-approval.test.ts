@@ -5,7 +5,7 @@ import {createDisposableFixture,type DisposableFixture} from "../helpers/r0-disp
 import {createTaskRuntimeService} from "../../src/core/runtime/composition-root.js";
 import {getTaskPlan,saveTaskPlan} from "../../src/core/memory/task-repository.js";
 import {getApprovalRequest} from "../../src/core/governance/approval-memory.js";
-import {withAgentDatabase} from "../../src/core/memory/database.js";
+import {withAgentDatabase} from "../../src/core/memory/database/index.js";
 import {connectInProcessMcp} from "../helpers/in-process-mcp.js";
 import {addWorkspaceRoots,getWorkspaceRoot,isUnrestrictedMode,
   removeWorkspaceRoot,seedUnrestrictedMode,setActiveWorkspace} from "../../src/security/workspace-guard.js";

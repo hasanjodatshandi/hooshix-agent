@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { withAgentDatabase } from "../../src/core/memory/database.js";
+import { withAgentDatabase } from "../../src/core/memory/database/index.js";
 import { saveExecutionWithContext } from "../../src/core/memory/context-memory.js";
 
 describe("context memory propagation", () => {

@@ -6,7 +6,7 @@ import {getResumableTasks} from "../../src/core/memory/resume-memory.js";
 import {restoreInterruptedTasks} from "../../src/core/recovery/startup-recovery.js";
 import {createApprovalRequest} from "../../src/core/governance/approval-memory.js";
 import {createDisposableFixture} from "../helpers/r0-disposable-fixtures.js";
-import {backupAgentDatabase,runMigrations} from "../../src/core/memory/database.js";
+import {backupAgentDatabase,runMigrations} from "../../src/core/memory/database/index.js";
 
 describe("R3.01 canonical Task aggregate hydration",()=>{
   it("preserves every currently persisted non-default Task and Step field in normal, report, resume and crash discovery",()=>{

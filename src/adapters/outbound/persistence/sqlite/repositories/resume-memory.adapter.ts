@@ -1,4 +1,4 @@
-import { withAgentDatabase } from "../../../../../core/memory/database.js";
+import { withAgentDatabase } from "../../../../../core/memory/database/index.js";
 import { getTaskPlan } from "./task-repository.adapter.js";
 import type { TaskPlan } from "../../../../../application/dto/legacy-task-plan.js";
 

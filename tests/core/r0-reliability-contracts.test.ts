@@ -10,7 +10,7 @@ import { createTaskPlan } from "../../src/core/planner/task-planner.js";
 import { saveTaskPlan, getTaskPlan, findInterruptedTasks } from "../../src/core/memory/task-repository.js";
 import { recoverInterruptedTasks } from "../../src/core/recovery/crash-recovery.js";
 import { runClosedAgentLoop } from "../../src/core/loop/closed-agent-loop.js";
-import { withAgentDatabase } from "../../src/core/memory/database.js";
+import { withAgentDatabase } from "../../src/core/memory/database/index.js";
 import { restorePackage } from "../../src/services/package/package-service.js";
 import { runWithPolicyApproval } from "../../src/core/governance/policy-decision-point.js";
 

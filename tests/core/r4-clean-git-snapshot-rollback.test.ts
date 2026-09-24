@@ -8,7 +8,7 @@ import {addWorkspaceRoots,removeWorkspaceRoot,setActiveWorkspace} from "../../sr
 import {runWithPolicyApproval} from "../../src/core/governance/policy-decision-point.js";
 import {captureTaskSnapshot,rollbackTaskSnapshot} from "../../src/core/executor/handlers/task-snapshot-handler.js";
 import {findTaskGitSnapshot,storeTaskGitSnapshot} from "../../src/adapters/outbound/persistence/sqlite/repositories/task-snapshot-storage.adapter.js";
-import {withAgentDatabase} from "../../src/core/memory/database.js";
+import {withAgentDatabase} from "../../src/core/memory/database/index.js";
 let fixture:DisposableFixture|undefined;
 let repo:string|undefined;
 const extraRoots=new Set<string>();
