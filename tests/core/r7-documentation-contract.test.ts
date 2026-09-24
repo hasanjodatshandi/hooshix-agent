@@ -51,7 +51,7 @@ describe("R7.10 README tool catalog contract", () => {
     expect(readmeAllowlist).not.toBeNull();
     const documented = (readmeAllowlist?.[1] ?? "")
       .split(",")
-      .map((s) => s.replace(/[`*]/g, "").trim())
+      .map((s) => replaceBackticksAndTrim(s))
       .filter(Boolean);
     expect(documented.length).toBeGreaterThan(0);
     // Every documented executable must appear in BOTH code allowlists (the
@@ -61,4 +61,22 @@ describe("R7.10 README tool catalog contract", () => {
       expect(schema, `documented executable "${exe}" must exist in the zod schema`).toContain(`"${exe}"`);
     }
   });
+
+  it("R9.06 docs/TOOLS.md matches the catalog in both directions", () => {
+    // docs/TOOLS.md is the generated tool reference. It must list every
+    // registered tool and name none the gateway does not register.
+    const toolsDoc = fs.readFileSync("docs/TOOLS.md", "utf8");
+    const mentioned = new Set([...toolsDoc.matchAll(/`([a-z_]+)`/g)].map((m) => m[1]));
+    const registered = new Set(ALL_REGISTERED_TOOLS as readonly string[]);
+
+    const stale = [...mentioned].filter((name) => !registered.has(name));
+    expect(stale, `TOOLS.md names tools that are not registered: ${stale.join(", ")}`).toEqual([]);
+
+    const unlisted = (ALL_REGISTERED_TOOLS as readonly string[]).filter((t) => !mentioned.has(t));
+    expect(unlisted, `TOOLS.md omits registered tools: ${unlisted.join(", ")}`).toEqual([]);
+  });
 });
+
+function replaceBackticksAndTrim(value: string): string {
+  return value.replace(/[`*]/g, "").trim();
+}

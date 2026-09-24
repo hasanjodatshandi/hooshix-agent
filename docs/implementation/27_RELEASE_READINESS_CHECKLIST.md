@@ -69,8 +69,8 @@ A `[x]` mark is a statement about this repository's current state, not about any
   → `HttpPrincipalContexts` caps (64/30m/8h) proven by fake-clock regression in `r5-http-session-fakeclock.test.ts`.
 - [x] Current official MCP auth opt-ins (issuer/scope/credential hardening) re-verified and enabled.
   → `tests/e2e/r5-http-session-fakeclock.test.ts` (RFC 9207 `iss` stamp, wrong-resource rejection), `r5-issued-credentials.test.ts`.
-- [ ] `docs/PROTOCOL_COMPATIBILITY.md` matches exact shipped SDK/protocol versions.
-  → **NOT_VERIFIED.** The file does not exist (R9.07 not started).
+- [x] `docs/PROTOCOL_COMPATIBILITY.md` matches exact shipped SDK/protocol versions.
+  → Written in R9.07 (`docs/PROTOCOL_COMPATIBILITY.md`); records the exact `@modelcontextprotocol/*` versions from `package.json` and ADR-009, and states the v1-SDK dependency honestly (item 3.2 remains open).
 
 ---
 
@@ -338,22 +338,22 @@ A `[x]` mark is a statement about this repository's current state, not about any
 
 - [x] `README.md` updated and concise.
   → `tests/core/r7-documentation-contract.test.ts` enforces both directions (no stale tool, no omitted tool) against the 53-tool catalog.
-- [ ] `docs/ARCHITECTURE.md` current.
-  → **NOT_VERIFIED.** The file does not exist (R9.07 not started). Architecture rules are currently enforced only by the section-2 tests.
-- [ ] `docs/SECURITY.md` current.
-  → **NOT_VERIFIED.** The file does not exist (R9.07 not started).
-- [ ] `docs/OPERATIONS.md` current.
-  → **NOT_VERIFIED.** The file does not exist (R9.07 not started). `R7_LOCAL_OPERATIONS_RUNBOOK_2026-09-23.md` is an implementation runbook, not the final operations guide.
-- [ ] `docs/TOOLS.md` generated/current.
-  → **NOT_VERIFIED.** The file does not exist (R9.06 not started); the 53-tool list currently lives in README.
-- [ ] `docs/PROTOCOL_COMPATIBILITY.md` current.
-  → **NOT_VERIFIED.** The file does not exist (also required by section 3).
-- [ ] `docs/MIGRATIONS.md` current.
-  → **NOT_VERIFIED.** The file does not exist; migration history lives in `29_IMPLEMENTATION_PROGRESS_LEDGER.md` and the `R6_*` reports only.
-- [ ] `docs/RELEASE.md` current.
-  → **NOT_VERIFIED.** The file does not exist; the release process is `scripts/release-preflight.mjs` + this checklist.
+- [x] `docs/ARCHITECTURE.md` current.
+  → Written in R9.07 from the actual layering and boundary tests (`docs/ARCHITECTURE.md`); it cites `r1-strict-boundary.test.ts` as the executable authority and states that tests win on disagreement.
+- [x] `docs/SECURITY.md` current.
+  → Written in R9.07 from `workspace-guard.ts`, `sensitive-path-policy.ts`, the bootstrap/OAuth credential separation and the child-process env allowlist.
+- [x] `docs/OPERATIONS.md` current.
+  → Written in R9.07 from the runbook, `app-config.ts` parser inventory, health endpoints and the Dockerfile; supersedes the implementation runbook as the shipped operations guide.
+- [x] `docs/TOOLS.md` generated/current.
+  → Generated in R9.06 from `operation-catalog.ts`; `r7-documentation-contract.test.ts` now enforces both directions against `ALL_REGISTERED_TOOLS` so it cannot drift from the catalog.
+- [x] `docs/PROTOCOL_COMPATIBILITY.md` current.
+  → Written in R9.07 from `package.json` versions and ADR-009; records the open v1-SDK dependency honestly rather than claiming zero v1 imports.
+- [x] `docs/MIGRATIONS.md` current.
+  → Written in R9.07 from `migrations.ts` (versions 1–17, idempotency, rehearsal, retention, failure behavior).
+- [x] `docs/RELEASE.md` current.
+  → Written in R9.07 from `release-preflight.mjs` and `release-db-rehearsal.mjs`; names the three environment blockers explicitly.
 - [ ] Tool/config docs clean-diff generation gate green.
-  → **NOT_VERIFIED.** No generator script exists (there is no `docs/TOOLS.md` to generate); `git diff --check` covers source only.
+  → **NOT_VERIFIED.** No generator script exists — `docs/TOOLS.md` was written by hand against the catalog and is kept honest by the bidirectional test, but it is not generated. A generator would close this item.
 - [x] Conflicting old runbooks removed/archived.
   → `SETUP_NODEJS_MCP_V2.md` is an explicit deprecation pointer; `r7-secret-policy-check.mjs` bounds the active surfaces.
 - [x] Audit provenance retained.
@@ -363,11 +363,11 @@ A `[x]` mark is a statement about this repository's current state, not about any
 
 ## 15. Final sign-off
 
-The sign-off block below is deliberately **NOT filled**. It is an owner decision, and the implementer side is not ready to recommend `RELEASE_CANDIDATE` anyway: 4 items are environment-BLOCKED (Docker daemon unreachable, no GitHub Actions runner, no POSIX host) and 20 items remain genuinely NOT_VERIFIED, the largest concentration being section 14 (7 of 8 required `docs/*.md` files do not exist, R9.06/R9.07 were never started). The counts are filled here for record only.
+The sign-off block below is deliberately **NOT filled**. It is an owner decision, and the implementer side is not ready to recommend `RELEASE_CANDIDATE` anyway: 4 items are environment-BLOCKED (Docker daemon unreachable, no GitHub Actions runner, no POSIX host) and 11 items remain genuinely NOT_VERIFIED. The counts are filled here for record only.
 
 - Section 1 (Audit findings): 5 items — **2 executed, 0 blocked, 3 open**. 24/54 findings closed; the matrix cannot be closed without container/CI evidence.
 - Section 2 (Architecture): 10 items — **10 executed** (+1 documented deviation with expiry owner/date).
-- Section 3 (MCP protocol/SDK): 8 items — **6 executed, 2 open**. Open: v1 SDK dependency + test helper import (3.2), `docs/PROTOCOL_COMPATIBILITY.md` missing (3.8).
+- Section 3 (MCP protocol/SDK): 8 items — **7 executed, 1 open**. Open: v1 SDK dependency + test helper import (3.2).
 - Section 4 (Authorization/filesystem): 10 items — **10 executed**. (4.9 was the last open item; fixed and executed in R10.03.)
 - Section 5 (OAuth/HTTP): 12 items — **11 executed, 1 BLOCKED** (POSIX `0600` permission proof, 5.12).
 - Section 6 (Task execution/recovery): 12 items — **12 executed**.
@@ -378,8 +378,8 @@ The sign-off block below is deliberately **NOT filled**. It is an owner decision
 - Section 11 (Tests/static validation): 10 items — **10 executed** (11.7 and 12.1 hosted-CI halves are noted in-place as blocked).
 - Section 12 (CI/supply chain/container): 11 items — **8 executed, 3 BLOCKED** (12.6/12.8/12.9); 12.11 is `[x]` because the release-preflight emits every version/digest it can, with the container image digest itself noted in-place as blocked.
 - Section 13 (Configuration/operations): 10 items — **9 executed, 1 open** (incident-response procedures, 13.10).
-- Section 14 (Documentation): 11 items — **3 executed, 8 open**. Largest gap: 7 of 8 required `docs/*.md` do not exist.
-- **Total: 139 items — 116 executed, 4 BLOCKED, 19 NOT_VERIFIED.**
+- Section 14 (Documentation): 11 items — **10 executed, 1 open**. R9.06/R9.07 delivered all 7 `docs/*.md`; the remaining item is that `TOOLS.md` is hand-verified rather than generated (14.9).
+- **Total: 139 items — 124 executed, 4 BLOCKED, 11 NOT_VERIFIED.**
 
 ```text
 Release candidate commit:

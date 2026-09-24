@@ -1089,3 +1089,25 @@ The earlier G6 OPEN entries above are historical observations superseded by the 
 - **Validation:** serial 181 files / 812 tests PASS; parallel ×8 PASS (0 failures); `tsc` both configs PASS; `verify-g1-global.mjs --strict` PASS (the config-layer placement is what keeps it green); `git diff --check` PASS.
 - **Boundary:** this closes checklist item 4.9 and raises the executed count to 116/139. It does NOT close any audit finding, and the 4 environment BLOCKED items plus the 19 NOT_VERIFIED (dominated by the 7 missing `docs/*.md` files) remain.
 
+### R9.06 — `docs/TOOLS.md` generated against the catalog, kept honest by a test — 2026-09-24
+
+- **The item:** the backlog names R9.06 as "generate `docs/TOOLS.md` from catalog". The file did not exist; the 53-tool list lived only in README.
+- **What was written:** `docs/TOOLS.md` — the full 53-tool reference (18 read, 16 write, 9 execute/git, 4 package, 6 task-engine) with risk classes (low/medium/high/critical), approval tags (`always` / `on-risk` / `never`), and the 30 step-executable vs 23 control-plane split.
+- **Executable enforcement:** the contract test `tests/core/r7-documentation-contract.test.ts` gained a bidirectional check — `docs/TOOLS.md` must name every registered tool and no unregistered one, read against the same `ALL_REGISTERED_TOOLS` the MCP `tools/list` response is generated from. One genuine false positive was caught and fixed during authoring (a prose backtick `` `tool` `` that the identifier regex treated as a tool name). The suite is now 4 tests (was 3).
+- **Boundary:** the file is hand-written from the catalog and pinned by the test; it is NOT produced by a generator script. Checklist item 14.9 (clean-diff generation gate) therefore stays open and is recorded as such. R9.07 items below close it as far as writing the documents goes.
+- **Validation:** focused 4/4 PASS; serial suite 181 files / 813 tests PASS.
+
+### R9.07 — final `docs/ARCHITECTURE.md`, `SECURITY.md`, `OPERATIONS.md`, `PROTOCOL_COMPATIBILITY.md`, `MIGRATIONS.md`, `RELEASE.md` — 2026-09-24
+
+- **The item:** the backlog names R9.07 as "write final ARCHITECTURE.md, SECURITY.md, OPERATIONS.md". Four further required documents were missing (`PROTOCOL_COMPATIBILITY.md` also required by checklist §3.8, plus `MIGRATIONS.md` and `RELEASE.md`). None existed; section 14 of the release checklist was the single largest gap in the program (8 of 11 items open).
+- **What was written, all from the actual code rather than from prior design notes:**
+  - `docs/ARCHITECTURE.md` — the layering, the six dependency rules with the test that enforces each, `ExecuteToolUseCase` and its guarantees, `OperationCatalog`, the composition roots, and the retained compatibility shims. States that the tests win on disagreement.
+  - `docs/SECURITY.md` — the empty-by-default workspace pool, single-effect unrestricted scope, sensitive-path policy, bootstrap-vs-OAuth credential separation, the child-process env allowlist (R10.03), backup-before-mutation and guarded restore, audit redaction.
+  - `docs/OPERATIONS.md` — requirements, startup, health endpoints, bootstrap secret and rotation, the full `HOOSHIX_*` configuration inventory from every `parse*` function in `app-config.ts`, logging, `outcome_unknown` reconciliation, backup/restore, incident response.
+  - `docs/PROTOCOL_COMPATIBILITY.md` — exact `@modelcontextprotocol/*` versions from `package.json`, the 2026-07-28 / 2025-06-18 split per ADR-009, and the v1-SDK dependency stated as an open item rather than claimed closed.
+  - `docs/MIGRATIONS.md` — versions 1–17 with each migration's effect, idempotency mechanics, the rehearsal procedure, retention, and failure behavior.
+  - `docs/RELEASE.md` — preflight, gates, migration rehearsal, traceability, sign-off recording, and the three environment blockers named explicitly.
+- **Facts were extracted by re-reading the code and the existing test suite, not copied from earlier documentation**, so a reader following these documents lands on behavior the tests actually assert.
+- **Validation:** serial 181 files / 813 tests PASS; parallel ×5 PASS; `tsc` both configs PASS; `git diff --check` PASS.
+- **Boundary:** section 14 goes from 3/11 to 10/11 executed; the remaining item (14.9, a generation gate) is documented as NOT_VERIFIED because `TOOLS.md` is test-pinned but not generated. The executed checklist total is now 124/139, with 4 environment-BLOCKED and 11 NOT_VERIFIED. No finding is closed by writing documentation.
+
