@@ -39,4 +39,14 @@ describe("R2.09 inbound execution path retirement",()=>{
     expect(registry).toContain("executeAuthorizedDirectTool");
     expect(task).not.toMatch(/(?:captureTaskSnapshot|rollbackTaskSnapshot)\s*\(/);
   });
+  it("never falls back to `any` when overriding the SDK registrar",()=>{
+    // The registrar is the single mediation seam for inbound tool effects; an
+    // `as any` assignment there would disable checking on every registration.
+    for(const file of ["registry.ts","metrics-server.ts"]) {
+      const src=fs.readFileSync(path.resolve("src/mcp",file),"utf8");
+      expect(src,file).not.toMatch(/\(server as any\)\.registerTool/);
+    }
+    expect(fs.readFileSync(path.resolve("src/mcp/tool-registrar.ts"),"utf8"))
+      .toContain("export function captureToolRegistrar");
+  });
 });

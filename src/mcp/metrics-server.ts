@@ -7,6 +7,7 @@
 
 import { McpServer } from "../adapters/inbound/mcp/legacy-sdk-bridge.js";
 import { mcpMetrics } from "./metrics.js";
+import { captureToolRegistrar, installToolRegistrar, type ToolRegistrar } from "./tool-registrar.js";
 
 /**
  * Creates an McpServer that wraps tool handlers with metrics collection.
@@ -17,16 +18,14 @@ export function createMetricsServer(
 ): McpServer {
   const server = new McpServer(options);
 
-  // Store original registerTool to intercept
-  const originalRegisterTool = server.registerTool.bind(server);
+  // Capture the real registrar before replacing it, then install a wrapper
+  // that times every handler and records success/failure.
+  const registerTool = captureToolRegistrar(server);
 
-  // Override registerTool to wrap handlers with metrics
-  (server as any).registerTool = function (
-    name: string,
-    config: any,
-    handler: (...args: any[]) => Promise<any>,
-  ) {
-    const wrappedHandler = async (...args: any[]) => {
+  const withMetrics: ToolRegistrar = (name, config, ...rest) => {
+    const handler = rest[0] as ((...args: any[]) => Promise<any>) | undefined;
+    if (typeof handler !== "function") return registerTool(name, config, ...rest);
+    const wrappedHandler = async (...args: [any, ...any[]]) => {
       const startTime = performance.now();
       let success = true;
       let error: string | undefined;
@@ -48,8 +47,10 @@ export function createMetricsServer(
       }
     };
 
-    return originalRegisterTool(name, config, wrappedHandler);
+    return registerTool(name, config, wrappedHandler, ...rest.slice(1));
   };
+
+  installToolRegistrar(server, withMetrics);
 
   // Register tools using the intercepted registerTool
   registerTools(server);
