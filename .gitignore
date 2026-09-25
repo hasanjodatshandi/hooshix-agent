@@ -4,6 +4,7 @@ dist/
 coverage/
 data/*.db*
 data/test-*
+data/backups/
 data/release-validation/
 data/test-logs/
 /database/
