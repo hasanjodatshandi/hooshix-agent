@@ -36,6 +36,10 @@ RUN mkdir -p /app/data && chown -R node:node /app/data && chown node:node /app/d
 
 ENV NODE_ENV=production
 ENV HOOSHIX_HTTP_PORT=3001
+# Bind all interfaces inside the container; without this the image defaults to
+# 127.0.0.1 and is unreachable unless run through compose. An external binding
+# still requires HOOSHIX_PUBLIC_BASE_URL, which is enforced at startup.
+ENV HOOSHIX_HTTP_HOST=0.0.0.0
 ENV HOOSHIX_DB_PATH=/app/data/agent-memory.db
 ENV HOOSHIX_LOG_DIR=/app/data/logs
 ENV HOOSHIX_BOOTSTRAP_TOKEN_FILE=/app/data/.token

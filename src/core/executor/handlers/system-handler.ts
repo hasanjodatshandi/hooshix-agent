@@ -14,13 +14,13 @@ export class SystemToolHandler implements ToolHandler {
     return SYSTEM_TOOLS.has(tool);
   }
 
-  async handle({ tool, input }: ToolHandlerContext): Promise<unknown> {
+  async handle({ tool, input, executionContext }: ToolHandlerContext): Promise<unknown> {
     switch (tool) {
       case "get_system_info":
         return { platform: os.platform(), cpu: os.cpus()[0]?.model, memory: os.totalmem() };
       case "agent_metrics": {
         const value = agentMetricsArguments.parse(input ?? {});
-        return getAgentMetrics(value);
+        return getAgentMetrics({ ...value, principalId: executionContext?.principalId });
       }
       case "get_workspace": {
         return {

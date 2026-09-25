@@ -47,6 +47,11 @@ user="$(docker exec "$CONTAINER" id -un 2>/dev/null || echo unknown)"
 [ "$user" = "node" ] || fail "container runs as user=$user, expected node"
 log "12.6 PASS: non-root runtime (uid=$uid user=$user)"
 
+log "5.12 verifying POSIX 0600 bootstrap secret permissions"
+mode="$(docker exec "$CONTAINER" stat -c '%a' /app/data/.token 2>/dev/null || echo unknown)"
+[ "$mode" = "600" ] || fail "bootstrap secret is mode $mode, expected 600"
+log "5.12 PASS: bootstrap secret is 0600 inside the POSIX container"
+
 log "12.9 authenticated operator smoke"
 probe() {
   docker exec "$CONTAINER" node -e "$1" || fail "probe failed"

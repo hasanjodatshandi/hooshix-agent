@@ -41,7 +41,7 @@ beforeEach(() => {
   resetMigrationsFlag();
   resetColumnsFlag();
   resetRecoveryTaskIdFlag();
-  for (const suffix of ["", "-wal", "-shm"]) rmSyncWithRetry(databasePath + suffix, { force: true });
+  for (const suffix of ["", "-wal", "-shm", ".identity"]) rmSyncWithRetry(databasePath + suffix, { force: true });
   fs.rmSync(logDirectory, { recursive: true, force: true });
   fs.rmSync(memoryFile, { force: true });
   replaceWorkspaceRoots(process.cwd());

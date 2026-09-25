@@ -24,7 +24,7 @@ describe("R7.01 unified immutable config — defaults", () => {
     expect(cfg.bootstrapTokenFile).toBe(path.join("/cwd", ".token"));
     expect(cfg.databasePath).toBe("./data/agent-memory.db");
     expect(cfg.logDirectory).toBe("./logs");
-    expect(cfg.permissionLevel).toBe("DEVELOPER_MODE");
+    expect(cfg.permissionLevel).toBe("READ_ONLY");
     expect(cfg.workspace).toEqual({ rootsCsv: "", unrestrictedBootOptIn: false });
     expect(cfg.directApprovalBypass).toBe(false);
     expect(cfg.retentionDays).toBe(90);

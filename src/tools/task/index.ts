@@ -6,6 +6,7 @@ import { resolveCorrelationId } from "../../core/runtime/correlation-id.js";
 import { assertToolPermission } from "../../security/permission.js";
 import { listMemoryItems, listProjects, saveMemoryItem, saveProject, getMemoryItem, deleteMemoryItem, getProject, deleteProject, archiveProject, findTaskByIdempotencyKey } from "../../core/memory/task-repository.js";
 import { getApprovalRequest } from "../../core/governance/approval-memory.js";
+import { getTrustedInboundIdentity } from "../../infrastructure/composition/r2-trusted-inbound-identity.js";
 
 
 import { TOOL_NAMES, validateToolName } from "../../application/services/legacy-tool-orchestrator.js";
@@ -31,6 +32,18 @@ const stepSchema = z.object({
 
 function response(value: unknown, correlationId: string) {
   return { content: [{ type: "text" as const, text: JSON.stringify(value, null, 2) }], _meta: { correlationId } };
+}
+
+/**
+ * The principal that owns project/memory rows this call touches. Every project
+ * and memory record is scoped by owner; a missing trusted identity (local stdio
+ * operator or internal caller) falls back to the shared "local-stdio" owner so
+ * a single-operator install keeps working, while two HTTP principals can never
+ * see each other's context.
+ */
+function currentPrincipalId(): string | undefined {
+  const identity = getTrustedInboundIdentity();
+  return identity.principal.origin === "local_stdio" ? undefined : identity.principal.id;
 }
 
 async function progress(context:unknown,value:number,total:number,message:string):Promise<void>{
@@ -123,47 +136,48 @@ export function registerTaskTools(server: McpServer) {
   });
   server.registerTool("project_save", { title: "Save Project", description: "📁 CONTEXT — Create or update a project record (name, path, description, last/next action). Path is canonicalized; no id = create (fails if path taken), with id = update.\n\nExamples: { \"name\": \"My API\", \"path\": \"D:/Projects/my-api\" } · { \"id\": \"uuid\", \"name\": \"New Name\" }", annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true }, inputSchema: z.object({ id: z.string().uuid().optional(), name: z.string().min(1).max(200), path: z.string(), description: z.string().max(4000).optional(), lastAction: z.string().max(1000).optional(), nextAction: z.string().max(1000).optional(), ...traceSchema })  }, async ({ correlationId, ...input }) => {
     assertToolPermission("project_save"); const traceId = resolveCorrelationId(correlationId);
-    return auditToolCall("project_save", traceId, undefined, () => response({ id: saveProject(input) }, traceId));
+    return auditToolCall("project_save", traceId, undefined, () => response({ id: saveProject({ ...input, principalId: currentPrincipalId() }) }, traceId));
   });
   server.registerTool("project_get", { title: "Get Project", description: "📁 CONTEXT (read) — Fetch one project record by id.\n\nExample: { \"projectId\": \"uuid\" }", annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true }, inputSchema: z.object({ projectId: z.string().uuid(), ...traceSchema }) }, async ({ projectId, correlationId }) => {
     assertToolPermission("project_list"); const traceId = resolveCorrelationId(correlationId);
-    return auditToolCall("project_get", traceId, undefined, () => response(getProject(projectId), traceId));
+    return auditToolCall("project_get", traceId, undefined, () => response(getProject(projectId, currentPrincipalId()), traceId));
   });
   server.registerTool("project_delete", { title: "Delete Project", description: "📁 CONTEXT — Permanently delete a project record by id.\n\nExample: { \"projectId\": \"uuid\" }", annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true }, inputSchema: z.object({ projectId: z.string().uuid(), ...traceSchema }) }, async ({ projectId, correlationId }) => {
     assertToolPermission("project_save"); const traceId = resolveCorrelationId(correlationId);
-    return auditToolCall("project_delete", traceId, undefined, () => response({ projectId, deleted: deleteProject(projectId) }, traceId));
+    return auditToolCall("project_delete", traceId, undefined, () => response({ projectId, deleted: deleteProject(projectId, currentPrincipalId()) }, traceId));
   });
   server.registerTool("project_archive", { title: "Archive Project", description: "📁 CONTEXT — Soft-archive a project (status → 'archived', record kept).\n\nExample: { \"projectId\": \"uuid\" }", annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true }, inputSchema: z.object({ projectId: z.string().uuid(), ...traceSchema }) }, async ({ projectId, correlationId }) => {
     assertToolPermission("project_save"); const traceId = resolveCorrelationId(correlationId);
-    return auditToolCall("project_archive", traceId, undefined, () => response({ projectId, archived: archiveProject(projectId) }, traceId));
+    return auditToolCall("project_archive", traceId, undefined, () => response({ projectId, archived: archiveProject(projectId, currentPrincipalId()) }, traceId));
   });
   server.registerTool("project_list", { title: "List Projects", description: "📁 CONTEXT (read) — List project records, paginated; filter by status (active|archived).\n\nExamples: { \"limit\": 20, \"offset\": 0 } · { \"status\": \"archived\" }", annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true }, inputSchema: z.object({ limit: z.number().int().min(1).max(100).default(50), offset: z.number().int().min(0).default(0), status: z.enum(["active", "archived"]).optional(), ...traceSchema }) }, async ({ limit, offset, status, correlationId }) => {
     assertToolPermission("project_list"); const traceId = resolveCorrelationId(correlationId);
-    return auditToolCall("project_list", traceId, undefined, () => response(listProjects(limit, offset, status), traceId));
+    return auditToolCall("project_list", traceId, undefined, () => response(listProjects(limit, offset, status, currentPrincipalId()), traceId));
   });
   server.registerTool("memory_add", { title: "Add Memory", description: "🧠 MEMORY — Store a categorized note for a project or task (kind: decision, note, bug, architecture…). Content ≤512KB.\n\nEmpty Content: Returns MEMORY_CONTENT_REQUIRED error.\n\nDuplicate Detection: If content is identical to existing memory for same task/project, allows save but returns { duplicateOf: existingId } in response.\n\nExample: { \"kind\": \"decision\", \"content\": \"Using PostgreSQL\", \"projectId\": \"uuid\" }", annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false }, inputSchema: z.object({ taskId: z.string().uuid().optional(), projectId: z.string().uuid().optional(), kind: z.string().min(1).max(64), content: z.string().max(524288), ...traceSchema }) }, async ({ correlationId, ...input }) => {
     assertToolPermission("memory_add"); const traceId = resolveCorrelationId(correlationId);
+    const principalId = currentPrincipalId();
     // Empty content check
     if (!input.content || input.content.trim().length === 0) {
       throw new AgentError("MEMORY_CONTENT_REQUIRED", "Memory content is required");
     }
     // Duplicate detection: check for identical content in same task/project.
-    const existing = listMemoryItems({ taskId: input.taskId, projectId: input.projectId, limit: 100 });
+    const existing = listMemoryItems({ taskId: input.taskId, projectId: input.projectId, limit: 100, principalId });
     const duplicate = existing.items.find((item) => JSON.stringify(item.content) === JSON.stringify(input.content));
-    const id = saveMemoryItem(input);
+    const id = saveMemoryItem({ ...input, principalId });
     return auditToolCall("memory_add", traceId, input.taskId, () => response({ id, duplicateOf: duplicate?.id ?? null }, traceId));
   });
   server.registerTool("memory_list", { title: "List Memory", description: "🧠 MEMORY (read) — List stored memory notes; filter by taskId, projectId, or kind; paginated (limit/offset).\n\nExamples: { \"taskId\": \"uuid\" } · { \"kind\": \"decision\" } · { \"limit\": 20, \"offset\": 20 }", annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true }, inputSchema: z.object({ taskId: z.string().uuid().optional(), projectId: z.string().uuid().optional(), kind: z.string().optional(), limit: z.number().int().min(1).max(100).default(50), offset: z.number().int().min(0).default(0), ...traceSchema }) }, async ({ correlationId, ...input }) => {
     assertToolPermission("memory_list"); const traceId = resolveCorrelationId(correlationId);
-    return auditToolCall("memory_list", traceId, input.taskId, () => response(listMemoryItems(input), traceId));
+    return auditToolCall("memory_list", traceId, input.taskId, () => response(listMemoryItems({ ...input, principalId: currentPrincipalId() }), traceId));
   });
   server.registerTool("memory_get", { title: "Get Memory", description: "🧠 MEMORY (read) — Fetch one memory record by id.\n\nExample: { \"memoryId\": 170 }", annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true }, inputSchema: z.object({ memoryId: z.number().int().positive(), ...traceSchema }) }, async ({ memoryId, correlationId }) => {
     assertToolPermission("memory_list"); const traceId = resolveCorrelationId(correlationId);
-    return auditToolCall("memory_get", traceId, undefined, () => response(getMemoryItem(memoryId), traceId));
+    return auditToolCall("memory_get", traceId, undefined, () => response(getMemoryItem(memoryId, currentPrincipalId()), traceId));
   });
   server.registerTool("memory_delete", { title: "Delete Memory", description: "🧠 MEMORY — Permanently delete one memory record by id.\n\nExample: { \"memoryId\": 170 }", annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true }, inputSchema: z.object({ memoryId: z.number().int().positive(), ...traceSchema }) }, async ({ memoryId, correlationId }) => {
     assertToolPermission("memory_add"); const traceId = resolveCorrelationId(correlationId);
-    return auditToolCall("memory_delete", traceId, undefined, () => response({ memoryId, deleted: deleteMemoryItem(memoryId) }, traceId));
+    return auditToolCall("memory_delete", traceId, undefined, () => response({ memoryId, deleted: deleteMemoryItem(memoryId, currentPrincipalId()) }, traceId));
   });
 
   // ---- Task Plan Extension ----
@@ -209,6 +223,11 @@ export function registerTaskTools(server: McpServer) {
   server.registerTool("task_links", { title: "Get Task Links", description: "🗂️ TASK (read) — Show a task's causal links: upstream (what triggered it) and downstream (what it triggered).\n\nExample: { \"taskId\": \"uuid\" }", annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true }, inputSchema: z.object({ taskId: z.string().uuid(), ...traceSchema }) }, async ({ taskId, correlationId }) => {
     assertToolPermission("task_list"); const traceId = resolveCorrelationId(correlationId);
     return auditToolCall("task_links", traceId, taskId, async () => {
+      // Enforce task ownership before exposing the link graph: link rows are
+      // keyed by task id only, so without this a caller could enumerate
+      // another principal's task ids (though never their contents).
+      const plan = runtime.get(taskId);
+      if (!plan) return response({ taskId, upstream: [], downstream: [] }, traceId);
       const { upstream, downstream } = getPersistedTaskLinks(taskId);
       return response({ taskId, upstream, downstream }, traceId);
     });

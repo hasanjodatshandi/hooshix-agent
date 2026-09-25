@@ -5,7 +5,7 @@ import {pathToFileURL} from "node:url";
 import Database from "better-sqlite3";
 import {describe,expect,it} from "vitest";
 import {applyBaseSchemaMigration} from "../../src/adapters/outbound/persistence/sqlite/base-schema.migration.js";
-import {runMigrations} from "../../src/core/memory/database/migrations.js";
+import {runMigrations,LATEST_MIGRATION_VERSION} from "../../src/core/memory/database/migrations.js";
 import {createDisposableFixture} from "../helpers/r0-disposable-fixtures.js";
 
 describe("R6.01 migration-only SQLite schema initialization",()=>{
@@ -20,7 +20,7 @@ describe("R6.01 migration-only SQLite schema initialization",()=>{
         runMigrations(db);
         runMigrations(db);
         const versions=db.prepare("SELECT version FROM schema_migrations ORDER BY version").all() as Array<{version:number}>;
-        expect(versions.map(x=>x.version)).toEqual(Array.from({length:18},(_,i)=>i));
+        expect(versions.map(x=>x.version)).toEqual(Array.from({length:LATEST_MIGRATION_VERSION+1},(_,i)=>i));
         expect(db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='oauth_access_tokens'").get()).toBeTruthy();
         expect(db.pragma("quick_check",{simple:true})).toBe("ok");
       }finally{db.close();}
@@ -67,7 +67,7 @@ describe("R6.01 migration-only SQLite schema initialization",()=>{
         }));
         assert.equal(result.marker,undefined);
         assert.equal(result.count,1);
-        assert.equal(result.migrations,17);
+        assert.equal(result.migrations,${LATEST_MIGRATION_VERSION});
         closeAgentDatabase();
         console.log("R6_HISTORICAL_DB_PRESERVED");`;
       const loader=pathToFileURL(path.join(repo,"node_modules","tsx","dist","loader.mjs")).href;

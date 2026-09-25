@@ -2,6 +2,16 @@
 
 All ports are owned by the application layer. This document defines the minimum contracts needed to remove concrete infrastructure dependencies from the current core.
 
+> **Implementation status.** This is a forward-looking design spec, not a code
+> inventory. Only these ports currently exist in `src/application/ports/`:
+> `ToolInputValidatorPort` (operations), `ClockPort`, `IdGeneratorPort`,
+> `WorkspaceContextRepository`, `AuditPort`, `SecurityEventPort` (support) and
+> `TaskRepository` (task-repository). Every other interface below is unimplemented
+> design intent; the working code path goes through the concrete `services/*`
+> implementations directly. Ports that were declared but never wired to an
+> adapter have been deleted from the source rather than left as misleading
+> scaffolding.
+
 ---
 
 ## 1. Persistence ports

@@ -2,13 +2,14 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { backupAgentDatabase, cleanupAgentData, withAgentDatabase } from "../../src/core/memory/database/index.js";
+import { LATEST_MIGRATION_VERSION } from "../../src/core/memory/database/migrations.js";
 import { createTaskPlan } from "../../src/core/planner/task-planner.js";
 import { getTaskPlan, saveTaskPlan } from "../../src/core/memory/task-repository.js";
 
 describe("persistence hardening", () => {
   it("records ordered schema migrations and creates a consistent backup", async () => {
     const versions = withAgentDatabase((db) => db.prepare("SELECT version FROM schema_migrations ORDER BY version").all()) as Array<{ version: number }>;
-    expect(versions.map((row) => row.version)).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17]);
+    expect(versions.map((row) => row.version)).toEqual(Array.from({length:LATEST_MIGRATION_VERSION+1},(_,i)=>i));
     const destination = path.resolve("data/test-backups/agent.db.bak");
     try {
       expect(await backupAgentDatabase(destination)).toBe(destination);

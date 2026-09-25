@@ -49,7 +49,7 @@ export function recordTaskReconciliation(input:ReconciliationInput){
     evidence:input.evidence.trim(),verificationTaskId:input.verificationTaskId??null,
     recordedAt:new Date().toISOString(),interruptedToolResult:"unknown",replayed:false,
   };
-  const memoryId=saveMemoryItem({taskId:input.taskId,kind:"outcome_reconciliation",content:record});
+  const memoryId=saveMemoryItem({taskId:input.taskId,kind:"outcome_reconciliation",content:record,principalId:plan.executionContext?.principalId});
   return {memoryId,...record,taskStatus:plan.state,stepStatus:step.status};
 }
 

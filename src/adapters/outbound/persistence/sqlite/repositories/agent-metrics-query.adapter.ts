@@ -65,6 +65,8 @@ export interface AgentMetricsOptions {
   limit?: number;
   offset?: number;
   category?: string;
+  /** Restrict every counter and the call list to tasks owned by this principal. */
+  principalId?: string;
 }
 
 export function getAgentMetrics(opts: AgentMetricsOptions = {}): AgentMetrics {
@@ -87,6 +89,16 @@ export function getAgentMetrics(opts: AgentMetricsOptions = {}): AgentMetrics {
   const conditions: string[] = [];
   const args: unknown[] = [];
 
+  if (opts.principalId) {
+    // Unbound rows (task_id IS NULL) are direct MCP calls that carry no
+    // persisted owner. Only the single-operator local-stdio install may see
+    // them; an HTTP principal sees solely rows bound to tasks it owns.
+    const scope = opts.principalId === "local-stdio"
+      ? "(task_id IS NULL OR task_id IN (SELECT id FROM tasks WHERE principal_id = ?))"
+      : "task_id IN (SELECT id FROM tasks WHERE principal_id = ?)";
+    conditions.push(scope);
+    args.push(opts.principalId);
+  }
   if (taskId) { conditions.push("task_id = ?"); args.push(taskId); }
   if (tool) { conditions.push("tool = ?"); args.push(tool); }
   if (status) { conditions.push("status = ?"); args.push(status); }
@@ -103,6 +115,10 @@ export function getAgentMetrics(opts: AgentMetricsOptions = {}): AgentMetrics {
     // derived from persisted recovery_attempt executions + final step state.
     const recoveryEventConds: string[] = [];
     const recoveryEventArgs: unknown[] = [];
+    if (opts.principalId) {
+      recoveryEventConds.push("task_id IN (SELECT id FROM tasks WHERE principal_id = ?)");
+      recoveryEventArgs.push(opts.principalId);
+    }
     if (taskId) { recoveryEventConds.push("task_id = ?"); recoveryEventArgs.push(taskId); }
     if (from) { recoveryEventConds.push("started_at >= ?"); recoveryEventArgs.push(from); }
     if (to) { recoveryEventConds.push("started_at <= ?"); recoveryEventArgs.push(to); }
@@ -121,6 +137,10 @@ export function getAgentMetrics(opts: AgentMetricsOptions = {}): AgentMetrics {
 
     const recoveryAttemptConds: string[] = ["e.action LIKE 'recovery_attempt_%'"];
     const recoveryAttemptArgs: unknown[] = [];
+    if (opts.principalId) {
+      recoveryAttemptConds.push("e.task_id IN (SELECT id FROM tasks WHERE principal_id = ?)");
+      recoveryAttemptArgs.push(opts.principalId);
+    }
     if (taskId) { recoveryAttemptConds.push("e.task_id = ?"); recoveryAttemptArgs.push(taskId); }
     if (from) { recoveryAttemptConds.push("e.created_at >= ?"); recoveryAttemptArgs.push(from); }
     if (to) { recoveryAttemptConds.push("e.created_at <= ?"); recoveryAttemptArgs.push(to); }
@@ -157,6 +177,10 @@ export function getAgentMetrics(opts: AgentMetricsOptions = {}): AgentMetrics {
     // because they are not actual task-step executions (BUG: failedActions overcount).
     const executionConds: string[] = ["status = 'failed'", "action NOT LIKE 'recovery_%'"];
     const executionArgs: unknown[] = [];
+    if (opts.principalId) {
+      executionConds.push("task_id IN (SELECT id FROM tasks WHERE principal_id = ?)");
+      executionArgs.push(opts.principalId);
+    }
     if (taskId) { executionConds.push("task_id = ?"); executionArgs.push(taskId); }
     if (from) { executionConds.push("created_at >= ?"); executionArgs.push(from); }
     if (to) { executionConds.push("created_at <= ?"); executionArgs.push(to); }

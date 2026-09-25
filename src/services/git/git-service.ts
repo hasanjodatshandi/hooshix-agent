@@ -1,4 +1,4 @@
-import { execa } from "execa";
+import { spawn } from "../spawn.js";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { validateWorkspace } from "../../security/workspace-guard.js";
@@ -22,7 +22,7 @@ async function runGit(tool: string, args: string[], cwd: string, correlationId?:
   const safeCwd = validateWorkspace(cwd);
   // Fail fast on a non-existent cwd instead of a confusing spawn failure.
   assertCwdExists(safeCwd, "Git working directory");
-  const result = await execa("git", args, { cwd: safeCwd, shell: false, reject: false, timeout, maxBuffer: 2 * 1024 * 1024 });
+  const result = await spawn("git", args, { cwd: safeCwd, shell: false, reject: false, timeout, maxBuffer: 2 * 1024 * 1024 });
   await logCommandAction({ command: "git", args, cwd: safeCwd, exitCode: result.exitCode, status: result.timedOut ? "timeout" : result.exitCode === 0 ? "success" : "failed", correlationId: traceId });
   if (result.timedOut) throw new Error("Git command timed out");
   if (result.exitCode !== 0) throw new Error(result.stderr || describeExecaFailure("git", result));
@@ -81,7 +81,8 @@ export function gitLog(cwd: string, limit = 20, correlationId?: string) {
 export async function gitHasIdentity(cwd: string): Promise<boolean> {
   const safeCwd = validateWorkspace(cwd);
   assertCwdExists(safeCwd, "Git working directory");
-  const name = await execa("git", ["config", "user.name"], { cwd: safeCwd, shell: false, reject: false });
-  const email = await execa("git", ["config", "user.email"], { cwd: safeCwd, shell: false, reject: false });
+  const identityOpts = { cwd: safeCwd, shell: false, reject: false };
+  const name = await spawn("git", ["config", "user.name"], identityOpts);
+  const email = await spawn("git", ["config", "user.email"], identityOpts);
   return name.exitCode === 0 && email.exitCode === 0 && !!name.stdout.trim() && !!email.stdout.trim();
 }

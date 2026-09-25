@@ -98,7 +98,13 @@ export class TaskRuntimeService {
       if(concurrent)return concurrent;
       throw error;
     }
-    saveMemoryItem({ taskId: plan.id, kind: "task_created", content: { title: plan.task, steps: plan.steps.length, workspace: plan.executionContext.workspace } });
+    saveMemoryItem({
+      taskId: plan.id, kind: "task_created",
+      content: { title: plan.task, steps: plan.steps.length, workspace: plan.executionContext.workspace },
+      // Attribute the lifecycle note to the task's owner, not the shared
+      // local-stdio bucket, so it stays with the principal who created it.
+      principalId: plan.executionContext.principalId,
+    });
     return plan;
   }
 
@@ -210,7 +216,7 @@ export class TaskRuntimeService {
       ? runWithWorkspaceScope(resolvedWorkspace.workspace, execute)
       : execute());
     saveTaskPlan(plan, plan.state ?? result.status as TaskState, context.correlationId);
-    saveMemoryItem({ taskId, kind: "task_run", content: { status: result.status, completedSteps: result.completedSteps.map((step) => step.id), runCount: plan.totalRunCount } });
+    saveMemoryItem({ taskId, kind: "task_run", content: { status: result.status, completedSteps: result.completedSteps.map((step) => step.id), runCount: plan.totalRunCount }, principalId: plan.executionContext?.principalId });
     return result;
     });
     } finally {
@@ -245,7 +251,7 @@ export class TaskRuntimeService {
     // Revoke all pending/approved-but-unconsumed approvals so stale approvals
     // cannot resurrect a cancelled task via task_approve + task_resume.
     const revokedCount = revokeTaskApprovals(taskId);
-    saveMemoryItem({ taskId, kind: "task_cancelled", content: { state: plan.state, approvalsRevoked: revokedCount } });
+    saveMemoryItem({ taskId, kind: "task_cancelled", content: { state: plan.state, approvalsRevoked: revokedCount }, principalId: plan.executionContext?.principalId });
     return true;
   }
 

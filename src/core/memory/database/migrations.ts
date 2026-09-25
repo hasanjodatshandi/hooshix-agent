@@ -11,7 +11,7 @@ const SAFE_IDENTIFIER = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
  * CURRENT head instead of a hardcoded version that silently rots as new
  * migrations land. If you add a migration, bump this to match it.
  */
-export const LATEST_MIGRATION_VERSION = 17;
+export const LATEST_MIGRATION_VERSION = 19;
 
 export function ensureColumn(
   db: Database.Database,
@@ -352,6 +352,27 @@ export function runMigrations(db: Database.Database): void {
   // Existing historical data is indexed transactionally by migrate().
   migrate(db,17,"r6-metrics-task-category-created-index",()=>{
     db.exec("CREATE INDEX idx_tool_calls_task_category_created_at ON tool_calls(task_id,category,created_at DESC)");
+  });
+
+  // H6/AUDIT-M2: projects and memory_items are per-principal data. Without an
+  // owner column every authenticated client could read, overwrite or delete
+  // another client's project context and memory. Existing rows are attributed
+  // to the local-stdio operator so single-operator installs keep working.
+  migrate(db,18,"principal-owned-projects-and-memory",()=>{
+    ensureColumn(db,"projects","principal_id","TEXT NOT NULL DEFAULT 'local-stdio'");
+    ensureColumn(db,"memory_items","principal_id","TEXT NOT NULL DEFAULT 'local-stdio'");
+    db.exec("CREATE INDEX IF NOT EXISTS idx_projects_principal ON projects(principal_id,updated_at DESC)");
+    db.exec("CREATE INDEX IF NOT EXISTS idx_memory_items_principal ON memory_items(principal_id,id DESC)");
+  });
+
+  // M-metrics per-principal. agent_metrics previously aggregated every
+  // client's tool calls and step executions, so one authenticated client could
+  // see another's traffic volumes and failure rates. tasks is the root table
+  // for executions and tool_calls, so the principal is stored once there;
+  // existing rows belong to the local-stdio operator.
+  migrate(db,19,"principal-owned-tasks",()=>{
+    ensureColumn(db,"tasks","principal_id","TEXT NOT NULL DEFAULT 'local-stdio'");
+    db.exec("CREATE INDEX IF NOT EXISTS idx_tasks_principal ON tasks(principal_id,updated_at DESC)");
   });
 
 }

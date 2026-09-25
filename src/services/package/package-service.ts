@@ -1,4 +1,4 @@
-import { execa } from "execa";
+import { spawn, type SpawnOptions } from "../spawn.js";
 import { validateWorkspace } from "../../security/workspace-guard.js";
 import { assertAdminPermission } from "../../security/permission.js";
 import { policyDecisionPoint } from "../../core/governance/policy-decision-point.js";
@@ -348,9 +348,9 @@ export async function managePackage(input: { manager: PackageManager; action: Pa
   const snapshot = await createPackageSnapshot(input.manager, input.action, name, cwd, traceId);
   let effectOutcomeKnown=false;
   try {
-    const pkgExecaOpts: Record<string, unknown> = { cwd, shell: false, reject: false, timeout: input.timeout ?? 300000, maxBuffer: 2 * 1024 * 1024 };
+    const pkgExecaOpts: SpawnOptions = { cwd, shell: false, reject: false, timeout: input.timeout ?? 300000, maxBuffer: 2 * 1024 * 1024 };
     if(input.signal) pkgExecaOpts.cancelSignal=input.signal;
-    const result=await execa(command,args,pkgExecaOpts);
+    const result=await spawn(command,args,pkgExecaOpts);
     effectOutcomeKnown=!result.timedOut&&!result.isCanceled;
     await logCommandAction({command,args,cwd,exitCode:result.exitCode,
       status:result.timedOut?"timeout":result.exitCode===0?"success":"failed",correlationId:traceId}).catch(()=>{});
@@ -364,9 +364,9 @@ export async function managePackage(input: { manager: PackageManager; action: Pa
       updateSnapshot(snapshot.id, "committed");
       return { manager: input.manager, action: input.action, name, verified: false, verificationSkipped: true, snapshotId: snapshot.id, exitCode: result.exitCode, stdout: result.stdout, stderr: result.stderr, correlationId: traceId };
     }
-    const verifyExecaOpts: Record<string, unknown> = { cwd, shell: false, reject: false, timeout: Math.min(input.timeout ?? 300000, 120000), maxBuffer: 2 * 1024 * 1024 };
+    const verifyExecaOpts: SpawnOptions = { cwd, shell: false, reject: false, timeout: Math.min(input.timeout ?? 300000, 120000), maxBuffer: 2 * 1024 * 1024 };
     if (input.signal) verifyExecaOpts.cancelSignal = input.signal;
-    const checked = await execa(verification.command, verification.args, verifyExecaOpts);
+    const checked = await spawn(verification.command, verification.args, verifyExecaOpts);
     if (checked.isCanceled) { effectOutcomeKnown=false; throw new Error(`${verification.command} verification was cancelled`); }
     if(checked.timedOut){
       effectOutcomeKnown=false;

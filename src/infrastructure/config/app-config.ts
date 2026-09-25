@@ -203,7 +203,11 @@ export function buildChildProcessEnvironment(env: Readonly<Record<string, string
 }
 
 export function parsePermissionLevel(env: Readonly<Record<string, string | undefined>> = process.env): LegacyPermissionLevel {
-  const configured = env.HOOSHIX_PERMISSION_LEVEL ?? "DEVELOPER_MODE";
+  // Fail-safe default: with no explicit configuration the server grants the
+  // least authority. DEVELOPER_MODE lets a client run arbitrary shell and
+  // package installs, which must be a deliberate operator decision, never an
+  // accidental default of an unconfigured deployment.
+  const configured = env.HOOSHIX_PERMISSION_LEVEL ?? "READ_ONLY";
   if (!PERMISSION_LEVELS.has(configured as LegacyPermissionLevel))
     throw new Error(`Invalid HOOSHIX_PERMISSION_LEVEL: ${configured}`);
   return configured as LegacyPermissionLevel;

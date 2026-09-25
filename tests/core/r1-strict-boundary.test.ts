@@ -28,7 +28,7 @@ export function scanR1File(file:string,code:string):string[] {
    if(domain && !t.startsWith("domain/"))errors.push(rel+": domain outward import "+specifier);
    if(app && !t.startsWith("domain/")&&!t.startsWith("application/"))errors.push(rel+": application outward import "+specifier);
    if(inbound && t.startsWith("adapters/outbound/"))errors.push(rel+": inbound to outbound "+specifier);
-   if(!rel.startsWith("adapters/inbound/mcp/")&&specifier.startsWith("@modelcontextprotocol/sdk"))errors.push(rel+": MCP outside inbound adapter "+specifier);
+    if(!rel.startsWith("adapters/inbound/mcp/")&&specifier.startsWith("@modelcontextprotocol/"))errors.push(rel+": MCP outside inbound adapter "+specifier);
  };
  const imports=[
   ...code.matchAll(/\b(?:import|export)\s+(?:(?:type\s+)?[\s\S]*?\s+from\s+)?["']([^"']+)["']/g),
@@ -43,12 +43,18 @@ export function scanR1File(file:string,code:string):string[] {
 }
 
 describe("G1 new-tree dependency boundaries",()=>{
- it("rejects forbidden dependencies, runtime environment access and raw SQL",()=>{
-   expect(scanR1File(path.join(sourceRoot,"domain/probe.ts"),'import fs from "node:fs";')).not.toEqual([]);
-   expect(scanR1File(path.join(sourceRoot,"application/probe.ts"),'const x = process.env.X;')).not.toEqual([]);
-   expect(scanR1File(path.join(sourceRoot,"application/probe.ts"),'db.exec("SELECT a FROM tasks");')).not.toEqual([]);
-   expect(scanR1File(path.join(sourceRoot,"adapters/inbound/mcp/probe.ts"),'import x from "../../outbound/sqlite.js";')).not.toEqual([]);
- });
+  it("rejects forbidden dependencies, runtime environment access and raw SQL",()=>{
+    expect(scanR1File(path.join(sourceRoot,"domain/probe.ts"),'import fs from "node:fs";')).not.toEqual([]);
+    expect(scanR1File(path.join(sourceRoot,"application/probe.ts"),'const x = process.env.X;')).not.toEqual([]);
+    expect(scanR1File(path.join(sourceRoot,"application/probe.ts"),'db.exec("SELECT a FROM tasks");')).not.toEqual([]);
+    expect(scanR1File(path.join(sourceRoot,"adapters/inbound/mcp/probe.ts"),'import x from "../../outbound/sqlite.js";')).not.toEqual([]);
+    // H5: the guard must match the real package scope (@modelcontextprotocol/),
+    // not the removed v1 "@modelcontextprotocol/sdk" literal it previously
+    // tested for — otherwise it never fired and any module could import the SDK.
+    expect(scanR1File(path.join(sourceRoot,"application/probe.ts"),'import x from "@modelcontextprotocol/server";')).not.toEqual([]);
+    expect(scanR1File(path.join(sourceRoot,"infrastructure/probe.ts"),'import x from "@modelcontextprotocol/node";')).not.toEqual([]);
+    expect(scanR1File(path.join(sourceRoot,"adapters/inbound/mcp/bridge.ts"),'import x from "@modelcontextprotocol/server";')).toEqual([]);
+  });
  it("scans every currently present target-tree source file",()=>{
    const files=newRoots.flatMap(root=>walk(path.join(sourceRoot,root)));
    expect(files.length).toBeGreaterThanOrEqual(22);

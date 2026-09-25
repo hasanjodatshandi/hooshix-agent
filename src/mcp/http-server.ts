@@ -16,7 +16,8 @@ import { createSessionWorkspaceContext, runWithSessionWorkspace, type SessionWor
 import { runWithTrustedInboundIdentity } from "../infrastructure/composition/r2-trusted-inbound-identity.js";
 import type { PrincipalId, SessionId } from "../domain/shared/ids.js";
 import {OperatorWebSessions,HttpWindowLimiter,HttpPrincipalContexts} from "../infrastructure/server/http-security.js";
-import {isDatabaseReady} from "../core/memory/database/index.js";
+import {installGracefulShutdown} from "../infrastructure/server/graceful-shutdown.js";
+import {isDatabaseReady,closeAgentDatabase} from "../core/memory/database/index.js";
 import {createMcpHandler} from "@modelcontextprotocol/server";
 import {toNodeHandler} from "@modelcontextprotocol/node";
 // R7.01: the HTTP transport never reads environment variables directly; the
@@ -65,6 +66,10 @@ const principalLimiter=new HttpWindowLimiter(APP_CONFIG.rateLimit.principalReque
 const operatorLoginLimiter=new HttpWindowLimiter(APP_CONFIG.rateLimit.operatorLoginAttemptsPerWindow,
   APP_CONFIG.rateLimit.windowMs,undefined,APP_CONFIG.rateLimit.maxLimiterKeys);
 const MAX_CONCURRENT_REQUESTS_PER_PRINCIPAL = APP_CONFIG.rateLimit.maxConcurrentRequestsPerPrincipal;
+// The legacy POST path caps bodies via readBody(); the modern /mcp handler lets
+// the SDK read the stream itself, so bound it here by content-length to keep an
+// oversized JSON-RPC batch from being buffered fully into memory.
+const MAX_MCP_BODY_BYTES = 1_000_000;
 const expensiveInflight=new Map<string,number>();
 
 interface SessionEntry {
@@ -336,6 +341,14 @@ async function handleRequest(
   cleanupStaleSessions();
   if(req.headers["mcp-protocol-version"]==="2026-07-28"){
     if(method!=="POST"){sendJSON(res,405,{error:"modern_post_only"});return;}
+    // Bound the modern request body the same way the legacy readBody path does.
+    // The SDK reads the stream itself, so this is a content-length cap: a
+    // chunked body without content-length is still accepted, but the ordinary
+    // oversized-batch DoS is rejected before any buffering.
+    const declared=req.headers["content-length"];
+    if(declared!==undefined&&Number(declared)>MAX_MCP_BODY_BYTES){
+      sendJSON(res,413,{error:"payload_too_large"});return;
+    }
     let context:SessionWorkspaceContext;
     try{context=modernContexts.get(principalBinding,createSessionWorkspaceContext);}
     catch{res.setHeader("Retry-After","1");sendJSON(res,429,{error:"modern_context_limit"});return;}
@@ -403,12 +416,15 @@ async function handleRequest(
         });
         entry.transport = newTransport;
         entry.closedAt = undefined;
-        await entry.server.connect(newTransport);
+        // Register the close hook BEFORE connect: a close that fires between
+        // connect() and the assignment would otherwise be missed and the session
+        // would leak (never marked closed, never reaped by the grace sweeper).
         newTransport.onclose = () => {
           mcpMetrics.recordSessionClosed(existingSessionId);
           entry.closedAt = Date.now();
           console.error(`🔌 MCP session_closed id=${existingSessionId.slice(0, 8)} (grace=${SESSION_GRACE_MS / 1000}s)`);
         };
+        await entry.server.connect(newTransport);
       }
       // Ensure Accept header includes both types (required by MCP Streamable HTTP spec)
       const accept = req.headers.accept ?? "";
@@ -433,6 +449,17 @@ async function handleRequest(
     if(sessions.size>=MAX_MCP_SESSIONS){sendJSON(res,429,{error:"session_limit_reached"});return;}
     sessions.set(sessionId, { transport, server, workspace: createSessionWorkspaceContext(), principalBinding, createdAt:Date.now(), lastActiveAt:Date.now() });
 
+    // Register the close hook BEFORE connect for the same reason as the
+    // reconnect path: a close during connect() must not slip past the handler.
+    transport.onclose = () => {
+      mcpMetrics.recordSessionClosed(sessionId);
+      const entry = sessions.get(sessionId);
+      if (entry) {
+        entry.closedAt = Date.now();
+      }
+      console.error(`🔌 MCP session_closed id=${sessionId.slice(0, 8)} (grace=${SESSION_GRACE_MS / 1000}s)`);
+    };
+
     await server.connect(transport);
 
     // Ensure Accept header includes both types (required by MCP Streamable HTTP spec)
@@ -450,17 +477,6 @@ async function handleRequest(
     // Log session creation after transport processes the body
     mcpMetrics.recordSessionCreated(sessionId);
     console.error(`🔌 MCP session_created id=${sessionId.slice(0, 8)}`);
-
-    // Cleanup on close — keep session alive during grace period
-    // so ChatGPT can reconnect if the SSE stream drops
-    transport.onclose = () => {
-      mcpMetrics.recordSessionClosed(sessionId);
-      const entry = sessions.get(sessionId);
-      if (entry) {
-        entry.closedAt = Date.now();
-      }
-      console.error(`🔌 MCP session_closed id=${sessionId.slice(0, 8)} (grace=${SESSION_GRACE_MS / 1000}s)`);
-    };
 
     return;
   }
@@ -1160,7 +1176,11 @@ async function handleAuthorizePOST(
     if (state) params.set("state", state);
     res.writeHead(302, { Location: `${redirectUri}${sep}${params.toString()}` });
     res.end();
-  } catch {
+  } catch (error) {
+    // Log the cause: these failures used to be silent 500s, which made a
+    // broken OAuth flow invisible. Thrown messages are constant domain strings
+    // (never the submitted form or credentials), so logging them is safe.
+    console.error("[oauth] authorize failed:", error instanceof Error ? error.message : String(error));
     sendHTML(res, 500, "oauth error");
   }
 }
@@ -1191,7 +1211,8 @@ async function handleTokenPOST(
       return;
     }
     sendJSON(res, 200, tokenResponse);
-  } catch {
+  } catch (error) {
+    console.error("[oauth] token exchange failed:", error instanceof Error ? error.message : String(error));
     sendJSON(res, 500, { error: "token_error" });
   }
 }
@@ -1211,7 +1232,13 @@ async function handleRegisterPOST(
     const id=oauth.registerClient(redirectUris);
     sendJSON(res,201,{client_id:id,redirect_uris:redirectUris,
       token_endpoint_auth_method:"none",grant_types:["authorization_code"],response_types:["code"]});
-  }catch{sendJSON(res,400,{error:"invalid_client_metadata"});}
+  }catch(error){
+    // Distinguish an expected malformed-metadata rejection from an unexpected
+    // internal failure: both used to collapse into a silent 400, hiding real
+    // bugs behind a client-error response.
+    console.error("[oauth] register failed:", error instanceof Error ? error.message : String(error));
+    sendJSON(res,400,{error:"invalid_client_metadata"});
+  }
 }
 
 export function startHttpServer():Promise<void>{
@@ -1238,5 +1265,8 @@ export function startHttpServer():Promise<void>{
       resolve();
     });
     server.on("close",()=>oauth.destroy());
+    // H2: own SIGTERM/SIGINT — drain in-flight requests before the database is
+    // closed and the process exits, instead of process.exit(0) mid-handler.
+    installGracefulShutdown(server,{onShutdown:closeAgentDatabase});
   });
 }

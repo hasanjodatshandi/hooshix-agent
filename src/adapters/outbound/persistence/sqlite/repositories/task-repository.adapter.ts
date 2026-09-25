@@ -95,8 +95,8 @@ export function saveTaskPlan(plan: TaskPlan, status: TaskState = plan.state ?? "
     return db.transaction(() => {
       assertTaskLeaseWrite(db,plan.id);
       db.prepare(`
-        INSERT INTO tasks(id, title, description, status, correlation_id, idempotency_key, request_hash, execution_context, max_recovery, retry_policy, total_run_count, task_revision, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO tasks(id, title, description, status, correlation_id, idempotency_key, request_hash, execution_context, max_recovery, retry_policy, total_run_count, task_revision, principal_id, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(id) DO UPDATE SET title=excluded.title, description=excluded.description,
           status=excluded.status, correlation_id=COALESCE(excluded.correlation_id, tasks.correlation_id),
           idempotency_key=COALESCE(excluded.idempotency_key, tasks.idempotency_key),
@@ -110,7 +110,11 @@ export function saveTaskPlan(plan: TaskPlan, status: TaskState = plan.state ?? "
         plan.executionContext ? JSON.stringify(plan.executionContext) : null,
         plan.maxRecovery ?? null,
         plan.retryPolicy ? JSON.stringify(plan.retryPolicy) : null,
-        plan.totalRunCount ?? 0, plan.revision ?? 0, plan.createdAt ?? now, now);
+        plan.totalRunCount ?? 0, plan.revision ?? 0,
+        // Ownership is set at creation and never re-assigned: a task's audit
+        // trail belongs to the client that created it.
+        plan.executionContext?.principalId ?? "local-stdio",
+        plan.createdAt ?? now, now);
 
       const statement = db.prepare(`
         INSERT INTO task_steps(task_id, step_id, step_order, action, tool, input, dependencies, status, output, error, error_type, created_at, updated_at)
@@ -390,31 +394,41 @@ export function applyTaskReconciliationDecision(input:{
   })());
 }
 
-export function saveMemoryItem(input: { taskId?: string; projectId?: string; kind: string; content: unknown }): number {
+export function saveMemoryItem(input: { taskId?: string; projectId?: string; kind: string; content: unknown; principalId?: string }): number {
   return withAgentDatabase((db) => Number(db.prepare(`
-    INSERT INTO memory_items(project_id, task_id, kind, content, created_at) VALUES (?, ?, ?, ?, ?)
-  `).run(input.projectId ?? null, input.taskId ?? null, input.kind, JSON.stringify(input.content), new Date().toISOString()).lastInsertRowid));
+    INSERT INTO memory_items(project_id, task_id, kind, content, created_at, principal_id) VALUES (?, ?, ?, ?, ?, ?)
+  `).run(input.projectId ?? null, input.taskId ?? null, input.kind, JSON.stringify(input.content), new Date().toISOString(), input.principalId ?? "local-stdio").lastInsertRowid));
 }
 
-export function getMemoryItem(id: number): Record<string, unknown> | null {
+export function getMemoryItem(id: number, principalId?: string): Record<string, unknown> | null {
   return withAgentDatabase((db) => {
-    const row = db.prepare("SELECT * FROM memory_items WHERE id = ?").get(id) as Record<string, unknown> | undefined;
+    const row = db.prepare(principalScopedMemory("SELECT * FROM memory_items WHERE id = ?", principalId)).get(id, ...(principalId ? [principalId] : [])) as Record<string, unknown> | undefined;
     if (!row) return null;
     return { ...row, content: typeof row.content === "string" ? parseJson(row.content, row.content) : row.content };
   }) ?? null;
 }
 
-export function deleteMemoryItem(id: number): boolean {
-  return withAgentDatabase((db) => db.prepare("DELETE FROM memory_items WHERE id = ?").run(id).changes > 0);
+export function deleteMemoryItem(id: number, principalId?: string): boolean {
+  return withAgentDatabase((db) => db.prepare(principalScopedMemory("DELETE FROM memory_items WHERE id = ?", principalId)).run(id, ...(principalId ? [principalId] : [])).changes > 0);
 }
 
-export function listMemoryItems(input: { taskId?: string; projectId?: string; kind?: string; limit?: number; offset?: number }): { items: Array<Record<string, unknown>>; total: number; hasMore: boolean } {
+/**
+ * Scope a memory_items statement to its owner. A missing principalId keeps the
+ * legacy unfiltered shape (the local stdio operator and internal callers), so
+ * the endpoint never widens to another principal's rows by accident.
+ */
+function principalScopedMemory(sql: string, principalId?: string): string {
+  return principalId ? `${sql} AND principal_id = ?` : sql;
+}
+
+export function listMemoryItems(input: { taskId?: string; projectId?: string; kind?: string; limit?: number; offset?: number; principalId?: string }): { items: Array<Record<string, unknown>>; total: number; hasMore: boolean } {
   return withAgentDatabase((db) => {
     const clauses: string[] = [];
     const values: unknown[] = [];
     if (input.taskId) { clauses.push("task_id = ?"); values.push(input.taskId); }
     if (input.projectId) { clauses.push("project_id = ?"); values.push(input.projectId); }
     if (input.kind) { clauses.push("kind = ?"); values.push(input.kind); }
+    if (input.principalId) { clauses.push("principal_id = ?"); values.push(input.principalId); }
     const whereClause = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
     const limit = input.limit ?? 50;
     const offset = input.offset ?? 0;
@@ -433,8 +447,9 @@ export function listMemoryItems(input: { taskId?: string; projectId?: string; ki
  * Normalizes separators, removes trailing slashes, lowercases on Windows.
  */
 export function canonicalizePath(p: string): string { return canonicalProjectPath(p); }
-export function saveProject(input: { id?: string; name: string; path: string; description?: string; lastAction?: string; nextAction?: string }): string {
+export function saveProject(input: { id?: string; name: string; path: string; description?: string; lastAction?: string; nextAction?: string; principalId?: string }): string {
   ensureExtraColumns();
+  const owner = input.principalId ?? "local-stdio";
   return withAgentDatabase((db) => {
     const now = new Date().toISOString();
     const canonical = canonicalizePath(input.path);
@@ -442,9 +457,10 @@ export function saveProject(input: { id?: string; name: string; path: string; de
     const nameKey = process.platform === "win32" ? input.name.toLowerCase() : input.name;
 
     if (input.id) {
-      // UPDATE by ID — reject if not found
-      const existing = db.prepare("SELECT id, path, canonical_path, name FROM projects WHERE id = ?").get(input.id) as { id: string; path: string; canonical_path: string; name: string } | undefined;
+      // UPDATE by ID — reject if not found or owned by another principal
+      const existing = db.prepare("SELECT id, path, canonical_path, name, principal_id FROM projects WHERE id = ?").get(input.id) as { id: string; path: string; canonical_path: string; name: string; principal_id: string } | undefined;
       if (!existing) throw new Error(`Project not found: ${input.id}`);
+      if (existing.principal_id !== owner) throw new Error(`PROJECT_NOT_OWNED: project ${input.id} belongs to another principal`);
       // If path changed, check no other project owns the new canonical path
       const existingCanonical = existing.canonical_path;
       if (existingCanonical !== canonical) {
@@ -475,41 +491,51 @@ export function saveProject(input: { id?: string; name: string; path: string; de
 
     const id = crypto.randomUUID();
     db.prepare(`
-      INSERT INTO projects(id, name, path, canonical_path, display_path, description, last_action, next_action, created_at, updated_at, status)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active')
-    `).run(id, input.name, canonical, canonical, input.path, input.description ?? null, input.lastAction ?? null, input.nextAction ?? null, now, now);
+      INSERT INTO projects(id, name, path, canonical_path, display_path, description, last_action, next_action, created_at, updated_at, status, principal_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?)
+    `).run(id, input.name, canonical, canonical, input.path, input.description ?? null, input.lastAction ?? null, input.nextAction ?? null, now, now, owner);
     return id;
   });
 }
 
-export function getProject(id: string): Record<string, unknown> | null {
+export function getProject(id: string, principalId?: string): Record<string, unknown> | null {
   ensureExtraColumns();
-  return withAgentDatabase((db) => db.prepare("SELECT * FROM projects WHERE id = ?").get(id) as Record<string, unknown> | undefined) ?? null;
+  return withAgentDatabase((db) => db.prepare(principalScopedProject("SELECT * FROM projects WHERE id = ?", principalId)).get(id, ...(principalId ? [principalId] : [])) as Record<string, unknown> | undefined) ?? null;
 }
 
-export function archiveProject(id: string): boolean {
+export function archiveProject(id: string, principalId?: string): boolean {
   ensureExtraColumns();
   return withAgentDatabase((db) => db.prepare(
-    "UPDATE projects SET status = 'archived', updated_at = ? WHERE id = ?"
-  ).run(new Date().toISOString(), id).changes > 0);
+    principalScopedProject("UPDATE projects SET status = 'archived', updated_at = ? WHERE id = ?", principalId)
+  ).run(new Date().toISOString(), id, ...(principalId ? [principalId] : [])).changes > 0);
 }
 
-export function deleteProject(id: string): boolean {
+export function deleteProject(id: string, principalId?: string): boolean {
   ensureExtraColumns();
-  return withAgentDatabase((db) => db.prepare("DELETE FROM projects WHERE id = ?").run(id).changes > 0);
+  return withAgentDatabase((db) => db.prepare(principalScopedProject("DELETE FROM projects WHERE id = ?", principalId)).run(id, ...(principalId ? [principalId] : [])).changes > 0);
+}
+
+/** Scope a projects statement to its owner; absent principalId keeps the
+ * legacy unfiltered shape for the local stdio operator and internal callers. */
+function principalScopedProject(sql: string, principalId?: string): string {
+  return principalId ? `${sql} AND principal_id = ?` : sql;
 }
 
 export function listProjects(
   limit = 50,
   offset = 0,
-  status?: "active" | "archived"
+  status?: "active" | "archived",
+  principalId?: string,
 ): { items: Array<Record<string, unknown>>; total: number; hasMore: boolean } {
   ensureExtraColumns();
   return withAgentDatabase((db) => {
-    const where = status ? " WHERE status = ?" : "";
-    const params = status ? [status] : [];
-    const total = (db.prepare(`SELECT COUNT(*) AS count FROM projects${where}`).get(...params) as { count: number }).count;
-    const items = db.prepare(`SELECT * FROM projects${where} ORDER BY updated_at DESC LIMIT ? OFFSET ?`).all(...params, limit, offset) as Array<Record<string, unknown>>;
+    const clauses: string[] = [];
+    const values: unknown[] = [];
+    if (status) { clauses.push("status = ?"); values.push(status); }
+    if (principalId) { clauses.push("principal_id = ?"); values.push(principalId); }
+    const where = clauses.length ? ` WHERE ${clauses.join(" AND ")}` : "";
+    const total = (db.prepare(`SELECT COUNT(*) AS count FROM projects${where}`).get(...values) as { count: number }).count;
+    const items = db.prepare(`SELECT * FROM projects${where} ORDER BY updated_at DESC LIMIT ? OFFSET ?`).all(...values, limit, offset) as Array<Record<string, unknown>>;
     return { items, total, hasMore: offset + limit < total };
   });
 }

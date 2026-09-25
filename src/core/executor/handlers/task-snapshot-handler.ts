@@ -1,4 +1,4 @@
-import { execa } from "execa";
+import { spawn, type SpawnOptions } from "../../../services/spawn.js";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
 
@@ -38,25 +38,25 @@ interface TaskSnapshotCaptureResult {
 }
 
 async function runGitSnapshot(cwd: string): Promise<GitSnapshot> {
-  const opts = { cwd, reject: false, encoding: "utf8" as const, timeout: 10000 };
+  const opts: SpawnOptions = { cwd, reject: false, encoding: "utf8", timeout: 10000 };
   // Repository root, HEAD and the complete tracked/index/untracked status
   // MUST all be observed successfully before creating a rollback capability.
-  const root = await execa("git", ["rev-parse", "--show-toplevel"], opts);
+  const root = await spawn("git", ["rev-parse", "--show-toplevel"], opts);
   if (root.exitCode !== 0) {
     return {head:"", branch:"", clean:false, status:"", cwd};
   }
   if (canonicalizePath(root.stdout.trim()) !== canonicalizePath(cwd))
     throw new Error("GIT_REPOSITORY_ROOT_REQUIRED: snapshot cwd must be the repository root");
-  const headResult = await execa("git", ["rev-parse", "--verify", "HEAD"], opts);
+  const headResult = await spawn("git", ["rev-parse", "--verify", "HEAD"], opts);
   const head = headResult.stdout.trim();
   if (headResult.exitCode !== 0 || !GIT_SHA.test(head)) {
     return {head:"", branch:"", clean:false, status:"", cwd, errorType:"GIT_NO_INITIAL_COMMIT"};
   }
-  const branchResult = await execa("git", ["symbolic-ref", "--short", "-q", "HEAD"], opts);
+  const branchResult = await spawn("git", ["symbolic-ref", "--short", "-q", "HEAD"], opts);
   if (branchResult.exitCode !== 0 && branchResult.exitCode !== 1)
     throw new Error("GIT_BRANCH_UNVERIFIED: cannot capture Git branch state");
   const branch = branchResult.exitCode === 0 ? branchResult.stdout.trim() : "";
-  const statusResult = await execa("git", ["status", "--porcelain=v1", "--untracked-files=all"], opts);
+  const statusResult = await spawn("git", ["status", "--porcelain=v1", "--untracked-files=all"], opts);
   if (statusResult.exitCode !== 0)
     throw new Error("GIT_STATUS_UNVERIFIED: cannot prove repository cleanliness");
   const status = statusResult.stdout;
@@ -103,32 +103,32 @@ export async function rollbackTaskSnapshot(snapshotId: string, cwd: string): Pro
     throw new Error("GIT_SNAPSHOT_UNVERIFIED: snapshot does not prove an exact clean repository state");
   if(canonicalizePath(snap.cwd)!==canonicalizePath(safeCwd))
     throw new Error("GIT_SNAPSHOT_REPOSITORY_MISMATCH: cwd does not match the captured repository");
-  const opts={cwd:safeCwd,reject:false,encoding:"utf8" as const,timeout:30000};
-  const root=await execa("git",["rev-parse","--show-toplevel"],opts);
+  const opts: SpawnOptions = { cwd: safeCwd, reject: false, encoding: "utf8", timeout: 30000 };
+  const root=await spawn("git",["rev-parse","--show-toplevel"],opts);
   if(root.exitCode!==0||canonicalizePath(root.stdout.trim())!==canonicalizePath(safeCwd))
     throw new Error("GIT_SNAPSHOT_REPOSITORY_MISMATCH: target is no longer the captured Git root");
-  const branch=await execa("git",["symbolic-ref","--short","-q","HEAD"],opts);
+  const branch=await spawn("git",["symbolic-ref","--short","-q","HEAD"],opts);
   if(branch.exitCode!==0&&branch.exitCode!==1)
     throw new Error("GIT_BRANCH_UNVERIFIED: cannot verify current branch");
   const currentBranch=branch.exitCode===0?branch.stdout.trim():"";
   if(currentBranch!==snap.branch)
     throw new Error("GIT_SNAPSHOT_BRANCH_MISMATCH: refusing rollback on another branch");
-  const target=await execa("git",["cat-file","-e",snap.head+"^{commit}"],opts);
+  const target=await spawn("git",["cat-file","-e",snap.head+"^{commit}"],opts);
   if(target.exitCode!==0)
     throw new Error("GIT_SNAPSHOT_MISSING_COMMIT: captured commit is unavailable");
-  const status=await execa("git",["status","--porcelain=v1","--untracked-files=all"],opts);
+  const status=await spawn("git",["status","--porcelain=v1","--untracked-files=all"],opts);
   if(status.exitCode!==0)
     throw new Error("GIT_STATUS_UNVERIFIED: cannot inspect repository before rollback");
   // After explicit exact-action approval only: restore tracked HEAD and remove
   // untracked files. Ignored files were never captured and are never promised
   // to be removed. Never use a dirty/legacy snapshot as authority.
-  const reset=await execa("git",["reset","--hard",snap.head],opts);
+  const reset=await spawn("git",["reset","--hard",snap.head],opts);
   if(reset.exitCode!==0) throw new Error(reset.stderr||"git reset --hard failed");
-  const cleaned=await execa("git",["clean","-fd"],opts);
+  const cleaned=await spawn("git",["clean","-fd"],opts);
   if(cleaned.exitCode!==0) throw new Error(cleaned.stderr||"git clean -fd failed");
-  const newHead=await execa("git",["rev-parse","--verify","HEAD"],opts);
-  const newBranch=await execa("git",["symbolic-ref","--short","-q","HEAD"],opts);
-  const newStatus=await execa("git",["status","--porcelain=v1","--untracked-files=all"],opts);
+  const newHead=await spawn("git",["rev-parse","--verify","HEAD"],opts);
+  const newBranch=await spawn("git",["symbolic-ref","--short","-q","HEAD"],opts);
+  const newStatus=await spawn("git",["status","--porcelain=v1","--untracked-files=all"],opts);
   if(newHead.exitCode!==0||newHead.stdout.trim()!==snap.head||
      (newBranch.exitCode===0?newBranch.stdout.trim():"")!==snap.branch||
      newStatus.exitCode!==0||newStatus.stdout.length!==0)
