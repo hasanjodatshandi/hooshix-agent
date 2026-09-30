@@ -1,10 +1,10 @@
 # HooshiX Database Migrations
 
-Source of truth: `src/core/memory/database/migrations.ts` and `src/adapters/outbound/persistence/sqlite/base-schema.migration.ts`. `LATEST_MIGRATION_VERSION = 17`, pinned by `tests/core/r10-release-readiness.test.ts` so the constant cannot silently drift from the highest `migrate()` call.
+Source of truth: `src/core/memory/database/migrations.ts` and `src/adapters/outbound/persistence/sqlite/base-schema.migration.ts`. `LATEST_MIGRATION_VERSION = 20`, pinned by `tests/core/r10-release-readiness.test.ts` so the constant cannot silently drift from the highest `migrate()` call.
 
 ## How migrations work
 
-- A brand-new database gets `applyBaseSchemaMigration()` first (the v0 baseline), then `runMigrations()` walks 1..17.
+- A brand-new database gets `applyBaseSchemaMigration()` first (the v0 baseline), then `runMigrations()` walks 1..20.
 - Each migration is idempotent: `migrate()` checks `schema_migrations` inside one transaction and returns immediately if already applied.
 - Migrations run **once per process** (at first DB access), not per call.
 - `foreign_keys` is ON. The fresh-DB path is asserted FK-clean end to end.
@@ -30,6 +30,9 @@ Source of truth: `src/core/memory/database/migrations.ts` and `src/adapters/outb
 | 15 | r4-canonical-project-identity | canonical_path/display_path, unique index, `PROJECT_CANONICAL_COLLISION` rollback |
 | 16 | r5-oauth-credential-repository | oauth_access_tokens / refresh_tokens / revoked_families / registered_clients |
 | 17 | r6-metrics-task-category-created-index | composite index for the metrics hot path |
+| 18 | principal-owned-projects-and-memory | `principal_id` ownership on projects + memory, scoped reads |
+| 19 | principal-owned-tasks | `principal_id` ownership on tasks + `idx_tasks_principal` |
+| 20 | consolidate-canonical-task-states | rewrites legacy `created`→`planning`, `checkpointing`/`resuming`→`executing` so no row is left in a state the canonical `TaskState` union no longer admits |
 
 ## Rehearsal
 

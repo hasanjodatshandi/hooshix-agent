@@ -11,7 +11,7 @@ const SAFE_IDENTIFIER = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
  * CURRENT head instead of a hardcoded version that silently rots as new
  * migrations land. If you add a migration, bump this to match it.
  */
-export const LATEST_MIGRATION_VERSION = 19;
+export const LATEST_MIGRATION_VERSION = 20;
 
 export function ensureColumn(
   db: Database.Database,
@@ -373,6 +373,17 @@ export function runMigrations(db: Database.Database): void {
   migrate(db,19,"principal-owned-tasks",()=>{
     ensureColumn(db,"tasks","principal_id","TEXT NOT NULL DEFAULT 'local-stdio'");
     db.exec("CREATE INDEX IF NOT EXISTS idx_tasks_principal ON tasks(principal_id,updated_at DESC)");
+  });
+
+  // R3: fold the legacy transitional Task states onto the canonical aggregate.
+  // `TaskState` no longer admits these values; rows still carrying them would
+  // hydrate into plans the state machine refuses to transition. Rewrite them
+  // at upgrade time so no row is left unreachable. Idempotent by construction:
+  // after the first run no row matches the legacy predicates.
+  migrate(db,20,"consolidate-canonical-task-states",()=>{
+    db.prepare("UPDATE tasks SET status='planning' WHERE status='created'").run();
+    db.prepare("UPDATE tasks SET status='executing' WHERE status='checkpointing'").run();
+    db.prepare("UPDATE tasks SET status='executing' WHERE status='resuming'").run();
   });
 
 }

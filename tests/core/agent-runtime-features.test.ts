@@ -47,7 +47,7 @@ function makePlan(
   return {
     id: crypto.randomUUID(),
     task: title,
-    state: "created",
+    state: "planning",
     steps: steps.map((s) => ({
       id: s.id,
       action: s.action,
@@ -668,7 +668,7 @@ describe("Full Pipeline: Agent Runtime Flow", () => {
     const plan: TaskPlan = {
       id: crypto.randomUUID(),
       task: "parallel deps",
-      state: "created",
+      state: "planning",
       steps: [
         { id: 1, action: "init", tool: "get_system_info", arguments: {}, dependsOn: [], status: "pending" },
         { id: 2, action: "branch A", tool: "agent_metrics", arguments: {}, dependsOn: [1], status: "pending" },

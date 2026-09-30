@@ -53,7 +53,7 @@ export async function recoverInterruptedTasks(): Promise<CrashRecoveryResult[]> 
       // reading current state, changing a receipt or resuming any effect.
       await withTaskExecutionLease(discovered.id,async()=>{
         const plan=getTaskPlan(discovered.id);
-        if(!plan||!["executing","checkpointing","recovering","resuming","verifying"].includes(plan.state??"")){
+        if(!plan||!["executing","recovering","verifying"].includes(plan.state??"")){
           results.push({taskId:discovered.id,title:discovered.task,resumedFrom:0,
             totalSteps:discovered.steps.length,status:"skipped",
             reason:"Task no longer requires crash recovery"});

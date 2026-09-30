@@ -130,9 +130,9 @@ describe("crash recovery", () => {
       steps: [{ action: "delete", tool: "delete_file", arguments: { path: "tests/recovery-coverage/x.txt" } }]
     });
     plan.steps[0].status = "pending_approval";
-    // interrupted mid-resume (resuming is an interrupted state)
-    plan.state = "resuming";
-    saveTaskPlan(plan, "resuming");
+    // interrupted mid-resume (executing is an interrupted state)
+    plan.state = "executing";
+    saveTaskPlan(plan, "executing");
 
     const results = await recoverInterruptedTasks();
     const entry = results.find((r) => r.taskId === plan.id);
@@ -140,7 +140,7 @@ describe("crash recovery", () => {
     expect(entry?.reason).toContain("approval");
   });
 
-  it("markTaskRecovered flips state to resuming", async () => {
+  it("markTaskRecovered flips state to executing", async () => {
     await fs.mkdir(root, { recursive: true });
     const runtime = createTaskRuntimeService();
     const plan = runtime.create({
@@ -150,6 +150,6 @@ describe("crash recovery", () => {
     plan.state = "executing";
     saveTaskPlan(plan, "executing");
     markTaskRecovered(plan.id);
-    expect(runtime.get(plan.id)?.state).toBe("resuming");
+    expect(runtime.get(plan.id)?.state).toBe("executing");
   });
 });

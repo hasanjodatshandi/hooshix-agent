@@ -1,5 +1,5 @@
 import type { ToolName } from "../services/legacy-tool-orchestrator.js";
-import type { TaskState } from "../../domain/task/legacy-task-state-machine.js";
+import type { TaskState } from "../../domain/task/task.js";
 import type { ExecutionReceipt } from "../../domain/task/execution-outcome.js";
 
 export type TaskStepStatus = "pending" | "running" | "completed" | "failed" | "pending_approval" | "blocked" | "cancelled" | "outcome_unknown" | "reconciled_succeeded" | "reconciled_failed";

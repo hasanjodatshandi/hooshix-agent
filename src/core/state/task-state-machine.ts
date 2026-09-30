@@ -2,8 +2,7 @@
 export {
   canTransition,
   transitionTask,
-} from "../../domain/task/legacy-task-state-machine.js";
+} from "../../domain/task/task-state-machine.js";
 export type {
-  LegacyTaskState,
   TaskState,
-} from "../../domain/task/legacy-task-state-machine.js";
+} from "../../domain/task/task-state-machine.js";

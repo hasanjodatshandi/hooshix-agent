@@ -33,7 +33,8 @@ export async function resumeApprovedTask(
 
   // Validate the plan is resumable BEFORE consuming the approval — otherwise a
   // cancelled/invalid state burns the approval on a run that immediately throws.
-  const resumableStates = ["waiting_approval", "resuming", "failed", "verifying"];
+  // R3: legacy `resuming` folded into `executing` by migration 20.
+  const resumableStates = ["waiting_approval", "executing", "failed", "verifying"];
   if (!resumableStates.includes(plan.state ?? "")) {
     return null;
   }

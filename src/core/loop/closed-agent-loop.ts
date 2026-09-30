@@ -10,7 +10,7 @@ import { createApprovalRequest } from "../governance/approval-memory.js";
 import { checkpointStep as persistCheckpoint } from "./checkpoint-integration.js";
 import { PersistentRecoveryObservability } from "../trace/persistent-recovery-observability.js";
 import type { RecoveryObservabilitySink } from "../trace/recovery-observability.js";
-import { saveTaskPlan, saveTaskStep, saveTaskStatus, updateTaskHeartbeat } from "../memory/task-repository.js";
+import { saveTaskPlan, saveTaskStep, saveTaskStatus, updateTaskHeartbeat, getTaskPlan } from "../memory/task-repository.js";
 import { transitionTask, type TaskState } from "../state/task-state-machine.js";
 import { beginStepExecutionReceipt, finishStepExecutionReceipt } from "../memory/task-repository.js";
 import { createMutationReceipt, finalizeMutationReceipt } from "./execution-receipt.js";
@@ -128,14 +128,14 @@ export interface ClosedLoopResult {
 }
 
 /**
- * Transition plan state and persist. Cheap transitions (checkpointing ⇄
- * executing, verifying) write only the task status row — a full saveTaskPlan
- * rewrites every step row and caused ~200 full-plan rewrites per 100-step run.
+ * Transition plan state and persist. Cheap transitions (executing, verifying)
+ * write only the task status row — a full saveTaskPlan rewrites every step row
+ * and caused ~200 full-plan rewrites per 100-step run.
  */
 function move(plan: TaskPlan, to: TaskState): void {
   const from = plan.state ?? "planning";
   if (from !== to) plan.state = transitionTask(from, to);
-  const lightweight = to === "checkpointing" || to === "executing" || to === "verifying";
+  const lightweight = to === "executing" || to === "verifying";
   if (lightweight) {
     saveTaskStatus(plan.id, plan.state ?? from);
   } else {
@@ -163,10 +163,19 @@ export async function runClosedAgentLoop(
 
   plan.correlationId = runtimeContext.correlationId;
   if (!plan.state) plan.state = "planning";
-  if (plan.state === "created") move(plan, "planning");
-  if (plan.state === "waiting_approval" || plan.state === "failed") move(plan, "resuming");
+  // A fresh plan may not be persisted yet — TaskRuntimeService.create()
+  // persists, but the loop is also invoked directly (tests, recovery). The
+  // legacy entry folded `created`→`planning` through a full saveTaskPlan that
+  // incidentally created the task + step rows; with `created` gone, persist
+  // explicitly so the later lightweight status UPDATEs hit an existing row.
+  if (getTaskPlan(plan.id) === null) saveTaskPlan(plan, plan.state, plan.correlationId);
+  // R3: legacy `created` was folded into `planning` by migration 20; the plan
+  // factory now starts at `planning` so the entry transition is a no-op.
+  // waiting_approval/failed resume directly into `executing` (legacy did this
+  // via the removed `resuming` intermediate state).
+  if (plan.state === "waiting_approval" || plan.state === "failed") move(plan, "executing");
   // planning → executing is valid after task_append_steps reopened the task (TR-01)
-  if (plan.state === "planning" || plan.state === "resuming") move(plan, "executing");
+  if (plan.state === "planning") move(plan, "executing");
   // Ensure we're in executing (handles any remaining non-executing state)
   if (plan.state !== "executing") move(plan, "executing");
   const recovery = recoveryService ?? new UnifiedRecoveryService({ getTrace: () => getExecutionTrace(runtimeContext.correlationId) }, recoverySink);
@@ -213,9 +222,11 @@ export async function runClosedAgentLoop(
     }
 
     const persistStep = () => saveTaskStep(plan.id, step, index);
-    move(plan, "checkpointing");
-    checkpointStep({ taskId: plan.id, stepId: step.id, stepIndex: index, status: "running", context: runtimeContext });
+    // R3: legacy emitted a `checkpointing` marker here purely to trigger a
+    // lightweight status persist. It folded into `executing` (migration 20);
+    // move() still writes the status row because `executing` is lightweight.
     move(plan, "executing");
+    checkpointStep({ taskId: plan.id, stepId: step.id, stepIndex: index, status: "running", context: runtimeContext });
 
     // Preview the exact resolved effect before policy and human approval.
     let approvedArgs:Record<string,unknown> = step.arguments ?? {};

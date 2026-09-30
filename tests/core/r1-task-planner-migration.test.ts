@@ -13,7 +13,7 @@ describe("R1 legacy task-planner migration", () => {
   it("preserves default plan construction and validates it through application policy", () => {
     const plan = legacy.createTaskPlan("demo");
     expect(plan.task).toBe("demo");
-    expect(plan.state).toBe("created");
+    expect(plan.state).toBe("planning");
     expect(plan.steps.map((step) => step.id)).toEqual([1, 2, 3]);
     expect(() => validator.validateTaskPlan(plan)).not.toThrow();
   });

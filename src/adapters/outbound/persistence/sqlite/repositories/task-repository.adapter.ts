@@ -553,7 +553,8 @@ export function updateTaskHeartbeat(taskId: string): void {
 
 // ─── Crash Recovery ─────────────────────────────────────────────────
 
-const INTERRUPTED_STATES = ["executing", "checkpointing", "recovering", "resuming", "verifying", "waiting_approval"];
+// R3: legacy `checkpointing`/`resuming` folded into `executing` by migration 20.
+const INTERRUPTED_STATES = ["executing", "recovering", "verifying", "waiting_approval"];
 
 export function findInterruptedTasks():TaskPlan[] {
   ensureExtraColumns();
@@ -571,7 +572,7 @@ export function findInterruptedTasks():TaskPlan[] {
 export function markTaskRecovered(taskId: string): void {
   withAgentDatabase(db=>db.transaction(()=>{
     assertTaskLeaseWrite(db,taskId);
-    db.prepare("UPDATE tasks SET status = 'resuming', last_heartbeat = ? WHERE id = ?")
+    db.prepare("UPDATE tasks SET status = 'executing', last_heartbeat = ? WHERE id = ?")
       .run(new Date().toISOString(),taskId);
   })());
 }

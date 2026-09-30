@@ -11,7 +11,9 @@ export function createTaskPlan(
     id: randomUUID(),
     task,
     description,
-    state: "created",
+    // R3: the canonical aggregate starts at `planning`. The legacy `created`
+    // entry state was folded away by migration 20 — see task-state-machine.ts.
+    state: "planning",
     steps: steps?.map((step,index)=>({...step,id:step.id ?? index+1,status:step.status ?? "pending"})) ?? [
       {id:1,action:"inspect project",tool:"list_directory",arguments:{path:"."},status:"pending"},
       {id:2,action:"inspect implementation markers",tool:"search_files",arguments:{path:".",query:"TODO"},status:"pending"},

@@ -21,7 +21,7 @@
 | P1 | نشت SDK به `src/mcp/` نامرئی برای گارد | گارد در `r1-strict-boundary.test.ts` اکنون کل درخت `src` را اسکن می‌کند؛ لایه transport (`mcp/` + `adapters/inbound/mcp/`) به‌صورت صریح مجاز | ✅ برطرف |
 | P1 | دور باطل core↔composition | ۱۰ ماژول دامینی که به اشتباه زیر `infrastructure/composition/` بودند به `core/{governance,executor,runtime,planner}/` منتقل شدند؛ تنها ریشه‌های واقعی composition باقی ماندند | ✅ برطرف |
 | P1 | تکرار rotation logic | `audit-log-rotation.ts` مشترک؛ کپی بایت‌به‌بایت در `command-audit`/`file-audit` حذف | ✅ برطرف |
-| P1 | TaskState رقیب (canonical ۱۰حالت vs legacy ۱۱حالت) | **به تعویق** — این مهاجرت R3 است نه حذف کد: وضعیت‌های `created`/`checkpointing`/`resuming` در ردیف‌های زنده SQLite هستند و ماشین حالت legacy به production runtime متصل است. نیاز به migration دارد | ⏸ به تعویق |
+| P1 | TaskState رقیب (canonical ۱۰حالت vs legacy ۱۱حالت) | **برطرف شد** — `LegacyTaskState` حذف، ماشین حالت روی `task-state-machine.ts` با ۱۰ حالت canonical بازنویسی، migration 20 مقادیر legacy را بازنویسی می‌کند (`created`→`planning`، `checkpointing`/`resuming`→`executing`) | ✅ برطرف |
 | P2 | کد مرده: `getDatabase()` | حذف (صفر فراخوانی) | ✅ حذف |
 | P2 | `config/config.json` (مرده، مقدار `DEVELOPER` نامعتبر) | حذف | ✅ حذف |
 | P2 | `.freebuff/project-id` (آرتيفکت تصادفی committed) | حذف | ✅ حذف |
