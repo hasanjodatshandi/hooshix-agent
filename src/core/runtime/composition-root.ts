@@ -24,3 +24,13 @@ export function createRuntimeDependencies(): TaskRuntimeDependencies {
 export function createTaskRuntimeService(): TaskRuntimeService {
   return new TaskRuntimeService(createRuntimeDependencies());
 }
+
+// R3: the task tool module needs a shared runtime, but building it at module
+// import time forces construction even when the MCP server never registers task
+// tools. Keep the singleton here, at the composition root, resolved lazily on
+// first use — the only place that decides object lifetime.
+let sharedRuntime: TaskRuntimeService | undefined;
+export function getTaskRuntimeService(): TaskRuntimeService {
+  if (sharedRuntime === undefined) sharedRuntime = createTaskRuntimeService();
+  return sharedRuntime;
+}

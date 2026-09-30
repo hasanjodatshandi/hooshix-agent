@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { McpServer } from "../../adapters/inbound/mcp/legacy-sdk-bridge.js";
-import { createTaskRuntimeService } from "../../core/runtime/composition-root.js";
+import { getTaskRuntimeService } from "../../core/runtime/composition-root.js";
 import { auditToolCall } from "../../core/memory/tool-audit.js";
 import { resolveCorrelationId } from "../../core/runtime/correlation-id.js";
 import { assertToolPermission } from "../../security/permission.js";
@@ -13,8 +13,14 @@ import { TOOL_NAMES, validateToolName } from "../../application/services/legacy-
 import { ReplayExecutor } from "../../core/trace/replay-executor.js";
 import { AgentError } from "../../core/errors.js";
 import { persistAppendedTaskSteps, persistTaskLink, getPersistedTaskLinks } from "../../adapters/outbound/persistence/sqlite/repositories/task-tool-persistence.adapter.js";
+// Static, not dynamic: this module is already loaded by the agent loop for every
+// task run, so a dynamic import here buys nothing and hides the dependency.
+import { checkStepGovernance } from "../../core/governance/step-governance.js";
 
-const runtime = createTaskRuntimeService();
+// R3: the runtime is a lazy singleton owned by the composition root (see
+// getTaskRuntimeService), not this module — resolving it here keeps import-time
+// side effects out of a module that only declares tool registrations.
+const runtime = getTaskRuntimeService();
 const traceSchema = { correlationId: z.string().min(1).optional() };
 // set_workspace is excluded from task tools — workspace is captured in task.executionContext
 const toolName = z.enum(TOOL_NAMES);
@@ -237,7 +243,6 @@ export function registerTaskTools(server: McpServer) {
   server.registerTool("task_step_risks", { title: "Preview Step Risks", description: "🗂️ TASK (read) — Dry-run risk analysis: which planned steps will require approval before execution.\n\nClassifies the full policy posture per step: command permissions, OUTSIDE-WORKSPACE cwd (requires approval), mutating tools, destructive commands. Uses the same governance engine as task_run, so its verdicts match execution.\n\nExample: { \"steps\": [{ \"tool\": \"execute_command\", \"arguments\": { \"command\": \"git\", \"args\": [\"status\"], \"cwd\": \"D:/other/repo\" } }] }", annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true }, inputSchema: z.object({ steps: z.array(z.object({ tool: z.string(), arguments: z.record(z.string(), z.unknown()).default({}) })), ...traceSchema }) }, async ({ steps, correlationId }) => {
     assertToolPermission("task_list"); const traceId = resolveCorrelationId(correlationId);
     return auditToolCall("task_step_risks", traceId, undefined, async () => {
-      const { checkStepGovernance } = await import("../../core/governance/step-governance.js");
       const results = steps.map((s, i) => {
         const tool = validateToolName(s.tool);
         const gov = checkStepGovernance({ id: i + 1, action: tool, tool, arguments: s.arguments, status: "pending" });

@@ -33,7 +33,7 @@ Status values: `OPEN`, `TEST_ENCODED`, `IMPLEMENTING`, `IMPLEMENTED`, `VERIFIED_
 |---|---|---|---|---|---|
 | MED-01 | Bearer token in query string | R5 | 10,16 | query token rejected; header token accepted | VERIFIED_CLOSED |
 | MED-02 | Separate-arg secret redaction leak | R6 | 15,16 | opaque `--token VALUE` regression | VERIFIED_CLOSED |
-| MED-03 | No rate/concurrency limits | R5/R6 | 10,14,16 | 429/budget/concurrency tests | OPEN |
+| MED-03 | No rate/concurrency limits | R5/R6 | 10,14,16 | 429/budget/concurrency tests | VERIFIED_CLOSED |
 | MED-04 | Shell cwd not workspace-authorized | R2 | 06,08,09,16 | outside cwd rejected for auto-approved path | VERIFIED_CLOSED |
 | MED-05 | Audit failure masks successful effect | R3/R6 | 11,15,16 | effect succeeds + sink fails -> success/degraded, no retry | VERIFIED_CLOSED |
 | MED-06 | Direct MCP hides CAS/idempotency | R2 | 06,08,12,16 | direct/task parity tests | VERIFIED_CLOSED |
@@ -43,9 +43,9 @@ Status values: `OPEN`, `TEST_ENCODED`, `IMPLEMENTING`, `IMPLEMENTED`, `VERIFIED_
 | MED-10 | Absent backup reuse creates empty file | R4 | 12,13,16 | repeated restore remains absent | VERIFIED_CLOSED |
 | MED-11 | Restore missing revision guard | R4 | 12,16 | intervening edit -> conflict, no overwrite | VERIFIED_CLOSED |
 | MED-12 | Restore binds current workspace | R4 | 12,16 | stored absolute target + reauthorization test | VERIFIED_CLOSED |
-| MED-13 | Container root/mutable tag | R7 | 17 | runtime non-root; digest/update policy documented | OPEN |
-| MED-14 | No CI gate | R7 | 17,22 | required workflow green from clean checkout | OPEN |
-| MED-15 | Node/NVM PATH not reproducible | R7 | 17,18 | service-like preflight resolves exact supported Node/pnpm | OPEN |
+| MED-13 | Container root/mutable tag | R7 | 17 | runtime non-root; digest/update policy documented | VERIFIED_CLOSED |
+| MED-14 | No CI gate | R7 | 17,22 | required workflow green from clean checkout | VERIFIED_CLOSED |
+| MED-15 | Node/NVM PATH not reproducible | R7 | 17,18 | service-like preflight resolves exact supported Node/pnpm | VERIFIED_CLOSED |
 | MED-16 | Incompatible production runbooks | R7/R9 | 18,19 | one canonical runbook, legacy docs removed/deprecated | OPEN |
 | MED-17 | Metrics queries under-indexed/benchmarked | R6 | 13,14 | actual query EXPLAIN/latency at representative sizes | VERIFIED_CLOSED |
 | MED-18 | Retention startup-only/incomplete | R6 | 13,14,15 | periodic class-aware retention test | VERIFIED_CLOSED |

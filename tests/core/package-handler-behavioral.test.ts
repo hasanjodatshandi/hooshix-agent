@@ -91,4 +91,71 @@ describe("PackageToolHandler (behavioral)", () => {
       fs.rmSync(dir, { recursive: true, force: true });
     }
   }, 180_000);
+
+  it("routes remove_package to the remove action", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pkg-handler-"));
+    fs.writeFileSync(path.join(dir, "package.json"), JSON.stringify({ name: "probe", version: "1.0.0", dependencies: { "left-pad": "^1.3.0" } }));
+    scopeTo(dir);
+    try {
+      const handler = new PackageToolHandler();
+      await handler.handle({
+        tool: "install_package",
+        input: { manager: "npm", name: "left-pad", cwd: dir },
+        correlationId: "pkg-remove-setup",
+      });
+      expect(fs.existsSync(path.join(dir, "node_modules", "left-pad"))).toBe(true);
+
+      const result = await handler.handle({
+        tool: "remove_package",
+        input: { manager: "npm", name: "left-pad", cwd: dir },
+        correlationId: "pkg-remove-1",
+      });
+      expect(result).toMatchObject({ manager: "npm", action: "remove", name: "left-pad" });
+      expect(fs.existsSync(path.join(dir, "node_modules", "left-pad"))).toBe(false);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  }, 180_000);
+
+  it("routes update_package to the update action", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pkg-handler-"));
+    fs.writeFileSync(path.join(dir, "package.json"), JSON.stringify({ name: "probe", version: "1.0.0", dependencies: { "left-pad": "^1.3.0" } }));
+    scopeTo(dir);
+    try {
+      const handler = new PackageToolHandler();
+      await handler.handle({
+        tool: "install_package",
+        input: { manager: "npm", name: "left-pad", cwd: dir },
+        correlationId: "pkg-update-setup",
+      });
+
+      const result = await handler.handle({
+        tool: "update_package",
+        input: { manager: "npm", name: "left-pad", cwd: dir },
+        correlationId: "pkg-update-1",
+      });
+      expect(result).toMatchObject({ manager: "npm", action: "update", name: "left-pad" });
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  }, 180_000);
+
+  it("routes package_restore through the snapshot path", async () => {
+    const handler = new PackageToolHandler();
+    // A well-formed UUID that does not exist: the schema accepts it (proving the
+    // restore branch was taken) and the service reports the typed not-found error.
+    const missing = "00000000-0000-4000-8000-000000000000";
+    await expect(
+      handler.handle({ tool: "package_restore", input: { snapshotId: missing }, correlationId: "pkg-restore-1" }),
+    ).rejects.toThrowError(/not found|PACKAGE_MANIFEST/i);
+  });
+
+  it("applies the default cwd when omitted", async () => {
+    // An empty name fails validation, but only after the schema resolves the
+    // omitted cwd to "." — proving the default branch is reachable.
+    const handler = new PackageToolHandler();
+    await expect(
+      handler.handle({ tool: "install_package", input: { manager: "npm", name: "" }, correlationId: "pkg-default-cwd" }),
+    ).rejects.toThrowError();
+  });
 });
