@@ -19,7 +19,15 @@ const BLOCKED_PATTERNS: readonly RegExp[] = [
   /\b(shred|sdelete)\b/i,
 ];
 const SAFE_GIT_SUBCOMMANDS = new Set(["status", "diff", "log"]);
-const EXACT_SAFE_GH_COMMANDS = new Set(["pr list", "pr view", "pr checks", "issue list", "issue view", "issue status", "repo view", "auth status", "config get", "config list"]);
+// Exact read-only `gh` forms. Never include mutation-bearing subcommands:
+// `run cancel`/`run rerun`/`run download`, `workflow enable`/`disable`/`run`
+// all change state and must stay approval-gated.
+const EXACT_SAFE_GH_COMMANDS = new Set([
+  "pr list", "pr view", "pr checks", "issue list", "issue view", "issue status",
+  "repo view", "auth status", "config get", "config list",
+  // GitHub Actions history: list runs/workflows, view a run's summary.
+  "run list", "run view", "workflow list", "workflow view",
+]);
 
 
 export function validateCommand(command: string, args: readonly string[] = []): true {
@@ -50,8 +58,10 @@ export function evaluateCommandPermission(command: string, args: readonly string
   }
   if (command === "gh") {
     const sub = args.join(" ").toLowerCase();
+    // `pr view 123`, `pr checks 123`, `issue view 123`, `run view 123`,
+    // `workflow view 123` — a numeric id targets one read-only resource view.
     const numericResourceView = args.length === 3 &&
-      (args[0] === "pr" || args[0] === "issue") &&
+      (args[0] === "pr" || args[0] === "issue" || args[0] === "run" || args[0] === "workflow") &&
       (args[1] === "view" || (args[0] === "pr" && args[1] === "checks")) &&
       /^[1-9][0-9]*$/.test(args[2]);
     if ((EXACT_SAFE_GH_COMMANDS.has(sub) && args.every(arg => !arg.startsWith("-") && !/[\\/]/.test(arg))) || numericResourceView)
