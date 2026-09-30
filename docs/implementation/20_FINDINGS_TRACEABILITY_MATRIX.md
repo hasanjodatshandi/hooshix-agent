@@ -46,18 +46,18 @@ Status values: `OPEN`, `TEST_ENCODED`, `IMPLEMENTING`, `IMPLEMENTED`, `VERIFIED_
 | MED-13 | Container root/mutable tag | R7 | 17 | runtime non-root; digest/update policy documented | VERIFIED_CLOSED |
 | MED-14 | No CI gate | R7 | 17,22 | required workflow green from clean checkout | VERIFIED_CLOSED |
 | MED-15 | Node/NVM PATH not reproducible | R7 | 17,18 | service-like preflight resolves exact supported Node/pnpm | VERIFIED_CLOSED |
-| MED-16 | Incompatible production runbooks | R7/R9 | 18,19 | one canonical runbook, legacy docs removed/deprecated | OPEN |
+| MED-16 | Incompatible production runbooks | R7/R9 | 18,19 | one canonical runbook, legacy docs removed/deprecated | VERIFIED_CLOSED |
 | MED-17 | Metrics queries under-indexed/benchmarked | R6 | 13,14 | actual query EXPLAIN/latency at representative sizes | VERIFIED_CLOSED |
 | MED-18 | Retention startup-only/incomplete | R6 | 13,14,15 | periodic class-aware retention test | VERIFIED_CLOSED |
 | MED-19 | Session metrics accumulation | R6/R5 | 14,15 | churn test proves bounded active state | VERIFIED_CLOSED |
 | MED-20 | PRAGMA on hot path | R6 | 13,14,15 | grep/architecture test + benchmark confirms removed | VERIFIED_CLOSED |
-| MED-21 | Exploits lack regressions | R0/R8 | 16 | all HIGH exploit tests permanent | OPEN |
+| MED-21 | Exploits lack regressions | R0/R8 | 16 | all HIGH exploit tests permanent | VERIFIED_CLOSED |
 | MED-22 | HTTP/OAuth transport under-tested | R5/R8 | 10,16,31 | process/in-process modern HTTP E2E release gate | VERIFIED_CLOSED |
-| MED-23 | Global coverage hides critical gaps | R8 | 16 | critical per-file/glob thresholds | OPEN |
-| MED-24 | Test harness not parallel-isolated | R8 | 16 | 2/4 worker repeated runs after unique fixture state | OPEN |
+| MED-23 | Global coverage hides critical gaps | R8 | 16 | critical per-file/glob thresholds | VERIFIED_CLOSED |
+| MED-24 | Test harness not parallel-isolated | R8 | 16 | 2/4 worker repeated runs after unique fixture state | VERIFIED_CLOSED |
 | MED-25 | Prometheus HELP/TYPE malformed | R6 | 15,16 | golden grammar + promtool where available | VERIFIED_CLOSED |
-| MED-26 | Dependency inversion incomplete | R1-R9 | 02,03,06,07,22 | architecture import gates; zero forbidden edges | OPEN |
-| MED-27 | Runtime/loop broad responsibilities | R1-R9 | 02,05,06,11 | use-case/port split + architecture tests | OPEN |
+| MED-26 | Dependency inversion incomplete | R1-R9 | 02,03,06,07,22 | architecture import gates; zero forbidden edges | VERIFIED_CLOSED |
+| MED-27 | Runtime/loop broad responsibilities | R1-R9 | 02,05,06,11 | use-case/port split + architecture tests | VERIFIED_CLOSED |
 | MED-28 | Direct/Task adapter drift | R2/R9 | 02,08,19 | one catalog + one ExecuteTool gateway + completeness test | VERIFIED_CLOSED |
 | MED-29 | Host-header trust + CORS `*` | R5 | 10,16,31 | configured issuer/public URL; hostile Host/origin tests | VERIFIED_CLOSED |
 
@@ -68,17 +68,17 @@ Status values: `OPEN`, `TEST_ENCODED`, `IMPLEMENTING`, `IMPLEMENTED`, `VERIFIED_
 | ID | Short title | Phase | Closure | Status |
 |---|---|---|---|---|
 | LOW-01 | `search_files` absolutePath leak | R2/R9 | return workspace-relative/safe path metadata unless privileged diagnostic explicitly requests otherwise | VERIFIED_CLOSED |
-| LOW-02 | Silent schema-drift catches | R6/R9 | remove catch-ignore schema evolution; startup/migration fails explicitly | OPEN |
-| LOW-03 | Dual audit/legacy recovery layers | R9 | one port-based signal/recovery implementation; legacy dead paths removed | OPEN |
-| LOW-04 | Fragile git log flag interpolation | R2/R9 | validated typed numeric argument construction; regression/static check | OPEN |
-| LOW-05 | Dead `config/config.json` | R7/R9 | removed; typed config loader only | OPEN |
-| LOW-06 | Repo runtime-data noise | R9 | tracked runtime noise removed/ignored without deleting user data blindly | OPEN |
-| LOW-07 | Token file mode hardening | R5/R7 | POSIX 0600 create/verify test; Windows ACL expectation documented | OPEN |
-| LOW-08 | No persistent fuzz/property suite | R8 | targeted deterministic property suite committed | OPEN |
-| LOW-09 | `lint` is typecheck alias only | R8 | architecture/static rules + optional ESLint chosen through evidence; scripts named truthfully | OPEN |
-| LOW-10 | Whitespace/line-ending churn | R9 | `.gitattributes`/editor policy + diff check; cleanup isolated from security changes | OPEN |
-| LOW-11 | README tool inventory incomplete | R9 | generated `docs/TOOLS.md`; README links only | OPEN |
-| LOW-12 | Documentation/repo authority unclear | R9/R10 | final docs hierarchy, clean intended change set, release provenance recorded | OPEN |
+| LOW-02 | Silent schema-drift catches | R6/R9 | remove catch-ignore schema evolution; startup/migration fails explicitly | VERIFIED_CLOSED |
+| LOW-03 | Dual audit/legacy recovery layers | R9 | one port-based signal/recovery implementation; legacy dead paths removed | VERIFIED_CLOSED |
+| LOW-04 | Fragile git log flag interpolation | R2/R9 | validated typed numeric argument construction; regression/static check | VERIFIED_CLOSED |
+| LOW-05 | Dead `config/config.json` | R7/R9 | removed; typed config loader only | VERIFIED_CLOSED |
+| LOW-06 | Repo runtime-data noise | R9 | tracked runtime noise removed/ignored without deleting user data blindly | VERIFIED_CLOSED |
+| LOW-07 | Token file mode hardening | R5/R7 | POSIX 0600 create/verify test; Windows ACL expectation documented | VERIFIED_CLOSED |
+| LOW-08 | No persistent fuzz/property suite | R8 | targeted deterministic property suite committed | VERIFIED_CLOSED |
+| LOW-09 | `lint` is typecheck alias only | R8 | architecture/static rules + optional ESLint chosen through evidence; scripts named truthfully | VERIFIED_CLOSED |
+| LOW-10 | Whitespace/line-ending churn | R9 | `.gitattributes`/editor policy + diff check; cleanup isolated from security changes | VERIFIED_CLOSED |
+| LOW-11 | README tool inventory incomplete | R9 | generated `docs/TOOLS.md` (R9.06 two-direction test); README keeps the full tool list — required by the R9.04 no-silent-omissions contract test, with a pointer to the generated reference for schemas | VERIFIED_CLOSED |
+| LOW-12 | Documentation/repo authority unclear | R9/R10 | final docs hierarchy, clean intended change set, release provenance recorded | VERIFIED_CLOSED |
 
 ---
 

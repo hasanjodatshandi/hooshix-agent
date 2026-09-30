@@ -96,7 +96,7 @@ These are the operator procedures to run first when something goes wrong. Each o
 1. Revoke nothing yet — the token file is the only recovery path if the leak is only suspected.
 2. Rotate: stop the service, replace `HOOSHIX_BOOTSTRAP_TOKEN` or the token file, restart. The old secret returns 403 immediately.
 3. Check the audit logs under `HOOSHIX_LOG_DIR` for any `command-actions.log` line written while the leaked token was valid — a bearer-shaped string in a redacted argument field means the leak reached a command author.
-4. The bootstrap secret is never accepted as `Authorization: Bearer`, so a leaked token cannot be replayed as an MCP credential. It can only read `/health/monitoring`.
+4. The bootstrap secret is never accepted as `Authorization: Bearer`, so a leaked token cannot be replayed as an MCP credential. It can only read the historical protected `/health` summary (use `/health/live` for probes).
 
 ### Unknown task outcome (`outcome_unknown`)
 

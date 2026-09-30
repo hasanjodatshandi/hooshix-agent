@@ -2,6 +2,8 @@
 
 HooshiX یک MCP server محلی و یک runtime قطعی برای اجرای workflow است. لایهٔ reasoning و تولید plan در نسخهٔ فعلی **ChatGPT** است؛ خود HooshiX مدل زبانی، provider هوش مصنوعی یا natural-language planner داخلی ندارد. ChatGPT یک plan ساختاریافته می‌فرستد و HooshiX آن را validate، اجرا، audit و در SQLite ذخیره می‌کند.
 
+> **مستندات:** نقشهٔ کامل سلسله‌مراتب مستندات و اینکه کدام فایل authoritative است در `docs/INDEX.md` است (Architecture، Security، Operations، Tools و...). اگر مستندی با تست‌های executable در تضاد باشد، تست‌ها ملاک هستند.
+
 ## کنترل پیش از انتشار
 
 برای بررسی غیرمخرب وضعیت Source/Build از `pnpm run release:preflight` و برای تمرین مهاجرت پایگاه داده **فقط روی نسخهٔ پشتیبان** از `pnpm run release:db-rehearsal` استفاده کنید. گزارش معیارهای پذیرش، موانع انتشار و روش Rollback در `docs/RELEASE_HARDENING_2026-09-19.md` است. قبولی این بررسی‌های محلی به معنای تأیید انتشار عمومی یا مجوز Restart خودکار سرویس نیست.
@@ -27,6 +29,8 @@ pnpm run dev
 فرمان آخر MCP server را روی stdio اجرا می‌کند. entry point اصلی `src/index.ts` است و تمام ابزارها در `src/mcp/registry.ts` ثبت می‌شوند.
 
 ## ابزارهای MCP
+
+مرجع کامل با schemaها و توضیحات هر ابزار در `docs/TOOLS.md` است (تولیدشده توسط `scripts/generate-tools-doc.mjs` از operation catalog). فهرست زیر کدкомнатهٔ کامل ابزارهای ثبت‌شده است:
 
 - System: `get_system_info`, `agent_metrics`, `set_workspace`, `get_workspace`
 - Files: `list_directory`, `read_file`, `search_files`, `create_file`, `write_file`, `modify_file`, `delete_file`, `restore_file`
@@ -75,7 +79,8 @@ pnpm run dev
 - `HOOSHIX_DB_PATH`: فایل SQLite؛ پیش‌فرض `data/agent-memory.db`.
 - `HOOSHIX_LOG_DIR`: محل JSONL audit logها؛ پیش‌فرض `logs`.
 - `HOOSHIX_PERMISSION_LEVEL`: یکی از `READ_ONLY`, `PROJECT_ACCESS`, `DEVELOPER_MODE`, `ADMIN_MODE`؛ پیش‌فرض `READ_ONLY` (fail-safe: بدون تنظیم، کمترین اختیار داده می‌شود).
-- `HOOSHIX_MEMORY_FILE`: مسیر compatibility برای memory قدیمی؛ پیش‌فرض `data/agent-memory.json`.
+
+> نکته: `HOOSHIX_MEMORY_FILE` در نسخه‌های قدیمی مسیر memory مبتنی بر JSON بود؛ در معماری فعلی SQLite (`HOOSHIX_DB_PATH`) منبع واحد است و runtime این متغیر را نمی‌خواند (فقط test harness برای isolation workerها آن را تنظیم می‌کند).
 
 ## Workspace Configuration
 

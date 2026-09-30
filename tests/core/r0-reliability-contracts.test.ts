@@ -11,7 +11,7 @@ import { saveTaskPlan, getTaskPlan, findInterruptedTasks } from "../../src/core/
 import { recoverInterruptedTasks } from "../../src/core/recovery/crash-recovery.js";
 import { runClosedAgentLoop } from "../../src/core/loop/closed-agent-loop.js";
 import { withAgentDatabase } from "../../src/core/memory/database/index.js";
-import { restorePackage } from "../../src/services/package/package-service.js";
+import { restorePackageManifest } from "../../src/services/package/package-service.js";
 import { runWithPolicyApproval } from "../../src/core/governance/policy-decision-point.js";
 
 let fixture: DisposableFixture | undefined;
@@ -132,7 +132,7 @@ describe("R0 execution-reality and compensation safety contracts", () => {
       "INSERT INTO package_snapshots(id,correlation_id,manager,action,package_name,cwd,snapshot,status,created_at) VALUES (?,?,?,?,?,?,?,?,?)"
     ).run(snapshotId, "r0-package", "npm", "install", "fixture-only", fixture!.root,
       JSON.stringify({ files: [] }), "committed", now));
-    const result = await runWithPolicyApproval("package_restore", () => restorePackage(snapshotId, "r0-package"));
+    const result = await runWithPolicyApproval("package_restore", () => restorePackageManifest(snapshotId, "r0-package"));
     expect(fs.readFileSync(sentinel, "utf8")).toBe("installed-state-unchanged");
     // A truthful R4 response must distinguish manifest-only from installed
     // package state, not report an unqualified restored:true.

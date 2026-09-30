@@ -75,7 +75,12 @@ export function gitInit(targetPath: string, initialBranch = "main", correlationI
 }
 
 export function gitLog(cwd: string, limit = 20, correlationId?: string) {
-  return runGit("git_log", ["log", `--max-count=${limit}`, "--oneline", "--decorate"], cwd, correlationId);
+  // Defense in depth for the flag interpolation: the git_log tool schema already
+  // constrains limit to an int in [1,100], but this service is also called
+  // directly. Coerce to a safe integer so no caller can smuggle extra argv
+  // through the `--max-count=${limit}` template.
+  const safeLimit = Math.min(Math.max(Math.trunc(Number(limit) || 20), 1), 100);
+  return runGit("git_log", ["log", `--max-count=${safeLimit}`, "--oneline", "--decorate"], cwd, correlationId);
 }
 
 export async function gitHasIdentity(cwd: string): Promise<boolean> {

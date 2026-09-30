@@ -1,0 +1,25 @@
+# Editor policy: every contributor's editor normalizes to the same shape so
+# whitespace/line-ending churn stays out of diffs. Git additionally enforces LF
+# for shell scripts via .gitattributes (Windows checkouts would otherwise break
+# bash parsing in containers).
+
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 2
+
+[*.{bat,ps1,cmd}]
+# Windows-native scripts keep CRLF so cmd/PowerShell parsing is predictable.
+end_of_line = crlf
+
+[Makefile]
+indent_style = tab
+
+[*.{md,markdown}]
+# Markdown parsers treat trailing whitespace as a hard line break; keep it.
+trim_trailing_whitespace = false

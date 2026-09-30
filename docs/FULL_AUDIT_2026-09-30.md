@@ -58,6 +58,23 @@
 - DB زنده: head v20، ۱۰۵۴ task دست‌نخورده، **۰ ردیف legacy**.
 - سرور ری‌استارت شد (PID 22696) و با کد canonical اجرا می‌شود؛ tunnel + OAuth + challenge ۴۰۱ همگی سالم.
 
+**جلسه چهارم (بستن کامل traceability matrix):**
+هدف: همهٔ ردیف‌های OPEN باقی‌مانده در `20_FINDINGS_TRACEABILITY_MATRIX.md` بررسی و بسته شوند. نتیجه: **۵۹ از ۵۹ ردیف VERIFIED_CLOSED، صفر OPEN.**
+
+اصلاحات کد واقعی این جلسه:
+- **LOW-04 (تزریق argv در git log)**: `gitLog()` اکنون `limit` را به عدد صحیح در بازهٔ ۱–۱۰۰ clamp می‌کند (قبلاً مستقیماً در `--max-count=${limit}` اینترپوله می‌شد). regression test در `tests/git-service.test.ts` با limit دلخواه تزریقی اضافه شد.
+- **LOW-03 (لایه dual recovery)**: alias منسوخ‌شدهٔ `restorePackage` در `package-service.ts` حذف شد؛ مسیر واحد `restorePackageManifest` است.
+- **LOW-09 (lint صرفاً alias typecheck)**: `pnpm run lint` اکنون یک static gate واقعی است (`verify-g1-global.mjs` + `r7-secret-policy-check.mjs`)، نه alias تکراری tsc. CI از قبل از `typecheck` استفاده می‌کرد.
+- **LOW-10 (line-ending churn)**: `.editorconfig` اضافه شد (در کنار `.gitattributes` موجود).
+- **LOW-12 (authority مستندات)**: `docs/INDEX.md` ساخته شد — فایل‌های authoritative در برابر historical، و provenance انتشار.
+- **اصلاحات doc lie**: `/health/monitoring` در `OPERATIONS.md` به `/health` (endpoint محافظت‌شدهٔ واقعی) اصلاح شد؛ فیلد `sdk` در `release-preflight.mjs` نام پکیج SDK جدید را تشخیص می‌داد (همیشه null بود)؛ `HOOSHIX_MEMORY_FILE` از جدول env README حذف شد (runtime آن را نمی‌خواند، فقط test harness).
+- **LOW-06**: ۱۲ پوستهٔ خالی `tests/runtime-files-*` حذف شد (untracked و gitignore شده از قبل).
+- **MED-16/21/23/24/26/27 و LOW-02/05/07/08/11**: شواهد موجود در repo تأیید شد (runbook canonical، adversarial test suites، coverage floors، isolation per-worker، architecture gates، ports/use-cases، هیچ catch-ignore، 0600 bootstrap secret + test، property-based suite، TOOLS.md تولیدشده) و علامت‌گذاری شدند.
+
+**تصمیم قابل‌توجه:** برداشتن لیست ابزارها از README (به نفع لینک-only به `docs/TOOLS.md`) باعث شکست `r7-documentation-contract.test.ts` (R9.04) شد — این تست قرارداد executable است و README را موظف می‌کند هر ابزار ثبت‌شده را لیست کند. طبق اصل پروژه (تست‌ها ملاک هستند)، لیست کامل در README برقرار شد و لینک به مرجع تولیدشده برای schemaها اضافه شد.
+
+**مجموعع نهایی: ۸۷۳ تست / ۱۹۵ فایل، build تمیز، lint سبز.**
+
 ---
 
 ---
@@ -242,7 +259,7 @@ HIGH-01 (workspace authz) · HIGH-02 (search denylist) · HIGH-03 (git diff --no
 | `scripts/mcp-dashboard/` | کاملأ يتیم — صفر ارجاع در ریپو، یک اسکریپت serve.js که پورت 8899 یک "Python MCP" را مانیتور می‌کند که **هیچ معادلی در `src/` ندارد**. فقط با `start.bat` دستی اجرا می‌شود |
 | `src/application/handlers/*` (۶ تا) | ساخته شده‌اند اما فقط `.gitkeep` — ظاهراً در یک refactor حذف شده‌اند ولی دایرکتوری‌ها جا مانده‌اند |
 | ادعای "process.env فقط config" | guard فقط ۳ لایه را پوشش می‌دهد، نه ۹ |
-| `docs/implementation/20_FINDINGS_TRACEABILITY_MATRIX.md` | می‌گوید MED-03/13/14/15 هنوز OPEN هستند در حالی که چاپ شده‌اند |
+| `docs/implementation/20_FINDINGS_TRACEABILITY_MATRIX.md` | ~~می‌گفت MED-03/13/14/15 هنوز OPEN هستند در حالی که چاپ شده‌اند~~ — **اصلاح شد**: کل ماتریس در جلسهٔ چهارم بررسی شد و اکنون **۵۹ از ۵۹ ردیف VERIFIED_CLOSED، صفر OPEN** |
 
 ### ۴.۵ کدهای اضافی (Extra)
 - تست اجرا: **۳۷ دایرکتوری خالی `tests/runtime-files-*`** + ~۸۰۰ فایل gitignoredزباله در `data/`
@@ -297,7 +314,7 @@ HIGH-01 (workspace authz) · HIGH-02 (search denylist) · HIGH-03 (git diff --no
 - `OPERATIONS.md:99` به `/health/monitoring` اشاره می‌کند که وجود ندارد
 - `HOOSHIX_MEMORY_FILE` در README داکیومنت شده اما هیچ کس آن را نمی‌خواند
 - `release-preflight.mjs` field `sdk` همیشه null است (SDK نام پکیج عوض شده)
-- `config/config.json` هنوز مرده (LOW-05 باز)
+- `config/config.json` مرده بود و حذف شد (LOW-05 ✅ بسته شد)
 
 ---
 

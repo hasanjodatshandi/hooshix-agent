@@ -444,7 +444,5 @@ export async function restorePackageManifest(snapshotId:string,correlationId?:st
   }
 }
 
-/** @deprecated MCP alias. Use restorePackageManifest in application code. */
-export async function restorePackage(snapshotId:string,correlationId?:string){
-  return restorePackageManifest(snapshotId,correlationId);
-}
+// LOW-03: the `restorePackage` MCP alias was removed — a dual entry point into
+// the same snapshot restore. All callers use restorePackageManifest directly.

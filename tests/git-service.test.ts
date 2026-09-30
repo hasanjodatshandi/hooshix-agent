@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { execa } from "execa";
-import { gitBranch, gitCheckout, gitCommit, gitDiff, gitStatus } from "../src/services/git/git-service.js";
+import { gitBranch, gitCheckout, gitCommit, gitDiff, gitLog, gitStatus } from "../src/services/git/git-service.js";
 import { runWithPolicyApproval } from "../src/core/governance/policy-decision-point.js";
 
 const repository = "tests/runtime-git";
@@ -36,5 +36,28 @@ describe("Git service", () => {
   it("rejects unsafe refs and paths outside the workspace", async () => {
     expect(() => gitBranch(repository, "../escape")).toThrow("Invalid Git ref");
     await expect(gitStatus("../outside-workspace")).rejects.toThrow("outside workspace");
+  });
+
+  it("clamps and neutralizes the git log limit against argv injection", async () => {
+    // Seed three commits so a bounded log is distinguishable from an unbounded one.
+    for (const i of [1, 2, 3]) {
+      await fs.writeFile(`${repository}/f${i}.txt`, `${i}\n`, "utf8");
+      await execa("git", ["add", `f${i}.txt`], { cwd: repository });
+      await execa("git", ["commit", "-m", `c${i}`], { cwd: repository });
+    }
+
+    // A numeric limit is honored.
+    expect((await gitLog(repository, 2)).stdout.trim().split("\n")).toHaveLength(2);
+
+    // A non-numeric or hostile limit cannot smuggle extra argv through the
+    // `--max-count=${limit}` template: it falls back to the default, never to
+    // an injected flag, and no side-effect file is created.
+    const hostile = "1; touch tests/runtime-pwned";
+    const result = await gitLog(repository, hostile as unknown as number);
+    expect(result.stdout).toContain("c3");
+    await expect(fs.access("tests/runtime-pwned")).rejects.toThrow();
+
+    // An out-of-range limit is clamped into the documented 1-100 window.
+    expect((await gitLog(repository, 9999)).stdout.trim().split("\n")).toHaveLength(3);
   });
 });
