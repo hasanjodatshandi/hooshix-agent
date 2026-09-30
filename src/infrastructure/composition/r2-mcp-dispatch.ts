@@ -1,7 +1,7 @@
 import type { WorkspaceScope } from "../../domain/workspace/workspace-scope.js";
 import type { ToolName } from "../../application/services/operation-catalog.js";
 import type { TaskExecutionContext } from "../../application/dto/legacy-task-plan.js";
-import { dispatchToHandler } from "./legacy-tool-handler-composition.js";
+import { dispatchToHandler } from "../../core/executor/legacy-tool-handler-composition.js";
 import { runWithWorkspaceScope } from "../../security/workspace-guard.js";
 import { resolveCorrelationId } from "../../core/runtime/correlation-id.js";
 import { auditToolCall } from "../../core/memory/tool-audit.js";

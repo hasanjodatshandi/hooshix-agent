@@ -1,5 +1,5 @@
-import { createR2RuntimeGateway, requireSuccessfulGateway } from "../infrastructure/composition/r2-runtime-gateway.js";
-import { getTrustedInboundIdentity } from "../infrastructure/composition/r2-trusted-inbound-identity.js";
+import { createR2RuntimeGateway, requireSuccessfulGateway } from "../core/executor/r2-runtime-gateway.js";
+import { getTrustedInboundIdentity } from "../core/runtime/r2-trusted-inbound-identity.js";
 import type { ToolId } from "../domain/shared/ids.js";
 import { TOOL_NAMES, type ToolName } from "../application/services/operation-catalog.js";
 import { executeAuthorizedDirectTool } from "../infrastructure/composition/r2-mcp-dispatch.js";

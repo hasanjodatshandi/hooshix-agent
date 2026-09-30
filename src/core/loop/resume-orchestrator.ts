@@ -3,7 +3,7 @@ import { runClosedAgentLoop, type ClosedLoopResult } from "./closed-agent-loop.j
 import { restorePlanPosition } from "./plan-resume.js";
 import { canResumeApprovedTask } from "./resume-engine.js";
 import { consumeApprovedRequest, getApprovalRequest } from "../governance/approval-memory.js";
-import { fingerprintTaskEffect, resolveApprovedTaskArgs } from "../../infrastructure/composition/r2-approval-fingerprint.js";
+import { fingerprintTaskEffect, resolveApprovedTaskArgs } from "../governance/r2-approval-fingerprint.js";
 import { createExecutionContext } from "../runtime/execution-context.js";
 import type { RecoveryProvider } from "../trace/unified-recovery-service.js";
 

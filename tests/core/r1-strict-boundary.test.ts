@@ -10,6 +10,13 @@ import { describe, expect, it } from "vitest";
  */
 const sourceRoot = path.resolve("src");
 const newRoots = ["domain","application","adapters","infrastructure","bootstrap"];
+// R-P16: the MCP SDK quarantine is repo-wide, not just for the R1 target
+// trees. The SDK is permitted only in the MCP transport boundary itself —
+// src/mcp/ and adapters/inbound/mcp/ — so domain/application/core can never
+// grow a hard dependency on the transport framework.
+function sdkAllowedHere(rel: string): boolean {
+  return rel.startsWith("adapters/inbound/mcp/") || rel.startsWith("mcp/");
+}
 function walk(dir:string):string[] {
  if(!fs.existsSync(dir))return [];
  return fs.readdirSync(dir,{withFileTypes:true}).flatMap(e=>{
@@ -55,10 +62,24 @@ describe("G1 new-tree dependency boundaries",()=>{
     expect(scanR1File(path.join(sourceRoot,"infrastructure/probe.ts"),'import x from "@modelcontextprotocol/node";')).not.toEqual([]);
     expect(scanR1File(path.join(sourceRoot,"adapters/inbound/mcp/bridge.ts"),'import x from "@modelcontextprotocol/server";')).toEqual([]);
   });
- it("scans every currently present target-tree source file",()=>{
-   const files=newRoots.flatMap(root=>walk(path.join(sourceRoot,root)));
-   expect(files.length).toBeGreaterThanOrEqual(22);
-   const violations=files.flatMap(file=>scanR1File(file,fs.readFileSync(file,"utf8")));
-   expect(violations).toEqual([]);
- });
+  it("scans every currently present target-tree source file",()=>{
+    const files=newRoots.flatMap(root=>walk(path.join(sourceRoot,root)));
+    expect(files.length).toBeGreaterThanOrEqual(22);
+    const violations=files.flatMap(file=>scanR1File(file,fs.readFileSync(file,"utf8")));
+    expect(violations).toEqual([]);
+  });
+  it("quarantines the MCP SDK to the transport layer across the whole src tree",()=>{
+    // R-P16: the guard above only scanned the R1 target trees, so a direct SDK
+    // import anywhere else (core/, services/, tools/ ...) was invisible.
+    const all=walk(sourceRoot);
+    expect(all.length).toBeGreaterThan(0);
+    const sdkLeaks=all.filter(file=>{
+      const rel=path.relative(sourceRoot,file).replace(/\\/g,"/");
+      if(sdkAllowedHere(rel))return false;
+      const code=fs.readFileSync(file,"utf8");
+      return /\b(?:import|export)\s+(?:(?:type\s+)?[\s\S]*?\s+from\s+)?["']@modelcontextprotocol\//.test(code)
+        || /\b(?:require|import)\s*\(\s*["']@modelcontextprotocol\//.test(code);
+    });
+    expect(sdkLeaks.map(f=>path.relative(sourceRoot,f).replace(/\\/g,"/"))).toEqual([]);
+  });
 });

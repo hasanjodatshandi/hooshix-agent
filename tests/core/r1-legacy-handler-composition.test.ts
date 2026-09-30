@@ -22,7 +22,7 @@ describe("R1 legacy handler composition boundary", () => {
   it("constructs legacy concrete handlers only in the explicit composition module", () => {
     const index = fs.readFileSync(path.resolve("src/core/executor/handlers/index.ts"), "utf8");
     const composition = fs.readFileSync(
-      path.resolve("src/infrastructure/composition/legacy-tool-handler-composition.ts"), "utf8"
+      path.resolve("src/core/executor/legacy-tool-handler-composition.ts"), "utf8"
     );
     expect(index).not.toMatch(/\bnew\s+\w+ToolHandler\s*\(/);
     for (const name of [

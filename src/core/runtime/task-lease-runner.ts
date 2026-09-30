@@ -1,7 +1,7 @@
 import {randomUUID} from "node:crypto";
 import {acquireTaskLease,releaseTaskLease,renewTaskLease,
   type TaskLease} from "../memory/task-lease.js";
-import {runWithTaskLeaseContext} from "../../infrastructure/composition/r3-task-lease-context.js";
+import {runWithTaskLeaseContext} from "./r3-task-lease-context.js";
 import {serviceInstanceId} from "./execution-context.js";
 
 /** One process-independent writer per Task. The heartbeat continues while an

@@ -4,7 +4,7 @@ import { getTaskPlan, saveTaskPlan } from "../../src/core/memory/task-repository
 import { recordTaskReconciliation, getTaskReconciliations } from "../../src/core/recovery/task-reconciliation.js";
 import { analyzeTaskHistory } from "../../src/core/reflection/reflection-engine.js";
 import { createTaskRuntimeService } from "../../src/core/runtime/composition-root.js";
-import { getTrustedInboundIdentity } from "../../src/infrastructure/composition/r2-trusted-inbound-identity.js";
+import { getTrustedInboundIdentity } from "../../src/core/runtime/r2-trusted-inbound-identity.js";
 import { getWorkspaceRoot, listWorkspaceRoots, isUnrestrictedMode } from "../../src/security/workspace-guard.js";
 
 function bindFixtureTaskIdentity(plan:ReturnType<typeof createTaskPlan>):void {

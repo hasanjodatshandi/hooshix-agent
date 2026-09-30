@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import * as legacy from "../../src/core/planner/task-planner.js";
 import * as validator from "../../src/application/services/legacy-task-plan-validator.js";
-import { createTaskPlan as infrastructureCreateTaskPlan } from "../../src/infrastructure/composition/legacy-task-plan-factory.js";
+import { createTaskPlan as infrastructureCreateTaskPlan } from "../../src/core/planner/legacy-task-plan-factory.js";
 
 describe("R1 legacy task-planner migration", () => {
   it("keeps legacy validation exports as exact aliases", () => {

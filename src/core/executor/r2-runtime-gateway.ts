@@ -7,16 +7,16 @@ import type { ToolExecutionResult, ToolHandlerPort } from "../../application/use
 import { createExecuteToolUseCase } from "../../application/use-cases/tools/execute-tool.usecase.js";
 import { createAuthorizationService } from "../../application/services/authorization-service.js";
 import { operationDescriptorPort, getOperationDescriptor } from "../../application/services/operation-catalog.js";
-import { getConfiguredPermissionLevel } from "../config/permission-config.js";
-import { readLegacyWorkspaceBootstrapSettings } from "../config/legacy-workspace-bootstrap.js";
-import { getTrustedInboundIdentity } from "./r2-trusted-inbound-identity.js";
+import { getConfiguredPermissionLevel } from "../../infrastructure/config/permission-config.js";
+import { readLegacyWorkspaceBootstrapSettings } from "../../infrastructure/config/legacy-workspace-bootstrap.js";
+import { getTrustedInboundIdentity } from "../runtime/r2-trusted-inbound-identity.js";
 import { getActiveWorkspace, isUnrestrictedMode, listWorkspaceRoots } from "../../security/workspace-guard.js";
 import { policyDecisionPoint } from "../../core/governance/policy-decision-point.js";
 import { getApprovalRequest, claimApprovedTaskEffect } from "../../core/governance/approval-memory.js";
 import { getTaskPlan } from "../../core/memory/task-repository.js";
-import { requestsUnrestrictedEffect, hasInvalidUnrestrictedArgument } from "./r2-unrestricted-operation.js";
+import { requestsUnrestrictedEffect, hasInvalidUnrestrictedArgument } from "../governance/r2-unrestricted-operation.js";
 import { runWithApprovedUnrestrictedScope } from "../../security/workspace-guard.js";
-import { fingerprintTaskEffect } from "./r2-approval-fingerprint.js";
+import { fingerprintTaskEffect } from "../governance/r2-approval-fingerprint.js";
 import { saveDecisionWithContext } from "../../core/memory/context-memory.js";
 
 function serverCeiling() {

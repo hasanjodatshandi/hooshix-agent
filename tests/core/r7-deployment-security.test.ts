@@ -52,7 +52,9 @@ describe("R7 deployment security contracts", () => {
   });
   it("CI pins upstream actions and gates frozen installs, architecture, tests, audit, and container smoke", () => {
     const ci = read(".github/workflows/ci.yml");
-    expect(ci).toContain("permissions:\n  contents: read");
+    // Tolerant of CRLF working-tree files (core.autocrlf) and 2- or 4-space
+    // indentation, while still asserting the minimal permissions block.
+    expect(ci).toMatch(/permissions:\s*\r?\n\s*contents:\s*read\b/);
     expect(ci).toMatch(/actions\/checkout@[a-f0-9]{40}/);
     expect(ci).toMatch(/actions\/setup-node@[a-f0-9]{40}/);
     expect(ci).toContain("ERR_PNPM_OUTDATED_LOCKFILE");

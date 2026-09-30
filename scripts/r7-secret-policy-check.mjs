@@ -7,6 +7,7 @@ const active = [
   "Dockerfile", "docker-compose.yml", "README.md",
   "scripts/start_nodejs_mcp.bat", "scripts/hooshix_nodejs_mcp_watchdog.ps1",
   "scripts/install_nodejs_mcp_task.bat", "scripts/SETUP_NODEJS_MCP_V2.md",
+  "scripts/mcp-token.ps1",
   "docs/implementation/R7_LOCAL_OPERATIONS_RUNBOOK_2026-09-23.md",
 ];
 const retiredLiteral = ["hooshix", "-v2-secret"].join("");

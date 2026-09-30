@@ -16,9 +16,9 @@ import { beginStepExecutionReceipt, finishStepExecutionReceipt } from "../memory
 import { createMutationReceipt, finalizeMutationReceipt } from "./execution-receipt.js";
 import type { ExecutionReceipt } from "../../domain/task/execution-outcome.js";
 
-import { fingerprintTaskEffect, resolveApprovedTaskArgs } from "../../infrastructure/composition/r2-approval-fingerprint.js";
-import { runWithTrustedTaskApproval } from "../../infrastructure/composition/r2-trusted-task-approval.js";
-import { requestsUnrestrictedEffect, hasInvalidUnrestrictedArgument } from "../../infrastructure/composition/r2-unrestricted-operation.js";
+import { fingerprintTaskEffect, resolveApprovedTaskArgs } from "../governance/r2-approval-fingerprint.js";
+import { runWithTrustedTaskApproval } from "../governance/r2-trusted-task-approval.js";
+import { requestsUnrestrictedEffect, hasInvalidUnrestrictedArgument } from "../governance/r2-unrestricted-operation.js";
 import { selectTool } from "../../application/services/legacy-tool-orchestrator.js";
 import { buildStepContext, resolveTemplates, hasTemplates, validateTemplates, MissingVariableError } from "../runtime/template-resolver.js";
 import { classifyError, isTransientError } from "../errors.js";

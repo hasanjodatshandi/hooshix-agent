@@ -74,7 +74,7 @@ pnpm run dev
 - `HOOSHIX_WORKSPACE`: مقداردهی اولیهٔ Allowed Roots (مسیرها جداشده با کاما)؛ ریشه‌ها در SQLite پایدارند. بدون پیکربندی اولیه، مجوز پیش‌فرضی برای current directory داده نمی‌شود.
 - `HOOSHIX_DB_PATH`: فایل SQLite؛ پیش‌فرض `data/agent-memory.db`.
 - `HOOSHIX_LOG_DIR`: محل JSONL audit logها؛ پیش‌فرض `logs`.
-- `HOOSHIX_PERMISSION_LEVEL`: یکی از `READ_ONLY`, `PROJECT_ACCESS`, `DEVELOPER_MODE`, `ADMIN_MODE`؛ پیش‌فرض `DEVELOPER_MODE`.
+- `HOOSHIX_PERMISSION_LEVEL`: یکی از `READ_ONLY`, `PROJECT_ACCESS`, `DEVELOPER_MODE`, `ADMIN_MODE`؛ پیش‌فرض `READ_ONLY` (fail-safe: بدون تنظیم، کمترین اختیار داده می‌شود).
 - `HOOSHIX_MEMORY_FILE`: مسیر compatibility برای memory قدیمی؛ پیش‌فرض `data/agent-memory.json`.
 
 ## Workspace Configuration

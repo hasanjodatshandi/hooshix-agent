@@ -37,23 +37,12 @@ function redactArguments(args: readonly string[] = []): string[] {
   }
   return masked;
 }
-/** Rotate the audit log once it exceeds this size. Audit lines are append-only,
- * so an unbounded file is a real operational hazard on a long-running host. */
-const MAX_LOG_BYTES = 10 * 1024 * 1024; // 10 MiB
-
-async function rotateIfNeeded(destination: string): Promise<void> {
-  let size: number;
-  try { size = (await fs.stat(destination)).size; } catch { return; } // absent on first write
-  if (size < MAX_LOG_BYTES) return;
-  // Rotate: keep the current file as .1 and truncate. The audit is a safety
-  // record, so losing the oldest history is the lesser evil versus an
-  // unbounded file that eventually fills the volume.
-  await fs.rename(destination, destination + ".1");
-}
+import { rotateAuditLogIfNeeded } from "./audit-log-rotation.js";
 
 /**
  * R10.09 — the command audit log is append-only JSONL. It is rotated when it
- * exceeds MAX_LOG_BYTES so a long-running host cannot fill its volume with
+ * exceeds MAX_AUDIT_LOG_BYTES so a long-running host cannot fill its volume
+ * with audit history.
  * audit history. The rotation is not a retention policy (nothing is deleted by
  * age), only a size bound; an operator with stronger needs archives the .1.
  */
@@ -69,7 +58,7 @@ export async function logCommandAction(data: {
 }) {
   const destination = logPath();
   await fs.mkdir(path.dirname(destination), { recursive: true });
-  await rotateIfNeeded(destination);
+  await rotateAuditLogIfNeeded(destination);
   await fs.appendFile(destination, JSON.stringify({
     command: redactArguments([data.command])[0],
     args: redactArguments(data.args),

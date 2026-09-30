@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { resumeApprovedTask } from "../../src/core/loop/resume-orchestrator.js";
 import { createApprovalRequest, approveRequest, getApprovalRequest } from "../../src/core/governance/approval-memory.js";
 import { saveCheckpoint } from "../../src/core/memory/checkpoint-memory.js";
-import { fingerprintTaskEffect } from "../../src/infrastructure/composition/r2-approval-fingerprint.js";
+import { fingerprintTaskEffect } from "../../src/core/governance/r2-approval-fingerprint.js";
 import type { TaskPlan } from "../../src/application/dto/legacy-task-plan.js";
 
 function fixture(taskId:string,state:"waiting_approval"|"cancelled"):TaskPlan {

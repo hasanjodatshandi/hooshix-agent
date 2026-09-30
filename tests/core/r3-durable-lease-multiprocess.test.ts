@@ -26,7 +26,7 @@ const COMPETE=[
 ].join("\n");
 const FENCE=[
   "import {acquireTaskLease,releaseTaskLease} from './src/core/memory/task-lease.ts';",
-  "import {runWithTaskLeaseContext} from './src/infrastructure/composition/r3-task-lease-context.ts';",
+  "import {runWithTaskLeaseContext} from './src/core/runtime/r3-task-lease-context.ts';",
   "import {saveTaskStatus} from './src/core/memory/task-repository.ts';",
   "const newLease=acquireTaskLease(process.env.R3_LEASE_TASK_ID,'new-process-owner',4000);",
   "let oldOwnerRejected=false;",

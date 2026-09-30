@@ -1,8 +1,8 @@
 import {describe,expect,it} from "vitest";
 import {createTaskRuntimeService} from "../../src/core/runtime/composition-root.js";
 import {connectInProcessMcp,json} from "../helpers/in-process-mcp.js";
-import {runWithTrustedInboundIdentity} from "../../src/infrastructure/composition/r2-trusted-inbound-identity.js";
-import {createR2RuntimeGateway} from "../../src/infrastructure/composition/r2-runtime-gateway.js";
+import {runWithTrustedInboundIdentity} from "../../src/core/runtime/r2-trusted-inbound-identity.js";
+import {createR2RuntimeGateway} from "../../src/core/executor/r2-runtime-gateway.js";
 import type {PrincipalId,SessionId,ToolId} from "../../src/domain/shared/ids.js";
 
 const user="r2-owner" as PrincipalId;

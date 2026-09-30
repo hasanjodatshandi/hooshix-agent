@@ -3,7 +3,7 @@ $ErrorActionPreference = "Stop"
 # --- Configuration ---
 $NodeJsDir = Split-Path -Parent $PSScriptRoot
 $McpPort = 3001
-$LogPath = "D:\MCP\HooshiXBrainMCP\.brain\logs\nodejs_mcp.jsonl"
+$LogPath = "$NodeJsDir\logs\watchdog.jsonl"
 $MaxLogBytes = 10MB
 $MaxLogFiles = 5
 $HeartbeatSeconds = 300
@@ -113,6 +113,10 @@ function Start-NodeMcpServer {
     # Do not redirect without an async reader: a full stderr pipe can block the child.
     $psi.RedirectStandardError = $false
     $psi.EnvironmentVariables["HOOSHIX_HTTP_PORT"] = "$McpPort"
+    # Permission ceiling. execute_command / package_manage / set_workspace require
+    # DEVELOPER_MODE; inheriting an ad-hoc session value silently regressed the
+    # assistant to PROJECT_ACCESS once, so pin it here unconditionally.
+    $psi.EnvironmentVariables["HOOSHIX_PERMISSION_LEVEL"] = "DEVELOPER_MODE"
     # OAuth discovery/issuer base URL — REQUIRED so discovery documents
     # advertise the public tunnel host (agent.hooshix.com), not localhost.
     # Without it, ChatGPT rejects the connector with "doesn't support

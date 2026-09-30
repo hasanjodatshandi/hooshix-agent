@@ -34,16 +34,27 @@ const SECURITY_FLOORS: ReadonlyArray<{ file: string; statements: number; branche
   { file: "src/security/workspace-guard.ts", statements: 90, branches: 80 },
   { file: "src/application/services/authorization-service.ts", statements: 85, branches: 85 },
   { file: "src/application/services/sensitive-path-policy.ts", statements: 95, branches: 90 },
-  { file: "src/security/permissions/command-permission.ts", statements: 95, branches: 90 },
+  { file: "src/application/services/legacy-command-policy.ts", statements: 85, branches: 85 },
   { file: "src/security/permission.ts", statements: 95, branches: 90 },
+  { file: "src/security/task-workspace.ts", statements: 75, branches: 60 },
   { file: "src/domain/workspace/workspace-scope.ts", statements: 60, branches: 70 },
+  // The central authorization gate and the child-process choke-point.
+  { file: "src/core/governance/policy-decision-point.ts", statements: 85, branches: 85 },
+  { file: "src/services/spawn.ts", statements: 95, branches: 90 },
+  { file: "src/core/executor/local-tool-executor.ts", statements: 85, branches: 60 },
   // OAuth / transport security — HIGH-04/HIGH-11/HIGH-12.
+  // NOTE: src/mcp/http-server.ts is intentionally NOT floored here. It is
+  // excluded from V8 coverage (E2E runs it as a child process, whose coverage
+  // is not merged). Its behaviour is guarded by tests/security/r5-* instead.
   { file: "src/infrastructure/server/http-security.ts", statements: 90, branches: 90 },
   // Crash / recovery / lease — HIGH-05/HIGH-06/HIGH-07/HIGH-13.
   { file: "src/core/recovery/crash-recovery.ts", statements: 85, branches: 70 },
   { file: "src/core/recovery/task-reconciliation.ts", statements: 80, branches: 70 },
   { file: "src/core/runtime/task-lease-runner.ts", statements: 60, branches: 70 },
-  { file: "src/core/memory/task-lease.ts", statements: 95, branches: 90 },
+  // R-P19: the REAL durable-lease logic. This floor previously pointed at
+  // src/core/memory/task-lease.ts, a 2-line `export *` facade whose coverage
+  // is trivially 100% — so the floor enforced nothing about the adapter.
+  { file: "src/adapters/outbound/persistence/sqlite/repositories/task-lease.adapter.ts", statements: 60, branches: 60 },
   // Config — a silent misparse here splits the whole service (R7.01).
   { file: "src/infrastructure/config/app-config.ts", statements: 90, branches: 85 },
 ];

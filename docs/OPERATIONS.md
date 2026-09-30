@@ -50,7 +50,7 @@ All configuration is one typed, deeply frozen contract: `loadAppConfig()` in `sr
 | `HOOSHIX_ALLOWED_ORIGINS` | — | Comma-separated explicit origins |
 | `HOOSHIX_DB_PATH` | `./data/agent-memory.db` | SQLite path |
 | `HOOSHIX_LOG_DIR` | `./logs` | JSONL audit log directory |
-| `HOOSHIX_PERMISSION_LEVEL` | DEVELOPER_MODE | READ / PROJECT_ACCESS / DEVELOPER / ADMIN ceiling |
+| `HOOSHIX_PERMISSION_LEVEL` | `READ_ONLY` | One of `READ_ONLY`, `PROJECT_ACCESS`, `DEVELOPER_MODE`, `ADMIN_MODE` (full names only; startup fails otherwise). Effective ceiling at runtime: READ / PROJECT_ACCESS / DEVELOPER / ADMIN |
 | `HOOSHIX_WORKSPACE` | — | Bootstrap candidate roots (comma-separated) |
 | `HOOSHIX_UNRESTRICTED` | — | Server allow ceiling; never an implicit grant |
 | `HOOSHIX_DIRECT_AUTO_APPROVE` | — | `1` allows direct high-risk calls outside a task step |

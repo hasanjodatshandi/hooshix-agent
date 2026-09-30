@@ -1,13 +1,13 @@
 import { approveRequest, getApprovalRequest, revokeTaskApprovals } from "../governance/approval-memory.js";
 import { createLocalToolExecutor } from "../executor/local-tool-executor.js";
-import { getTrustedInboundIdentity } from "../../infrastructure/composition/r2-trusted-inbound-identity.js";
+import { getTrustedInboundIdentity } from "./r2-trusted-inbound-identity.js";
 import { runClosedAgentLoop, type ClosedLoopResult } from "../loop/closed-agent-loop.js";
 import { resumeApprovedTask } from "../loop/resume-orchestrator.js";
 import { getTaskPlan, findTaskByIdempotencyKey, listTasks, saveMemoryItem, saveTaskPlan } from "../memory/task-repository.js";
-import { fingerprintTaskCreate } from "../../infrastructure/composition/r3-task-request-hash.js";
+import { fingerprintTaskCreate } from "./r3-task-request-hash.js";
 import type { TaskStep } from "../../application/dto/legacy-task-plan.js";
 import { validateTaskPlan } from "../../application/services/legacy-task-plan-validator.js";
-import { createTaskPlan } from "../../infrastructure/composition/legacy-task-plan-factory.js";
+import { createTaskPlan } from "../planner/legacy-task-plan-factory.js";
 import { createExecutionContext } from "./execution-context.js";
 import { UnifiedTimelineService } from "../trace/unified-timeline-service.js";
 import type { RecoveryProvider } from "../trace/unified-recovery-service.js";

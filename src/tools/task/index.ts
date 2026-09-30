@@ -6,7 +6,7 @@ import { resolveCorrelationId } from "../../core/runtime/correlation-id.js";
 import { assertToolPermission } from "../../security/permission.js";
 import { listMemoryItems, listProjects, saveMemoryItem, saveProject, getMemoryItem, deleteMemoryItem, getProject, deleteProject, archiveProject, findTaskByIdempotencyKey } from "../../core/memory/task-repository.js";
 import { getApprovalRequest } from "../../core/governance/approval-memory.js";
-import { getTrustedInboundIdentity } from "../../infrastructure/composition/r2-trusted-inbound-identity.js";
+import { getTrustedInboundIdentity } from "../../core/runtime/r2-trusted-inbound-identity.js";
 
 
 import { TOOL_NAMES, validateToolName } from "../../application/services/legacy-tool-orchestrator.js";

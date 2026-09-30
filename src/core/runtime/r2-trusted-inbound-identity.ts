@@ -1,7 +1,7 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import type { Principal } from "../../domain/auth/principal.js";
 import type { PrincipalId, SessionId } from "../../domain/shared/ids.js";
-import { getConfiguredPermissionLevel } from "../config/permission-config.js";
+import { getConfiguredPermissionLevel } from "../../infrastructure/config/permission-config.js";
 import { hasSessionWorkspaceContext } from "../../security/workspace-guard.js";
 
 export interface TrustedInboundIdentity {

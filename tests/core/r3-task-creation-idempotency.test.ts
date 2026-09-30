@@ -47,7 +47,7 @@ describe("R3.08 canonical Task creation idempotency",()=>{
     }]);
     distinct.executionContext={...first.executionContext!,workspace:"D:/not-this-root"};
     distinct.retryPolicy={maxTotalAttempts:5};
-    distinct.requestHash=(await import("../../src/infrastructure/composition/r3-task-request-hash.js")).fingerprintTaskCreate(distinct);
+    distinct.requestHash=(await import("../../src/core/runtime/r3-task-request-hash.js")).fingerprintTaskCreate(distinct);
     expect(distinct.requestHash).not.toEqual(first.requestHash);
   });
   it("historical keyed Task without a verified request hash fails closed",()=>{

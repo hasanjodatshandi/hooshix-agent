@@ -1,10 +1,21 @@
-# HooshiX MCP Token Manager
+# HooshiX MCP Bootstrap Secret Manager
+#
+# Manages the operator bootstrap secret (`.token`), used ONLY for:
+#   - POST /operator/login (operator web console)
+#   - Approving the OAuth consent page (the PIN field)
+#
+# SECURITY MODEL (docs/SECURITY.md):
+#   The bootstrap secret is an OPERATOR credential, never a client credential.
+#   It is never accepted as a Bearer token for /mcp, and it is never a
+#   connector "Access Token". Remote clients authenticate exclusively through
+#   the OAuth authorization code + PKCE flow.
+#
 # Usage:
-#   .\mcp-token.ps1              # Show current token
-#   .\mcp-token.ps1 show         # Show current token
-#   .\mcp-token.ps1 set TOKEN    # Set a specific token
-#   .\mcp-token.ps1 reset        # Generate a new random token
-#   .\mcp-token.ps1 copy         # Copy current token to clipboard
+#   .\mcp-token.ps1              Show current bootstrap secret
+#   .\mcp-token.ps1 show         Show current bootstrap secret
+#   .\mcp-token.ps1 set SECRET   Set a specific secret (>=32 bytes required)
+#   .\mcp-token.ps1 reset        Generate a new random secret
+#   .\mcp-token.ps1 copy         Copy current secret to clipboard
 
 param(
     [Parameter(Position=0)]
@@ -15,100 +26,132 @@ param(
     [string]$Value
 )
 
-$TokenFile = Join-Path $PSScriptRoot "..\.token"
 $ProjectRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 $TokenFile = Join-Path $ProjectRoot ".token"
+$MIN_BYTES = 32
 
-function Show-Token {
+function Test-SecretLength {
+    param([string]$Secret)
+    # base64url of 32 random bytes is 43 chars; enforce the byte-equivalent floor.
+    if ($Secret.Length -lt $MIN_BYTES) {
+        Write-Host ""
+        Write-Host "  ERROR: Secret too short ($($Secret.Length) chars)." -ForegroundColor Red
+        Write-Host "  The server rejects any bootstrap secret below $MIN_BYTES bytes." -ForegroundColor Red
+        Write-Host "  Use '.\mcp-token.ps1 reset' to generate a compliant secret." -ForegroundColor Yellow
+        Write-Host ""
+        return $false
+    }
+    return $true
+}
+
+function Write-SecretFile {
+    param([string]$Secret)
+    # Exclusive-create only: refuse to silently clobber an existing secret, and
+    # restrict the new file to owner-only access. matches the server's own
+    # crypto.randomBytes(32) + { flag: "wx", mode: 0o600 } behaviour.
     if (Test-Path $TokenFile) {
-        $token = Get-Content $TokenFile -Raw
-        $token = $token.Trim()
         Write-Host ""
-        Write-Host "  Access Token: $token" -ForegroundColor Green
-        Write-Host "  Token File:   $TokenFile" -ForegroundColor DarkGray
-        Write-Host "  Length:        $($token.Length) chars" -ForegroundColor DarkGray
+        Write-Host "  ERROR: A bootstrap secret already exists at:" -ForegroundColor Red
+        Write-Host "  $TokenFile" -ForegroundColor DarkGray
+        Write-Host "  Delete it first if you really intend to replace it." -ForegroundColor Yellow
         Write-Host ""
-        Write-Host "  Use in ChatGPT:" -ForegroundColor Yellow
-        Write-Host "  1. Go to Settings > Connectors" -ForegroundColor White
-        Write-Host "  2. Create connector with URL: http://localhost:3001/mcp" -ForegroundColor White
-        Write-Host "  3. When prompted, enter this token as PIN" -ForegroundColor White
+        return $false
+    }
+    [System.IO.File]::WriteAllText($TokenFile, $Secret, [System.Text.UTF8Encoding]::new($false))
+    return $true
+}
+
+function Show-Secret {
+    if (Test-Path $TokenFile) {
+        $secret = (Get-Content $TokenFile -Raw).Trim()
+        Write-Host ""
+        Write-Host "  Bootstrap secret: $secret" -ForegroundColor Green
+        Write-Host "  File:             $TokenFile" -ForegroundColor DarkGray
+        Write-Host "  Length:           $($secret.Length) chars" -ForegroundColor DarkGray
+        Write-Host ""
+        Write-Host "  OPERATOR USE ONLY (docs/SECURITY.md):" -ForegroundColor Yellow
+        Write-Host "  - Sign into the operator console:  POST /operator/login" -ForegroundColor White
+        Write-Host "  - Or paste it in the OAuth consent PIN field" -ForegroundColor White
+        Write-Host "  It is NEVER a Bearer token for /mcp and NEVER a connector access token." -ForegroundColor DarkGray
         Write-Host ""
     } else {
         Write-Host ""
-        Write-Host "  No token found. Run: .\mcp-token.ps1 reset" -ForegroundColor Red
+        Write-Host "  No bootstrap secret found. Run: .\mcp-token.ps1 reset" -ForegroundColor Red
         Write-Host ""
     }
 }
 
-function Set-Token {
-    param([string]$NewToken)
+function Set-Secret {
+    param([string]$NewSecret)
 
-    if (-not $NewToken) {
-        Write-Host "  Error: Provide a token value" -ForegroundColor Red
-        Write-Host "  Usage: .\mcp-token.ps1 set YOUR_TOKEN_HERE" -ForegroundColor Yellow
+    if (-not $NewSecret) {
+        Write-Host "  Error: Provide a secret value" -ForegroundColor Red
+        Write-Host "  Usage: .\mcp-token.ps1 set YOUR_SECRET_HERE" -ForegroundColor Yellow
         return
     }
-
-    # Validate token
-    if ($NewToken.Length -lt 16) {
-        Write-Host "  Warning: Token is very short ($($NewToken.Length) chars). Consider using 24+ chars." -ForegroundColor Yellow
-    }
-
-    $NewToken | Out-File -FilePath $TokenFile -Encoding utf8 -NoNewline
-    Write-Host ""
-    Write-Host "  Token saved!" -ForegroundColor Green
-    Write-Host "  Token: $NewToken" -ForegroundColor White
-    Write-Host "  File:  $TokenFile" -ForegroundColor DarkGray
-    Write-Host ""
-    Write-Host "  Restart the MCP server for the change to take effect." -ForegroundColor Yellow
-    Write-Host ""
-}
-
-function Reset-Token {
-    $newToken = -join ((65..90) + (97..122) + (48..57) | Get-Random -Count 32 | ForEach-Object { [char]$_ })
-
-    $newToken | Out-File -FilePath $TokenFile -Encoding utf8 -NoNewline
-    Write-Host ""
-    Write-Host "  New token generated!" -ForegroundColor Green
-    Write-Host "  Token: $newToken" -ForegroundColor White
-    Write-Host "  File:  $TokenFile" -ForegroundColor DarkGray
-    Write-Host ""
-    Write-Host "  Restart the MCP server for the change to take effect." -ForegroundColor Yellow
-    Write-Host ""
-}
-
-function Copy-Token {
-    if (Test-Path $TokenFile) {
-        $token = (Get-Content $TokenFile -Raw).Trim()
-        $token | Set-Clipboard
+    if (-not (Test-SecretLength -Secret $NewSecret)) { return }
+    if (Write-SecretFile -Secret $NewSecret) {
         Write-Host ""
-        Write-Host "  Token copied to clipboard!" -ForegroundColor Green
-        Write-Host "  Paste it in ChatGPT's OAuth PIN field." -ForegroundColor Yellow
+        Write-Host "  Bootstrap secret saved!" -ForegroundColor Green
+        Write-Host "  File:  $TokenFile" -ForegroundColor DarkGray
+        Write-Host ""
+        Write-Host "  Restart the MCP server for the change to take effect." -ForegroundColor Yellow
+        Write-Host ""
+    }
+}
+
+function Reset-Secret {
+    # 32 cryptographically random bytes, base64url-encoded (43 chars), matching
+    # the server's own generation in src/mcp/http-server.ts.
+    $bytes = New-Object byte[] 32
+    ([System.Security.Cryptography.RandomNumberGenerator]::Create()).GetBytes($bytes)
+    $secret = [Convert]::ToBase64String($bytes).TrimEnd('=').Replace('+', '-').Replace('/', '_')
+    if (Write-SecretFile -Secret $secret) {
+        Write-Host ""
+        Write-Host "  New bootstrap secret generated!" -ForegroundColor Green
+        Write-Host "  Secret: $secret" -ForegroundColor White
+        Write-Host "  File:   $TokenFile" -ForegroundColor DarkGray
+        Write-Host ""
+        Write-Host "  Restart the MCP server for the change to take effect." -ForegroundColor Yellow
+        Write-Host ""
+    }
+}
+
+function Copy-Secret {
+    if (Test-Path $TokenFile) {
+        $secret = (Get-Content $TokenFile -Raw).Trim()
+        $secret | Set-Clipboard
+        Write-Host ""
+        Write-Host "  Bootstrap secret copied to clipboard!" -ForegroundColor Green
+        Write-Host "  Paste it in the operator login or the OAuth consent PIN field." -ForegroundColor Yellow
         Write-Host ""
     } else {
-        Write-Host "  No token found. Run: .\mcp-token.ps1 reset" -ForegroundColor Red
+        Write-Host "  No bootstrap secret found. Run: .\mcp-token.ps1 reset" -ForegroundColor Red
     }
 }
 
 function Show-Help {
     Write-Host ""
-    Write-Host "  HooshiX MCP Token Manager" -ForegroundColor Cyan
+    Write-Host "  HooshiX MCP Bootstrap Secret Manager" -ForegroundColor Cyan
     Write-Host ""
     Write-Host "  Commands:" -ForegroundColor White
-    Write-Host "    show              Show current token (default)"
-    Write-Host "    set <TOKEN>       Set a specific token"
-    Write-Host "    reset             Generate a new random token"
-    Write-Host "    copy              Copy token to clipboard"
+    Write-Host "    show              Show current bootstrap secret (default)"
+    Write-Host "    set <SECRET>      Set a specific secret (>= 32 bytes)"
+    Write-Host "    reset             Generate a new random secret"
+    Write-Host "    copy              Copy secret to clipboard"
     Write-Host ""
-    Write-Host "  Token file: $TokenFile" -ForegroundColor DarkGray
+    Write-Host "  Remember: the bootstrap secret is an OPERATOR credential." -ForegroundColor Yellow
+    Write-Host "  Remote MCP clients authenticate only via OAuth (PKCE)." -ForegroundColor Yellow
+    Write-Host ""
+    Write-Host "  Secret file: $TokenFile" -ForegroundColor DarkGray
     Write-Host ""
 }
 
 switch ($Action) {
-    "show"  { Show-Token }
-    "set"   { Set-Token -NewToken $Value }
-    "reset" { Reset-Token }
-    "copy"  { Copy-Token }
+    "show"  { Show-Secret }
+    "set"   { Set-Secret -NewSecret $Value }
+    "reset" { Reset-Secret }
+    "copy"  { Copy-Secret }
     "help"  { Show-Help }
-    default { Show-Token }
+    default { Show-Secret }
 }

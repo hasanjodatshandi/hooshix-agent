@@ -1,5 +1,5 @@
 import {afterEach,beforeEach,describe,expect,it} from "vitest";
-import {runWithTrustedInboundIdentity} from "../../src/infrastructure/composition/r2-trusted-inbound-identity.js";
+import {runWithTrustedInboundIdentity} from "../../src/core/runtime/r2-trusted-inbound-identity.js";
 import {
   saveProject,getProject,deleteProject,archiveProject,listProjects,
   saveMemoryItem,getMemoryItem,deleteMemoryItem,listMemoryItems,
