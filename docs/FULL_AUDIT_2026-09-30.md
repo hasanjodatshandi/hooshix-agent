@@ -52,6 +52,12 @@
   - **pages.ts زنده**: dynamic client registration OK، صفحه consent `/oauth/authorize` → ۲۰۰ (عنوان RTL فارسی، PKCE hidden field، grant checkboxes)
   - `/dashboard` و `/metrics` بدون session → ۴۰۱ (fail-closed درست)
 
+**P1-9 (ادغام TaskState) — جلسه سوم:**
+- `LegacyTaskState` حذف شد؛ ماشین حالت روی `src/domain/task/task-state-machine.ts` با ۱۰ حالت canonical بازنویسی شد (переимен از `legacy-task-state-machine.ts`).
+- **Migration 20** (`consolidate-canonical-task-states`): `created`→`planning`، `checkpointing`/`resuming`→`executing`. روی throwaway DB تأیید شد (هر سه تبدیل درست).
+- DB زنده: head v20، ۱۰۵۴ task دست‌نخورده، **۰ ردیف legacy**.
+- سرور ری‌استارت شد (PID 22696) و با کد canonical اجرا می‌شود؛ tunnel + OAuth + challenge ۴۰۱ همگی سالم.
+
 ---
 
 ---
