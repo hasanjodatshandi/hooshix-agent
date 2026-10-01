@@ -39,7 +39,8 @@ specs above and by the traceability matrix.
 
 | Document | Status |
 |---|---|
-| `FULL_AUDIT_2026-09-30.md` | Latest full audit; finding status mirrored in the traceability matrix |
+| `FULL_AUDIT_2026-10-01.md` | Latest full audit (evidence-based, project-audit-skill); all 5 findings remediated in-session |
+| `FULL_AUDIT_2026-09-30.md` | Prior full audit; finding status mirrored in the traceability matrix |
 | `HOOSHIX_AUDIT_CONSOLIDATED_FINAL.md` | Earlier consolidated audit (superseded by the above for status) |
 | `RELEASE_HARDENING_2026-09-19.md` | Early hardening pass evidence |
 | `implementation/R7_LOCAL_OPERATIONS_RUNBOOK_2026-09-23.md` | Authoritative implementation runbook referenced by `OPERATIONS.md` |

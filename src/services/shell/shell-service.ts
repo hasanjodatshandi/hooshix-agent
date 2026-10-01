@@ -33,11 +33,6 @@ export async function executeShellCommand(
     // otherwise the call is an escalation requiring approval (direct calls need
     // HOOSHIX_DIRECT_AUTO_APPROVE=1). Unrestricted mode does not bypass this.
     const allowedCwd = validateCommandCwd(safeCwd);
-    // Auto-prepend -Command for PowerShell so bare invocations behave as scripts.
-    // Do this BEFORE the policy check so the PDP evaluates the actual argv shape.
-    if (command === "powershell" && args.length > 0 && args[0] !== "-Command" && args[0] !== "-c") {
-      args = ["-Command", ...args];
-    }
     policyDecisionPoint.assertAllowed({ tool: "execute_command", arguments: { command, args, cwd: allowedCwd, timeout }, correlationId: traceId });
     validateCommand(command, args);
 

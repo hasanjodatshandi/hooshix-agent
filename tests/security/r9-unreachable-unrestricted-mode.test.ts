@@ -20,8 +20,8 @@ import {
  * ever make isUnrestrictedMode() true.
  *
  * Two producers exist in source: setUnrestrictedMode (which throws on any
- * attempt to enable it) and seedUnrestrictedMode (never imported outside
- * tests — asserted here by a source scan). The only real producer is
+ * attempt to enable it) and __seedUnrestrictedModeForTests (never imported
+ * outside tests — asserted here by a source scan). The only real producer is
  * runWithApprovedUnrestrictedScope, an AsyncLocalStorage that grants a
  * SINGLE effect inside the R2 gateway after an approved-task claim.
  */
@@ -69,7 +69,7 @@ describe("R9.02 unrestricted mode is unreachable from production paths",()=>{
     expect(isUnrestrictedMode()).toBe(false);
   });
 
-  it("seedUnrestrictedMode is never imported by any source module",()=>{
+  it("__seedUnrestrictedModeForTests is never imported by any source module",()=>{
     const srcDir=path.resolve(process.cwd(),"src");
     const violations:string[]=[];
     function walk(dir:string):void{
@@ -78,7 +78,7 @@ describe("R9.02 unrestricted mode is unreachable from production paths",()=>{
         if(entry.isDirectory()){walk(target);continue;}
         if(!entry.name.endsWith(".ts"))continue;
         const source=fs.readFileSync(target,"utf8");
-        if(/seedUnrestrictedMode/.test(source))violations.push(path.relative(process.cwd(),target));
+        if(/__seedUnrestrictedModeForTests/.test(source))violations.push(path.relative(process.cwd(),target));
       }
     }
     walk(srcDir);

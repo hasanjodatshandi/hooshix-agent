@@ -73,7 +73,9 @@ export function evaluateCommandPermission(command: string, args: readonly string
   if (command === "git" && args.length === 1 && args[0] === "--version") return { risk: "low", decision: "allow" };
   // git config, diff pathspecs, log/show revisions, -c/--git-dir and all
   // path-bearing/option-bearing generic Git forms require governed approval.
-  if (command === "powershell") return { risk: "high", decision: "approval_required" };
+  // `powershell` never reaches this point: it is absent from the
+  // execute_command argv allowlist and the tool's zod enum, so
+  // validateCommand rejects it before the policy is consulted.
   return { risk: "medium", decision: "approval_required" };
 }
 

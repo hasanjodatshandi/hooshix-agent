@@ -91,6 +91,27 @@ async function assertReadableSize(filePath: string): Promise<void> {
   if (stat.size > MAX_FILE_BYTES) throw new Error(`File exceeds ${MAX_FILE_BYTES} byte limit`);
 }
 
+/**
+ * Open a file and read it through a SINGLE file descriptor so the identity and
+ * the bytes cannot be swapped between the containment/sensitivity check and the
+ * read (a TOCTOU window). validateWorkspace realpath-checks the path and
+ * assertNotSensitive walks symlinks before this call; opening the path then
+ * pins the inode, and both fstat and readFile operate on that pinned handle —
+ * a symlink flipped in the gap can no longer redirect the read outside the
+ * workspace. (Audit LOW-02.)
+ */
+async function readPinnedFile(filePath: string): Promise<string> {
+  const handle = await fs.open(filePath, "r");
+  try {
+    const stat = await handle.stat();
+    if (!stat.isFile()) throw new Error("Target is not a file");
+    if (stat.size > MAX_FILE_BYTES) throw new Error(`File exceeds ${MAX_FILE_BYTES} byte limit`);
+    return await handle.readFile("utf8");
+  } finally {
+    await handle.close();
+  }
+}
+
 async function atomicWrite(filePath: string, content: string | Buffer, options?: { flag?: string }): Promise<void> {
   if (options?.flag === "wx") {
     // Exclusive create: must fail if the target exists. Writing to a temp
@@ -183,8 +204,7 @@ export async function readWorkspaceFile(targetPath: string, correlationId?: stri
     policyDecisionPoint.assertAllowed({ tool: "read_file", arguments: { path: targetPath }, correlationId });
     const filePath = validateWorkspace(targetPath);
     assertNotSensitive(filePath);
-    await assertReadableSize(filePath);
-    const content = await fs.readFile(filePath, "utf8");
+    const content = await readPinnedFile(filePath);
     if (options?.includeSha256) return { content, sha256: sha256hex(content) };
     return content;
   });

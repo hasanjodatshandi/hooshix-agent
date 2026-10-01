@@ -8,7 +8,7 @@ import {getApprovalRequest} from "../../src/core/governance/approval-memory.js";
 import {withAgentDatabase} from "../../src/core/memory/database/index.js";
 import {connectInProcessMcp} from "../helpers/in-process-mcp.js";
 import {addWorkspaceRoots,getWorkspaceRoot,isUnrestrictedMode,
-  removeWorkspaceRoot,seedUnrestrictedMode,setActiveWorkspace} from "../../src/security/workspace-guard.js";
+  removeWorkspaceRoot,__seedUnrestrictedModeForTests,setActiveWorkspace} from "../../src/security/workspace-guard.js";
 
 const initialPermission=process.env.HOOSHIX_PERMISSION_LEVEL;
 const initialAllow=process.env.HOOSHIX_UNRESTRICTED;
@@ -22,7 +22,7 @@ afterEach(()=>{
   else process.env.HOOSHIX_PERMISSION_LEVEL=initialPermission;
   if(initialAllow===undefined)delete process.env.HOOSHIX_UNRESTRICTED;
   else process.env.HOOSHIX_UNRESTRICTED=initialAllow;
-  seedUnrestrictedMode(priorUnrestricted);
+  __seedUnrestrictedModeForTests(priorUnrestricted);
   if(priorRoot)setActiveWorkspace(priorRoot);
   if(allowed){try{removeWorkspaceRoot(allowed.root)}catch{};allowed.cleanup();}
   outside?.cleanup();
@@ -33,7 +33,7 @@ function prepare(){
   priorUnrestricted=isUnrestrictedMode();
   process.env.HOOSHIX_PERMISSION_LEVEL="ADMIN_MODE";
   process.env.HOOSHIX_UNRESTRICTED="1";
-  seedUnrestrictedMode(false);
+  __seedUnrestrictedModeForTests(false);
   allowed=createDisposableFixture("r2-allow-root");
   outside=createDisposableFixture("r2-outside");
   addWorkspaceRoots([allowed.root]);

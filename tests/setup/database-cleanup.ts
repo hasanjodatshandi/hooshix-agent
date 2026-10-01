@@ -1,4 +1,4 @@
-import { beforeEach } from "vitest";
+import { afterAll, beforeEach } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 import { resetAgentDatabase, resetMigrationsFlag } from "../../src/core/memory/database/index.js";
@@ -45,4 +45,20 @@ beforeEach(() => {
   fs.rmSync(logDirectory, { recursive: true, force: true });
   fs.rmSync(memoryFile, { force: true });
   replaceWorkspaceRoots(process.cwd());
+});
+
+// OPS-01: beforeEach isolates each test but nothing reclaimed the worker's tree
+// after the run, so data/ accumulated hundreds of leftover test databases. Each
+// worker owns exactly its own VITEST_WORKER_ID paths (no other worker touches
+// them), so removing them here is safe and keeps the working tree clean.
+// The connection is closed first: on Windows an open SQLite handle makes the
+// file undeletable (EPERM) and would fail the suite in teardown. Deletion is
+// best-effort — a leftover file is only disk clutter, never a test failure.
+afterAll(() => {
+  resetAgentDatabase();
+  for (const suffix of ["", "-wal", "-shm", ".identity"]) {
+    try { rmSyncWithRetry(databasePath + suffix, { force: true }); } catch { /* best-effort teardown */ }
+  }
+  try { fs.rmSync(logDirectory, { recursive: true, force: true }); } catch { /* best-effort teardown */ }
+  try { fs.rmSync(memoryFile, { force: true }); } catch { /* best-effort teardown */ }
 });

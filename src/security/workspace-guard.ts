@@ -278,11 +278,16 @@ export function assertUnrestrictedElevationAllowed(): void {
   throw new Error("Approval required: unrestricted access needs server opt-in, ADMIN and an exact approved Task operation; process-wide elevation is disabled");
 }
 
-/** Test-only compatibility fixture for old global-workspace regressions.
+/**
+ * Test-only compatibility fixture for old global-workspace regressions.
+ * The `__` prefix matches the other test-only fixtures in this module
+ * (__clearWorkspaceStateForTests, __reloadWorkspaceStateForTests) so an
+ * accidental import into production code is visually obvious; the R9.02 test
+ * additionally scans src/ and fails if any production module names it.
  * Not invoked by any production entrypoint or tool; the server allow flag
  * never calls this function and never directly authorizes a file effect.
  */
-export function seedUnrestrictedMode(enabled: boolean): void {
+export function __seedUnrestrictedModeForTests(enabled: boolean): void {
   unrestrictedMode = enabled;
 }
 

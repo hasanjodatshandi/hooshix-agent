@@ -6,6 +6,7 @@ import { OAuthProvider, OAUTH_SCOPES } from "./oauth.js";
 import { mcpMetrics } from "./metrics.js";
 import { createMetricsServer } from "./metrics-server.js";
 import { getAgentMetrics } from "../core/trace/metrics-service.js";
+import { parseTimestamp } from "../core/executor/handlers/metrics-arguments.js";
 import http from "node:http";
 import crypto from "node:crypto";
 import fs from "node:fs";
@@ -196,20 +197,13 @@ async function handleRequest(
     // rows. The operator-cookie session keeps the full unscoped view.
     const monitoringClaims=oauthProviderRef?.tokenClaims(req.headers.authorization,CONFIG.resource);
     const accept = req.headers.accept ?? "";
+    const filters = parseMetricsQuery(url, monitoringClaims?.principalId);
+    if (!filters) { sendJSON(res, 400, { error: "invalid_metrics_query" }); return; }
     if (accept.includes("text/plain")) {
       res.writeHead(200, { "Content-Type": "text/plain; charset=utf-8" });
       res.end(mcpMetrics.getPrometheusMetrics());
     } else {
-      const dbMetrics = getAgentMetrics({
-        taskId: url.searchParams.get("taskId") ?? undefined,
-        tool: url.searchParams.get("tool") ?? undefined,
-        status: url.searchParams.get("status") ?? undefined,
-        from: url.searchParams.get("from") ?? undefined,
-        to: url.searchParams.get("to") ?? undefined,
-        limit: parseInt(url.searchParams.get("limit") ?? "100", 10),
-        offset: parseInt(url.searchParams.get("offset") ?? "0", 10),
-        principalId: monitoringClaims?.principalId,
-      });
+      const dbMetrics = getAgentMetrics(filters);
       sendJSON(res, 200, { ...mcpMetrics.getSnapshot(), database: dbMetrics });
     }
     return;
@@ -222,22 +216,15 @@ async function handleRequest(
     const monitoringClaims=oauthProviderRef?.tokenClaims(req.headers.authorization,CONFIG.resource);
     const page = Math.max(1, parseInt(url.searchParams.get("page") ?? "1", 10));
     const pageSize = 20;
-    const toolFilter = url.searchParams.get("tool") ?? undefined;
-    const statusFilter = url.searchParams.get("status") ?? undefined;
-    const fromFilter = url.searchParams.get("from") ?? undefined;
-    const toFilter = url.searchParams.get("to") ?? undefined;
-    const taskIdFilter = url.searchParams.get("taskId") ?? undefined;
+    const filters = parseMetricsQuery(url, monitoringClaims?.principalId, { limit: pageSize, offset: (page - 1) * pageSize });
+    if (!filters) { sendJSON(res, 400, { error: "invalid_metrics_query" }); return; }
+    const toolFilter = filters.tool;
+    const statusFilter = filters.status;
+    const fromFilter = filters.from;
+    const toFilter = filters.to;
+    const taskIdFilter = filters.taskId;
     const snapshot = mcpMetrics.getSnapshot();
-    const dbMetrics = getAgentMetrics({
-      taskId: taskIdFilter,
-      tool: toolFilter,
-      status: statusFilter,
-      from: fromFilter,
-      to: toFilter,
-      limit: pageSize,
-      offset: (page - 1) * pageSize,
-      principalId: monitoringClaims?.principalId,
-    });
+    const dbMetrics = getAgentMetrics(filters);
     // Get distinct tool names from database for the filter dropdown
     const toolNames = getDistinctToolNames();
     sendHTML(res, 200, dashboardPage(snapshot, dbMetrics, toolNames, page, pageSize, { toolFilter, statusFilter, fromFilter, toFilter, taskIdFilter },operatorSessions.get(operatorCookie(req))?.csrf,{port:PORT,publicBaseUrl:PUBLIC_BASE_URL}));
@@ -546,6 +533,44 @@ function operatorCookie(req:http.IncomingMessage):string|undefined{
   const value=raw.split(";").map(x=>x.trim()).find(x=>x.startsWith("hx_operator="));
   return value?.slice("hx_operator=".length);
 }
+/**
+ * Shared filter parsing for /metrics and /dashboard. Mirrors the canonical
+ * agent_metrics argument schema (metrics-arguments.ts): `limit` is clamped to
+ * the same [1,500] ceiling the tool enforces, `offset` to a non-negative int,
+ * and `from`/`to` must parse as ISO dates or the request is rejected — the HTTP
+ * path previously passed them through raw, letting an authenticated monitoring
+ * caller request an unbounded result set or silently match nothing on a
+ * malformed date (audit LOW-01).
+ */
+function parseMetricsQuery(
+  url: URL,
+  principalId: string | undefined,
+  overrides?: { limit: number; offset: number },
+): {
+  taskId?: string; tool?: string; status?: string;
+  from?: string; to?: string; limit: number; offset: number;
+  principalId?: string;
+} | null {
+  const from = url.searchParams.get("from") ?? undefined;
+  const to = url.searchParams.get("to") ?? undefined;
+  // Reject a date that cannot be normalized instead of comparing it as a raw
+  // string against ISO timestamps (which would silently return zero rows).
+  if ((from !== undefined && parseTimestamp(from) === null) ||
+      (to !== undefined && parseTimestamp(to) === null)) return null;
+  const limit = overrides?.limit ?? Math.min(Math.max(parseInt(url.searchParams.get("limit") ?? "100", 10) || 100, 1), 500);
+  const offset = overrides?.offset ?? Math.max(parseInt(url.searchParams.get("offset") ?? "0", 10) || 0, 0);
+  return {
+    taskId: url.searchParams.get("taskId") ?? undefined,
+    tool: url.searchParams.get("tool") ?? undefined,
+    status: url.searchParams.get("status") ?? undefined,
+    from,
+    to,
+    limit,
+    offset,
+    principalId,
+  };
+}
+
 /** Query credentials and master/bootstrap tokens are never HTTP bearer auth. */
 function authorizeMonitoringRequest(req:http.IncomingMessage,_url:URL,res:http.ServerResponse):boolean{
   const session=operatorSessions.get(operatorCookie(req));
