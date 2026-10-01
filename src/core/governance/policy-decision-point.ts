@@ -27,7 +27,7 @@ export interface PolicyDecision {
 const APPROVAL_TOOLS = new Set<ToolName>([
   "delete_file", "git_clone", "git_commit", "git_branch", "git_checkout",
   "git_add", "git_init", "install_package", "remove_package", "update_package",
-  "task_rollback", "package_restore", "add_workspace_roots", "remove_workspace_root"
+  "task_rollback", "add_workspace_roots", "remove_workspace_root"
 ]);
 const approvedTool = new AsyncLocalStorage<ToolName>();
 

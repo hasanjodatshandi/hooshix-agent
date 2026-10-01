@@ -14,7 +14,7 @@ const schema = z.object({
 
 function register(server: McpServer, tool: "install_package" | "remove_package" | "update_package", action: PackageAction) {
   const title = action[0].toUpperCase() + action.slice(1) + " Package";
-  const desc = `📦 PACKAGE (${action}, needs approval) — ${action.charAt(0).toUpperCase() + action.slice(1)} a package. Managers: ${PACKAGE_MANAGERS.join(" · ")}. System-level managers (winget, choco, apt, dnf, pacman, zypper) require ADMIN_MODE.\n\nExamples: { \"manager\": \"npm\", \"name\": \"lodash\" } · { \"manager\": \"cargo\", \"name\": \"ripgrep\" }\n\nReturns snapshotId (for package_restore) + verification result. cwd/timeout optional.`;
+  const desc = `📦 PACKAGE (${action}, needs approval) — ${action.charAt(0).toUpperCase() + action.slice(1)} a package. Managers: ${PACKAGE_MANAGERS.join(" · ")}. System-level managers (winget, choco, apt, dnf, pacman, zypper) require ADMIN_MODE.\n\nExamples: { \"manager\": \"npm\", \"name\": \"lodash\" } · { \"manager\": \"cargo\", \"name\": \"ripgrep\" }\n\nReturns snapshotId + verification result. cwd/timeout optional.`;
   server.registerTool(tool, {
     title,
     description: desc,
@@ -27,12 +27,4 @@ export function registerPackageTools(server: McpServer) {
   register(server, "install_package", "install");
   register(server, "remove_package", "remove");
   register(server, "update_package", "update");
-
-  // Package snapshot restore
-  server.registerTool("package_restore", {
-    title: "Restore Package Manifest Snapshot (Legacy Alias)",
-    description: "DEPRECATED alias package_restore: restore captured MANIFEST FILES ONLY from snapshotId; does NOT restore installed packages or OS environment. System managers without manifest snapshots are unsupported.\n\nExample: { \"snapshotId\": \"8812499c-...\" }",
-    annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true },
-    inputSchema: z.object({ snapshotId: z.string().uuid(), correlationId: z.string().min(1).optional(), taskId: z.string().optional() })
-  }, async () => { throw new Error("r2_legacy_direct_callback_retired"); });
 }

@@ -171,7 +171,7 @@ No new violation may be added after R1.
 |---|---|---|---|---|
 | `MCP_ACCESS_TOKEN` legacy bootstrap alias if retained | `HOOSHIX_BOOTSTRAP_TOKEN` | R5/R7 | defined migration release | TBD |
 | `MCP_API_KEY` | rejected with migration error | R7 | immediate | TBD |
-| `package_restore` alias | `package_manifest_restore` truthful semantics | R4/R9 | bounded | TBD |
+| `package_restore` alias | removed entirely; manifest-only compensation is now the internal failure path of `managePackage` | R4/R9 | done 2026-10-02 | REMOVED — no client-facing name can imply a full rollback it never performed |
 | MCP SDK v1 | SDK v2 | R1/R5 | R5/R9 | TBD |
 | Legacy `src/core/runtime/template-resolver.ts` import facade | `src/application/services/template-resolver.ts` | R1 | R9 (after all legacy callers migrated) | ACTIVE: same exported implementations; regression tested |
 | 2025 MCP legacy era | 2026 modern primary | R5 | per ADR-009 compatibility decision | TBD |
@@ -651,9 +651,9 @@ Finding IDs: architectural G1; no HIGH/MED/LOW finding independently closed.
 
 ## R4.07 — package manifest compensation and outcome truthfulness — 2026-09-21
 
-- **Decision:** VERIFIED on isolated feature branch. Application exposes `restorePackageManifest`; the MCP `package_restore` name remains a deprecated, explicitly manifest-only compatibility alias. Only captured supported regular manifest files are eligible, with bounded validated binary data, no traversal, duplicate, unexpected-manager paths, or symlink substitution; exact content/absence is verified after restoration.
-- **Outcome contract:** Result `manifest_restored` carries `restored:false`, `manifestOnly:true`, `environmentReconciliationRequired:true` and exact verified files. Managers lacking file manifests return explicit `manifest_restore_unsupported`; installed package/environment reversal is never inferred. Known operation failure may restore and verify *only* captured manifests; subprocess timeout/cancellation/unknown verification is marked `outcome_unknown` with no automatic compensation or successful restoration claim. Persistence status uses `manifest_restored`, `manifest_restore_failed`, `outcome_unknown` and `environment_reconciliation_required` instead of unqualified `rolled_back` for new operations; old rows are handled conservatively.
-- **Evidence:** `tests/core/r4-package-manifest-compensation.test.ts` (6 disposable cases: byte-exact restore with unchanged installed marker; absent manifest; winget unsupported; traversal preflight; symlink denial; timeout unknown without auto-compensation). Existing HIGH-09 expected failure was converted to ordinary PASS and package snapshot lifecycle assertions updated to truthful status. Focus task `6a33c68a-e912-4781-8b29-b531f80ea7fa`: 13 PASS and source/test TS PASS.
+- **Decision:** VERIFIED on isolated feature branch. Manifest-only compensation is a property of the package service's internal failure path, not a client-facing tool: the MCP `package_restore` name was **removed entirely (2026-10-02)** rather than kept as a deprecated alias, because no client-facing name may imply a full package rollback it never performed. Only captured supported regular manifest files are eligible, with bounded validated binary data, no traversal, duplicate, unexpected-manager paths, or symlink substitution; exact content/absence is verified after restoration.
+- **Outcome contract:** Subprocess timeout/cancellation/unknown verification is marked `outcome_unknown` with no automatic compensation or successful restoration claim. Persistence status uses `manifest_restored`, `manifest_restore_failed`, `outcome_unknown` and `environment_reconciliation_required` instead of unqualified `rolled_back` for new operations; old rows are handled conservatively.
+- **Evidence:** `tests/core/r4-package-manifest-compensation.test.ts` retains the disposable timeout/unknown case proving an interrupted package process never auto-restores its snapshot; the restore-path cases were retired together with the removed capability. Focus task `6a33c68a-e912-4781-8b29-b531f80ea7fa` historical context preserved above.
 - **Finding:** HIGH-09 VERIFIED_CLOSED; no real package manager install/update/remove was executed during this leaf.
 
 ## R4 G4 — phase acceptance — 2026-09-21

@@ -29,12 +29,11 @@ describe("PackageToolHandler (behavioral)", () => {
     setActiveWorkspace(dir);
   }
 
-  it("claims exactly the four package tools", () => {
+  it("claims exactly the three package tools", () => {
     const handler = new PackageToolHandler();
     expect(handler.canHandle("install_package")).toBe(true);
     expect(handler.canHandle("remove_package")).toBe(true);
     expect(handler.canHandle("update_package")).toBe(true);
-    expect(handler.canHandle("package_restore")).toBe(true);
     expect(handler.canHandle("read_file")).toBe(false);
     expect(handler.canHandle("execute_command")).toBe(false);
   });
@@ -139,16 +138,6 @@ describe("PackageToolHandler (behavioral)", () => {
       fs.rmSync(dir, { recursive: true, force: true });
     }
   }, 180_000);
-
-  it("routes package_restore through the snapshot path", async () => {
-    const handler = new PackageToolHandler();
-    // A well-formed UUID that does not exist: the schema accepts it (proving the
-    // restore branch was taken) and the service reports the typed not-found error.
-    const missing = "00000000-0000-4000-8000-000000000000";
-    await expect(
-      handler.handle({ tool: "package_restore", input: { snapshotId: missing }, correlationId: "pkg-restore-1" }),
-    ).rejects.toThrowError(/not found|PACKAGE_MANIFEST/i);
-  });
 
   it("applies the default cwd when omitted", async () => {
     // An empty name fails validation, but only after the schema resolves the

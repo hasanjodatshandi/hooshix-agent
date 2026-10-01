@@ -1,7 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
-import { randomUUID } from "node:crypto";
 import { afterEach, describe, expect, it } from "vitest";
 import { createDisposableFixture, type DisposableFixture } from "../helpers/r0-disposable-fixtures.js";
 import { addWorkspaceRoots, removeWorkspaceRoot, setActiveWorkspace } from "../../src/security/workspace-guard.js";
@@ -10,9 +9,6 @@ import { createTaskPlan } from "../../src/core/planner/task-planner.js";
 import { saveTaskPlan, getTaskPlan, findInterruptedTasks } from "../../src/core/memory/task-repository.js";
 import { recoverInterruptedTasks } from "../../src/core/recovery/crash-recovery.js";
 import { runClosedAgentLoop } from "../../src/core/loop/closed-agent-loop.js";
-import { withAgentDatabase } from "../../src/core/memory/database/index.js";
-import { restorePackageManifest } from "../../src/services/package/package-service.js";
-import { runWithPolicyApproval } from "../../src/core/governance/policy-decision-point.js";
 
 let fixture: DisposableFixture | undefined;
 let allowedGitRoot: string | undefined;
@@ -118,24 +114,4 @@ describe("R0 execution-reality and compensation safety contracts", () => {
     expect(snapshot.snapshotId).toBe("");
     expect(fs.readFileSync(path.join(cwd, "untracked-user-work.txt"), "utf8")).toBe("MUST_NOT_BE_REMOVED");
   }, 15000);
-
-  it("HIGH-09: package restore must never claim environment restoration after only restoring manifests", async () => {
-    fixture = createDisposableFixture("packagerestore");
-    allowedGitRoot = fixture.root;
-    addWorkspaceRoots([fixture.root]);
-    setActiveWorkspace(fixture.root);
-    const sentinel = path.join(fixture.root, "installed-state.marker");
-    fs.writeFileSync(sentinel, "installed-state-unchanged");
-    const snapshotId = randomUUID();
-    const now = new Date().toISOString();
-    withAgentDatabase((db) => db.prepare(
-      "INSERT INTO package_snapshots(id,correlation_id,manager,action,package_name,cwd,snapshot,status,created_at) VALUES (?,?,?,?,?,?,?,?,?)"
-    ).run(snapshotId, "r0-package", "npm", "install", "fixture-only", fixture!.root,
-      JSON.stringify({ files: [] }), "committed", now));
-    const result = await runWithPolicyApproval("package_restore", () => restorePackageManifest(snapshotId, "r0-package"));
-    expect(fs.readFileSync(sentinel, "utf8")).toBe("installed-state-unchanged");
-    // A truthful R4 response must distinguish manifest-only from installed
-    // package state, not report an unqualified restored:true.
-    expect(result).toMatchObject({ restored: false, manifestOnly: true });
-  });
 });

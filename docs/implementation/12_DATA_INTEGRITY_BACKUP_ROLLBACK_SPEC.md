@@ -205,7 +205,7 @@ Options:
 
 ### 7.3 Naming/API
 
-Rename current ambiguous `package_restore` behavior to `package_manifest_restore` in application/domain terminology. If backward-compatible MCP alias remains temporarily, its description must state manifest-only semantics and be deprecated.
+~~Rename current ambiguous `package_restore` behavior to `package_manifest_restore` in application/domain terminology. If backward-compatible MCP alias remains temporarily, its description must state manifest-only semantics and be deprecated.~~ **DONE (2026-10-02):** the misleading `package_restore` MCP tool was removed outright rather than aliased — manifest-only compensation now exists solely as the internal failure path of `managePackage`, so no client-facing name can imply a full package rollback it never performed.
 
 ---
 

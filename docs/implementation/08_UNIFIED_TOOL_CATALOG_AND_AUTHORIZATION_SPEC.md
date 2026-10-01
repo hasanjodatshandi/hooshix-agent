@@ -69,7 +69,6 @@ Recommended target policy for current execution tools:
 | `install_package` | DEVELOPER_MODE | critical | always | non_idempotent_mutation | process |
 | `remove_package` | DEVELOPER_MODE | critical | always | non_idempotent_mutation | process |
 | `update_package` | DEVELOPER_MODE | critical | always | non_idempotent_mutation | process |
-| `package_restore` | DEVELOPER_MODE | high | always | manifest mutation only | write/process |
 | `task_snapshot` | DEVELOPER_MODE | medium | conditional; requires clean repo | read/write metadata | read |
 | `task_rollback` | DEVELOPER_MODE | critical | always | non_idempotent_mutation | write/process |
 | `set_workspace` | DEVELOPER_MODE | high | **always for scope expansion; ADMIN+approval for unrestricted** | scope mutation | scope_mutation |

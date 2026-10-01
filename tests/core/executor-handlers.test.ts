@@ -46,7 +46,6 @@ describe("executor handlers: canHandle coverage", () => {
     expect(new GitToolHandler().canHandle("git_log")).toBe(true);
     expect(new GitToolHandler().canHandle("read_file")).toBe(false);
     expect(new PackageToolHandler().canHandle("install_package")).toBe(true);
-    expect(new PackageToolHandler().canHandle("package_restore")).toBe(true);
     expect(new PackageToolHandler().canHandle("read_file")).toBe(false);
     expect(new ShellToolHandler().canHandle("execute_command")).toBe(true);
     expect(new ShellToolHandler().canHandle("read_file")).toBe(false);

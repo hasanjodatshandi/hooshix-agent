@@ -158,7 +158,6 @@ function getToolDescription(tool: ToolName): string {
     install_package: "Install a package via npm, pnpm, pip, winget, or choco.",
     remove_package: "Remove a package via npm, pnpm, pip, winget, or choco.",
     update_package: "Update a package via npm, pnpm, pip, winget, or choco.",
-    package_restore: "Deprecated alias: restore captured manifest files only; installed packages and OS environment are NOT restored.",
     task_snapshot: "Capture a git snapshot of a workspace before a task runs.",
     task_rollback: "Reset a workspace to its pre-task git snapshot (destructive).",
     set_workspace: "Select the active workspace from the allowed roots pool (pure selector — cannot expand file-tool scope).",

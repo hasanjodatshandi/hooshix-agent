@@ -1,10 +1,10 @@
 import { z } from "zod";
 import type { ToolHandler, ToolHandlerContext } from "./tool-handler.js";
 import type { ToolName } from "../../../application/services/legacy-tool-orchestrator.js";
-import { PACKAGE_MANAGERS, managePackage, restorePackageManifest } from "../../../services/package/package-service.js";
+import { PACKAGE_MANAGERS, managePackage } from "../../../services/package/package-service.js";
 
 const PACKAGE_TOOLS: ReadonlySet<ToolName> = new Set([
-  "install_package", "remove_package", "update_package", "package_restore"
+  "install_package", "remove_package", "update_package"
 ]);
 
 const object = z.record(z.string(), z.unknown());
@@ -16,10 +16,6 @@ export class PackageToolHandler implements ToolHandler {
 
   async handle({ tool, input, correlationId, signal }: ToolHandlerContext): Promise<unknown> {
     const data = object.parse(input);
-    if (tool === "package_restore") {
-      const value = z.object({ snapshotId: z.string().uuid() }).parse(data);
-      return restorePackageManifest(value.snapshotId, correlationId);
-    }
     const value = z.object({
       manager: z.enum(PACKAGE_MANAGERS),
       name: z.string(),

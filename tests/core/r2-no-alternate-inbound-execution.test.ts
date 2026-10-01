@@ -16,8 +16,8 @@ describe("R2.09 inbound execution path retirement",()=>{
     expect(registry).toContain("executeAuthorizedDirectTool");
     expect(registry).toContain("TOOL_NAMES");
     expect(registry).toContain("return callback(validated,...extra)");
-    expect(TOOL_NAMES).toHaveLength(30);
-    expect(new Set(TOOL_NAMES).size).toBe(30);
+    expect(TOOL_NAMES).toHaveLength(29);
+    expect(new Set(TOOL_NAMES).size).toBe(29);
   });
   it("keeps all executable inbound registration modules schema-only",()=>{
     for(const relative of schemaOnly) {

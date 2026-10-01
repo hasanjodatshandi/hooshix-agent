@@ -16,7 +16,7 @@ describe("R2.01 canonical exhaustive operation catalog", () => {
   it("matches every actual MCP registration, including control-plane, with no duplicate or missing descriptor", () => {
     const registered: string[] = [];
     registerTools({ registerTool(name: string) { registered.push(name); } } as never);
-    expect(registered).toHaveLength(53);
+    expect(registered).toHaveLength(52);
     expect(new Set(registered).size).toBe(registered.length);
     expect(new Set(ALL_REGISTERED_TOOLS).size).toBe(ALL_REGISTERED_TOOLS.length);
     expect(registered.slice().sort()).toEqual([...ALL_REGISTERED_TOOLS].sort());

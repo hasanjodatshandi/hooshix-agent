@@ -70,7 +70,6 @@ Only the tool name in the first column is a registered operation name.
 | `install_package` | critical | always | process |
 | `remove_package` | critical | always | process |
 | `update_package` | critical | always | process |
-| `package_restore` | high | always | process |
 
 ## Task Engine
 

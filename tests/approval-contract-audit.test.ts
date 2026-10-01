@@ -25,7 +25,7 @@ const METADATA_MUTATIONS = TOOL_NAMES.filter((tool) => {
 const APPROVAL_EXPECTED = new Set([
   "delete_file", "git_clone", "git_commit", "git_branch", "git_checkout",
   "git_add", "git_init", "install_package", "remove_package", "update_package",
-  "task_rollback", "package_restore", "add_workspace_roots", "remove_workspace_root",
+  "task_rollback", "add_workspace_roots", "remove_workspace_root",
 ]);
 
 // Deliberate carve-outs: governed by other, stronger mechanisms.
@@ -64,11 +64,6 @@ describe("approval contract audit: metadata vs policy engine", () => {
     // …and an outside-workspace cwd is approval-required by cwd classification.
     const outside = policyDecisionPoint.evaluate({ tool: "execute_command", arguments: { command: "git", args: ["status"], cwd: "C:/Windows" } });
     expect(outside.requiresApproval).toBe(true);
-    // package_restore sits at DEVELOPER_MODE permission and stays reversible;
-    // pin it as a conscious exception so it cannot silently become ungated.
-    const restore = policyDecisionPoint.evaluate({ tool: "package_restore", arguments: { snapshotId: "550e8400-e29b-41d4-a716-446655440000" } });
-    expect(restore.allowed).toBe(true);
-    expect(restore.requiresApproval).toBe(true);
   });
 
   it("read-only tools never require approval", () => {
@@ -93,7 +88,6 @@ function sampleArguments(tool: string): Record<string, unknown> {
     case "remove_package": return { manager: "npm", name: "lodash" };
     case "update_package": return { manager: "npm", name: "lodash" };
     case "task_rollback": return { snapshotId: "550e8400-e29b-41d4-a716-446655440000", cwd: "." };
-    case "package_restore": return { snapshotId: "550e8400-e29b-41d4-a716-446655440000" };
     case "execute_command": return { command: "git", args: ["status"] };
     case "read_file": return { path: "in-workspace.txt" };
     case "search_files": return { query: "x" };

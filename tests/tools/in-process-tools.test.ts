@@ -232,12 +232,6 @@ describe("in-process MCP tool coverage", () => {
     expect(reloaded.steps).toHaveLength(1);
   });
 
-  it("package_restore is governance-gated on direct calls", async () => {
-    await expect(
-      client.callTool({ name: "package_restore", arguments: { snapshotId: "00000000-0000-4000-8000-000000000000" } })
-    ).resolves.toMatchObject({ isError: true });
-  });
-
   it("task_snapshot and task_rollback round-trip in a git repo", async () => {
     const cwd = "tests/tool-coverage";
     process.env.GIT_AUTHOR_NAME ??= "Test User";
@@ -314,13 +308,13 @@ describe("in-process MCP tool coverage", () => {
     expect(direct.isError).toBe(true); // approval required (or not a snapshot) — never executes
   });
 
-  it("registry completeness: MCP tools/list matches ALL_REGISTERED_TOOLS exactly (53 tools)", async () => {
+  it("registry completeness: MCP tools/list matches ALL_REGISTERED_TOOLS exactly (52 tools)", async () => {
     const { ALL_REGISTERED_TOOLS } = await import("../../src/core/orchestrator/tool-orchestrator.js");
     const tools = await client.listTools();
     const registered = tools.tools.map((t: { name: string }) => t.name).sort();
     const canonical = [...ALL_REGISTERED_TOOLS].sort();
     expect(registered).toEqual(canonical);
-    expect(registered.length).toBe(53);
+    expect(registered.length).toBe(52);
     // Every registered tool has a real description and a title annotation.
     for (const t of tools.tools as Array<{ name: string; description?: string; annotations?: { title?: string } }>) {
       expect({ name: t.name, hasDescription: (t.description ?? "").length > 0, hasTitle: !!t.annotations?.title }).toEqual({ name: t.name, hasDescription: true, hasTitle: true });

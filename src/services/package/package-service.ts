@@ -7,7 +7,7 @@ import { resolveCorrelationId } from "../../core/runtime/correlation-id.js";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
-import { insertPackageSnapshot, updateStoredPackageSnapshot, findPackageSnapshot } from "../../adapters/outbound/persistence/sqlite/repositories/package-snapshot.adapter.js";
+import { insertPackageSnapshot, updateStoredPackageSnapshot } from "../../adapters/outbound/persistence/sqlite/repositories/package-snapshot.adapter.js";
 import { assertCwdExists, describeExecaFailure } from "../execa-result.js";
 
 /**
@@ -28,8 +28,8 @@ interface PackageSnapshotFile { path: string; existed: boolean; content?: string
 interface PackageSnapshot { id: string; files: PackageSnapshotFile[] }
 
 /**
- * Manifest files snapshotted before the operation so package_restore can undo
- * it. Entries may be exact file names or simple top-level globs ("*.csproj").
+ * Manifest files snapshotted before the operation so a failed package install
+ * can be compensated. Entries may be exact file names or simple top-level globs ("*.csproj").
  * System-level managers (winget/choco/brew/apt/dnf/pacman/zypper) and `gem`
  * mutate machine state outside the workspace — nothing to snapshot.
  */
@@ -408,41 +408,3 @@ export async function managePackage(input: { manager: PackageManager; action: Pa
   }
 }
 
-/**
- * R4.07 canonical APPLICATION contract: manifest-only compensation.
- * The MCP package_restore name is a deprecated compatibility alias.
- */
-export async function restorePackageManifest(snapshotId:string,correlationId?:string){
-  const traceId=resolveCorrelationId(correlationId);
-  policyDecisionPoint.assertAllowed({tool:"package_restore",arguments:{snapshotId},correlationId:traceId});
-  const row=findPackageSnapshot(snapshotId);
-  if(!row)throw new Error(`Package snapshot not found: ${snapshotId}`);
-  if(row.status==="manifest_restored")throw new Error("PACKAGE_MANIFEST_ALREADY_RESTORED");
-  if(row.status!=="committed")throw new Error("PACKAGE_MANIFEST_RECONCILIATION_REQUIRED: prior state is not independently verified");
-  if(!Object.prototype.hasOwnProperty.call(SNAPSHOT_FILES,row.manager))
-    throw new Error("PACKAGE_MANIFEST_RESTORE_UNSUPPORTED: unknown package manager");
-  const manager=row.manager as PackageManager;
-  const cwd=validateWorkspace(row.cwd);
-  let parsed:unknown;
-  try{parsed=JSON.parse(row.snapshot);}catch{throw new Error("PACKAGE_MANIFEST_SNAPSHOT_INVALID");}
-  if(!parsed||typeof parsed!=="object"||!Array.isArray((parsed as {files?:unknown}).files))
-    throw new Error("PACKAGE_MANIFEST_SNAPSHOT_INVALID");
-  const snapshot:PackageSnapshot={id:row.id,files:(parsed as {files:PackageSnapshotFile[]}).files};
-  if(SNAPSHOT_FILES[manager].length===0||snapshot.files.length===0){
-    updateSnapshot(snapshotId,"environment_reconciliation_required");
-    return {kind:"manifest_restore_unsupported" as const,snapshotId,restored:false,manifestOnly:true,
-      environmentReconciliationRequired:true,verifiedFiles:[],cwd,correlationId:traceId};
-  }
-  try{
-    const verifiedFiles=await restorePackageSnapshot(snapshot,cwd,manager);
-    updateSnapshot(snapshotId,"manifest_restored");
-    return {kind:"manifest_restored" as const,snapshotId,restored:false,manifestOnly:true,
-      environmentReconciliationRequired:true,verifiedFiles,cwd,correlationId:traceId};
-  }catch(error){
-    updateSnapshot(snapshotId,"manifest_restore_failed");
-    throw error;
-  }
-}
-
-// LOW-03: the `restorePackage` MCP alias was removed — a dual entry point into
-// the same snapshot restore. All callers use restorePackageManifest directly.
