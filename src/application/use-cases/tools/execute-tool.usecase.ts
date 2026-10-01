@@ -5,6 +5,7 @@ import type { WorkspaceScope } from "../../../domain/workspace/workspace-scope.j
 import type { ToolInputValidatorPort } from "../../ports/outbound/operations.port.js";
 import type { AuditPort, SecurityEventPort, WorkspaceContextRepository } from "../../ports/outbound/support.port.js";
 import type { AuthorizationService } from "../../services/authorization-service.js";
+import { classifyHandlerFailure } from "../../services/handler-failure-classification.js";
 
 export type ToolExecutionResult =
   | { readonly kind: "succeeded"; readonly output: unknown; readonly observabilityDegraded?: boolean }
@@ -140,10 +141,14 @@ export function createExecuteToolUseCase(deps: {
       } catch (error) {
         // Only expose a fixed, non-secret control-plane error code. Never echo
         // arbitrary subprocess stderr, filesystem paths or credential-bearing messages.
+        // classifyHandlerFailure maps our own guard errors and known fs errno codes
+        // onto a closed set of recoverable labels (workspace_missing,
+        // resource_not_found, size_limit_exceeded, ...) so a client can react
+        // instead of blind-retrying an opaque tool_handler_failure.
         const knownBudgetFailure=error instanceof Error &&
           error.message.includes("maxConsecutiveFailures");
         result={kind:"failed",reason:knownBudgetFailure
-          ?"maxConsecutiveFailures_budget_exhausted":"tool_handler_failure"};
+          ?"maxConsecutiveFailures_budget_exhausted":classifyHandlerFailure(error)};
       }
       // Persist a distinct security decision event for any successfully
       // executed privilege elevation or workspace mutation. The exact

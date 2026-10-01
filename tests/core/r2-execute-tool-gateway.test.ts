@@ -97,4 +97,35 @@ describe("R2.02 common application execution gateway",()=>{
      .toMatchObject({kind:"succeeded",observabilityDegraded:true});
    expect(h.calls).toHaveLength(1);
  });
+ it("returns a recoverable reason code instead of an opaque tool_handler_failure",async()=>{
+   // A handler that fails must surface WHY in a fixed, message-free label so a
+   // client can react (call set_workspace, pick a smaller file, ...) instead of
+   // blind-retrying. The thrown message must never be echoed.
+   const cases:[Error,string][]=[
+     [new Error("Access denied: no active workspace. Add a root with add_workspace_roots and select it with set_workspace first."),"workspace_missing_or_ungranted"],
+     [new Error("Access denied: path outside workspace. Allowed: /allowed."),"path_outside_workspace"],
+     [new Error("Access denied: sensitive-file denylist"),"sensitive_file_rejected"],
+     [new Error("File exceeds 1000000 byte limit"),"size_limit_exceeded"],
+     [new Error("Target is not a file"),"not_a_file"],
+     [Object.assign(new Error("ENOENT: no such file or directory, open 'D:/secret/path/file.txt'"),{code:"ENOENT"}),"resource_not_found"],
+     [new Error("totally unexpected internal boom"),"tool_handler_failure"],
+   ];
+   for (const [thrown,expected] of cases) {
+     const usecase=createExecuteToolUseCase({
+       catalog:{get:()=>descriptor},
+       validator:{validate:(_id,value)=>({valid:true,value})},
+       authorization:{decide:()=>({kind:"allowed" as const})},
+       handler:{async execute(){throw thrown;}},
+       audit:{async record(){}},workspace:harness().workspace,
+     });
+     const result=await usecase.execute({principal,descriptorId:id,arguments:{},directContext:{sessionId:session}});
+     expect(result.kind).toBe("failed");
+     const reason=(result as {reason:string}).reason;
+     expect(reason).toBe(expected);
+     // The label never carries the thrown message, a path, or credentials.
+     expect(reason).not.toContain("D:/");
+     expect(reason).not.toContain("add_workspace_roots");
+     expect(JSON.stringify(result)).not.toContain("secret/path");
+   }
+ });
 });
