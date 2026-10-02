@@ -269,7 +269,7 @@ CI-1 (domain) ──► CI-2 (control DB + principal مجزا) ──► CI-3 (w
 |---|---|
 | CI-G0 | ✅ تصمیم سندبندی شده (`SERVER_SIDE_READY / HOST_VERIFICATION_PENDING`) |
 | CI-G1 | ✅ **تأیید شد** — CI-1.01 تا CI-1.04 کامل؛ ۹۳۴ تست / ۲۰۳ فایل سبز؛ G1 global + R7 secret policy PASS؛ build تمیز |
-| CI-G2 | 🔄 در حال اجرا — CI-2.01 تا CI-2.04 کامل، بعدی CI-2.05 |
+| CI-G2 | ✅ **تأیید شد** — CI-2.01 تا CI-2.05 کامل؛ ۹۷۸ تست / ۲۰۸ فایل سبز؛ G1 global + R7 secret policy PASS؛ build تمیز |
 | CI-G3..CI-G9 | ⬜ NOT_STARTED |
 
 ### CI-1 — انجام‌شده (commit نشده)
@@ -302,4 +302,17 @@ CI-1 (domain) ──► CI-2 (control DB + principal مجزا) ──► CI-3 (w
 - **backup rehearsal اجرا شد:** کپی DB تولید head 22→24، `principal_id` اضافه شد، `integrity_check=ok`، rerun no-op، ۱۱۲۵ task دست‌نخورد.
 - `tests/ci/ci-2-02-connection-issuance.test.ts` — ۱۱ تست: flag parsing، four-identity distinctness، credential hash، reuse، double-provision.
 
-**leaf بعدی:** **CI-2.05** — Context Resolver در SQLite (deny-by-default): credential hash → `(context_id, context_epoch, scopes, grant_version)`؛ unbound → `CONTEXT_NOT_BOUND`. در flag OFF فقط audit (SHADOW)، در ON اجرا. این آخرین leaf گیت CI-G2 است.
+### CI-2.05 — انجام‌شده (commit نشده)
+
+- **Context Resolver** (`context-resolver.adapter.ts`): credential hash → `RESOLVED | UNBOUND | INACTIVE | INSUFFICIENT_SCOPE`. تنها ورودی انتخاب‌کننده binding، credential hash است — هیچ `contextId`ای از tool arguments خوانده نمی‌شود (threat T04).
+- **deny-by-default (I-06):** credential ناشناخته، binding خالی، یا binding با state غیر ACTIVE همگی `CONTEXT_NOT_BOUND` می‌دهند — هیچ fallbackی به آخرین Context فعال وجود ندارد.
+- **I-07:** bindingهای REVOKED/EXPIRED هرگز دوباره فعال نمی‌شوند؛ در مسیر RESOLVED فقط bindingهای ACTIVE ساخته می‌شوند.
+- **scope check:** scopeهای موردنیاز قبل از RESOLVE بررسی می‌شوند؛ نقص → `INSUFFICIENT_SCOPE` با لیست scopeهای غایب.
+- **legacy bridge:** tokenهای `operator` پس از `pinLegacyContext` به `ctx-legacy-shared-operator` resolve می‌شوند — کاملاً در مسیر مجزا تست شده.
+- **resolution ناب:** این ماژول پرچم `CTX_ISOLATION_MODE` را نمی‌خواند؛ همان نتیجه هم برای audit (SHADOW) و هم برای enforcement در دسترس است. تصمیم تبدیل شدن به خطا با caller است.
+- `resolveContextWith(db, ...)` برای استفادهٔ درون transaction فراهم است (enforcement در همان transaction با write).
+- `tests/ci/ci-2-05-context-resolver.test.ts` — ۱۱ تست: resolution کامل، تفکیک دو Context، unbound، revoked، FROZEN، scope ناکافی، grant مفقود، legacy، resolution درون transaction.
+
+**گیت CI-G2 بسته شد.** همهٔ پایه‌های control plane (schema، صدور، legacy، lease، resolver) آماده‌اند و هنوز پشت پرچم خاموش هستند.
+
+**leaf بعدی:** شروع گیت **CI-G3** — اتصال resolver به مسیر درخواست واقعی (`oauth.ts`/`http-server.ts`) در حالت SHADOW: resolve را روی هر درخواست اجرا می‌کند، نتیجه را در `security_audit` ثبت می‌کند، اما روی رفتار تأثیری ندارد.
