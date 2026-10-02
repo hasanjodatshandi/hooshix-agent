@@ -70,6 +70,15 @@ export function classifyHandlerFailure(error: unknown): string {
   if (message.includes("task_append")) return "task_append_rejected";
   if (message.includes("reconciliation_requires")) return "reconciliation_state_invalid";
 
+  // Task creation idempotency guards (task-runtime-service): the key binds the
+  // exact normalized payload, so a changed payload under the same key is a
+  // deterministic rejection, not a transient failure. Surfacing these as
+  // tool_handler_failure forces a caller to blind-retry a request that will
+  // never succeed — the caller must fetch the existing Task or use a fresh key.
+  if (message === "idempotency_key_payload_conflict") return "idempotency_key_payload_conflict";
+  if (message === "idempotency_key_inconsistent" || message === "idempotency_key_legacy_hash_missing")
+    return "idempotency_key_inconsistent";
+
   // Node fs errno codes.
   if (code === "ENOENT" || message.includes("not found")) return "resource_not_found";
   if (code === "EISDIR") return "not_a_file";

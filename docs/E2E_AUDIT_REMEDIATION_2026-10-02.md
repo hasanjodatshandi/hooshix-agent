@@ -84,3 +84,42 @@
 - **ADR برای تصمیم «control-plane deletes مستقیم‌اجرا هستند»** — این سند علت را توضیح می‌دهد ولی یک ADR رسمی در ledger بهتر است.
 - تست integration واقعی روی Windows برای canonicalization (این نشست با unittest درست‌سازی‌شده پوشش داد).
 - زنجیرهٔ cleanup خودکار برای recordهای آزمایشی باقی‌مانده در تولید.
+
+---
+
+## ۶. retest روی HEAD `a29496f` — دو باقیماندهٔ واقعی
+
+ممیزی دوباره تمام ایرادهای قبلی را روی HEAD `a29496f` اجرا کرد. ۱۱ مورد FIXED تأیید شدند (از جمله مسیر کامل CAS، Windows root casing با Task واقعی در `C:\WINDOWS\TEMP`، و reflection برای Task reconciled-failed). ولی سه مورد باقی ماند:
+
+### HIGH — file idempotency روی دیتابیس موجود هنوز خراب بود (ریشه: migration، نه logic)
+
+تست‌های fresh-DB سبز بودند ولی همان قابلیت روی دیتابیس زنده `tool_handler_failure` می‌داد. forensic فقط‌خواندنی نشان داد:
+
+- migration head = ۲۱، ولی `idempotency_responses` **وجود ندارد**.
+- این جدول **فقط** در `base-schema.migration.ts` (v0 baseline برای DBهای تازه‌ساخت) تعریف شده بود و هیچ `migrate()`ای آن را برای DBهای موجود نمی‌ساخت.
+
+این یک ردهٔ نقص مهم است: **تست‌های fresh-DB از نظر ساختاری نمی‌توانند چنین شکست upgradeای را ببینند**، چون جدول در هر DB تستی به‌صورت خودکار موجود است.
+
+**اصلاح:** migration 22 (`file-idempotency-response-cache-table`) با `CREATE TABLE IF NOT EXISTS` اضافه شد؛ `LATEST_MIGRATION_VERSION` ۲۱ → ۲۲. سرور زنده restart شد و migration روی دیتابیس تولید اعمال شد: head = 22، جدول با PK صحیح `(id, operation, request_hash)`، `quick_check = ok`، `foreign_key_check` خالی.
+
+**تست:** `tests/core/r6-idempotency-responses-upgrade.test.ts` — یک DB را در head پیش-۲۲ و بدون جدول seed می‌کند (شبیه‌سازی دقیق DB زنده)، سپس (۱) upgrade مستقیم و بررسی PK، و (۲) repair از طریق همان entrypointی که سرور باز می‌کند (`withAgentDatabase` → `runMigrations`) با تأیید قرارداد dedup.
+
+**قانون مستندسازی:** هر جدول آینده که به `base-schema.migration.ts` اضافه می‌شود باید یک `migrate()` هم داشته باشد (یا دلیل fresh-only بودن به‌صراحت نوشته شود). در `docs/MIGRATIONS.md` بخش «Fresh-only tables» اضافه شد.
+
+### MEDIUM — `idempotency_key_payload_conflict` هنوز به `tool_handler_failure` فرومی‌پاشید
+
+`task-runtime-service` خطای صحیح `idempotency_key_payload_conflict` را پرتاب می‌کرد ولی MCP surface آن را به `tool_handler_failure` تبدیل می‌کرد، پس کلاینت مجبور به blind-retry یک درخواستی بود که هرگز موفق نمی‌شد.
+
+**اصلاح:** `classifyHandlerFailure` حالا این خطای قطعی را مستقیماً عبور می‌دهد (`idempotency_key_payload_conflict`) و دو خطای خواهرش (`idempotency_key_inconsistent`، `idempotency_key_legacy_hash_missing`) را به `idempotency_key_inconsistent` نگاشت می‌کند.
+
+**تست:** `tests/e2e/r2-control-plane-delete-and-failure-reasons.test.ts` برچسب را از مسیر in-process MCP واقعی تأیید می‌کند.
+
+### Environment — `python` / `py`
+
+هر دو همچنان در ۵ ثانیه timeout می‌شوند در حالی که Node/npm/pnpm/git بی‌مشکل کار می‌کنند. مستقل از `execute_command` و مربوط به نصب Python و Windows Python Install Manager این ماشین است. **بدون تغییر کد.**
+
+### تأییدهای retest
+
+- ۸۸۷ تست / ۱۹۹ فایل سبز (۳ تست regression جدید).
+- build تمیز، lint سبز.
+- دیتابیس تولید: migration 22 اعمال شد، یکپارچگی سالم، هیچ ردیف داده‌ای تغییر نکرد.

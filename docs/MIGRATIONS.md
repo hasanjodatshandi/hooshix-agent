@@ -1,10 +1,10 @@
 # HooshiX Database Migrations
 
-Source of truth: `src/core/memory/database/migrations.ts` and `src/adapters/outbound/persistence/sqlite/base-schema.migration.ts`. `LATEST_MIGRATION_VERSION = 21`, pinned by `tests/core/r10-release-readiness.test.ts` so the constant cannot silently drift from the highest `migrate()` call.
+Source of truth: `src/core/memory/database/migrations.ts` and `src/adapters/outbound/persistence/sqlite/base-schema.migration.ts`. `LATEST_MIGRATION_VERSION = 22`, pinned by `tests/core/r10-release-readiness.test.ts` so the constant cannot silently drift from the highest `migrate()` call.
 
 ## How migrations work
 
-- A brand-new database gets `applyBaseSchemaMigration()` first (the v0 baseline), then `runMigrations()` walks 1..21.
+- A brand-new database gets `applyBaseSchemaMigration()` first (the v0 baseline), then `runMigrations()` walks 1..22.
 - Each migration is idempotent: `migrate()` checks `schema_migrations` inside one transaction and returns immediately if already applied.
 - Migrations run **once per process** (at first DB access), not per call.
 - `foreign_keys` is ON. The fresh-DB path is asserted FK-clean end to end.
@@ -34,6 +34,11 @@ Source of truth: `src/core/memory/database/migrations.ts` and `src/adapters/outb
 | 19 | principal-owned-tasks | `principal_id` ownership on tasks + `idx_tasks_principal` |
 | 20 | consolidate-canonical-task-states | rewrites legacy `created`→`planning`, `checkpointing`/`resuming`→`executing` so no row is left in a state the canonical `TaskState` union no longer admits |
 | 21 | task-project-binding-and-memory-timestamps | nullable `tasks.project_id` + `idx_tasks_project_id` (a Task is owned directly by a Project; `task_list(projectId)` filters on it) and nullable `memory_items.updated_at` (records the last in-place change by `memory_update`) |
+| 22 | file-idempotency-response-cache-table | backfills `idempotency_responses` on databases that predate it. The table existed only in the v0 base schema for newly created databases, so upgraded installs never received it and `write_file`/`delete_file` with an `idempotencyKey` failed with "no such table" → `tool_handler_failure`, while every fresh-database test passed. Idempotent (`CREATE TABLE IF NOT EXISTS`) |
+
+## Fresh-only tables
+
+`idempotency_responses` is the reason a **fresh-database test suite cannot prove an upgrade is safe**: a table added to the v0 base schema is present in every test database by construction and absent in every database that predates it. The `idempotency_responses` gap was found only by retesting against the live upgraded database. Any future table added to `base-schema.migration.ts` must also be created by a `migrate()` call (or the base-schema comment must say why it is fresh-only), and an upgrade path should be covered by `tests/core/r6-idempotency-responses-upgrade.test.ts`, which seeds a pre-table database and repairs it through the normal open-and-migrate entrypoint.
 
 ## Rehearsal
 

@@ -11,7 +11,7 @@ const SAFE_IDENTIFIER = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
  * CURRENT head instead of a hardcoded version that silently rots as new
  * migrations land. If you add a migration, bump this to match it.
  */
-export const LATEST_MIGRATION_VERSION = 21;
+export const LATEST_MIGRATION_VERSION = 22;
 
 export function ensureColumn(
   db: Database.Database,
@@ -396,6 +396,27 @@ export function runMigrations(db: Database.Database): void {
     ensureColumn(db,"tasks","project_id","TEXT");
     ensureColumn(db,"memory_items","updated_at","TEXT");
     db.exec("CREATE INDEX IF NOT EXISTS idx_tasks_project_id ON tasks(project_id,updated_at DESC)");
+  });
+
+  // The file-idempotency response cache was added to the base schema for
+  // NEWLY created databases only (base-schema.migration.ts). Databases created
+  // before that addition — including every live deployment that predates it —
+  // never received the table, so write_file/delete_file with an idempotencyKey
+  // failed on upgraded databases ("no such table: idempotency_responses" ->
+  // tool_handler_failure) while fresh databases passed every test. Backfill it
+  // here so existing installs gain file idempotency. Idempotent by construction:
+  // CREATE TABLE IF NOT EXISTS is a no-op where the table already exists.
+  migrate(db,22,"file-idempotency-response-cache-table",()=>{
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS idempotency_responses (
+        id TEXT NOT NULL,
+        operation TEXT NOT NULL,
+        request_hash TEXT NOT NULL,
+        response TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        PRIMARY KEY (id, operation, request_hash)
+      );
+    `);
   });
 
 }

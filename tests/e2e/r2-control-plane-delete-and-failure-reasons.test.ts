@@ -116,4 +116,36 @@ describe("R2 gateway surfaces typed failure reasons", () => {
       await mcp.close();
     }
   });
+
+  it("a changed payload under a reused idempotency key reports idempotency_key_payload_conflict", async () => {
+    const mcp = await connectInProcessMcp();
+    try {
+      const key = "payload-conflict-probe-" + Date.now();
+      const first = await mcp.client.callTool({
+        name: "task_create",
+        arguments: {
+          idempotencyKey: key,
+          title: "payload conflict probe",
+          steps: [{ action: "read", tool: "read_file", arguments: { path: "README.md" } }],
+        },
+      });
+      expect(first.isError).not.toBe(true);
+
+      // Same key, DIFFERENT payload: a deterministic rejection, not a transient
+      // failure — surfacing it as tool_handler_failure would force blind retry.
+      const conflict = await mcp.client.callTool({
+        name: "task_create",
+        arguments: {
+          idempotencyKey: key,
+          title: "payload conflict probe (altered)",
+          steps: [{ action: "read", tool: "read_file", arguments: { path: "package.json" } }],
+        },
+      });
+      expect(conflict.isError).toBe(true);
+      const block = (conflict as { content: Array<{ type: string; text?: string }> }).content.find((b) => b.type === "text");
+      expect(block?.text).toBe("idempotency_key_payload_conflict");
+    } finally {
+      await mcp.close();
+    }
+  });
 });
