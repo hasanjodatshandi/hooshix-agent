@@ -41,6 +41,19 @@ export function classifyHandlerFailure(error: unknown): string {
       case "UNKNOWN_TOOL": return "unknown_tool";
       case "WORKSPACE_CONTEXT_INVALID": return "workspace_context_invalid";
       case "MEMORY_CONTENT_REQUIRED": return "memory_content_required";
+      // CI-1.03 — isolation refusals. RESOURCE_UNAVAILABLE is returned for a
+      // record that is missing AND for one owned by another Context, so the
+      // label cannot be used to enumerate another chat's ids (threat T07).
+      case "CONTEXT_NOT_BOUND": return "context_not_bound";
+      case "CONTEXT_INACTIVE": return "context_inactive";
+      case "RESOURCE_UNAVAILABLE": return "resource_unavailable";
+      case "SCOPE_INSUFFICIENT": return "scope_insufficient";
+      case "WORKSPACE_DENIED": return "workspace_denied";
+      case "CONTEXT_EPOCH_STALE": return "context_epoch_stale";
+      case "HANDOFF_APPROVAL_REQUIRED": return "handoff_approval_required";
+      case "TRANSFER_IN_PROGRESS": return "transfer_in_progress";
+      case "HANDOFF_TOKEN_EXPIRED": return "handoff_token_expired";
+      case "WORKTREE_CONFLICT": return "worktree_conflict";
       default: break; // EXECUTION or an unknown code — fall through to heuristics.
     }
   }
@@ -78,6 +91,20 @@ export function classifyHandlerFailure(error: unknown): string {
   if (message === "idempotency_key_payload_conflict") return "idempotency_key_payload_conflict";
   if (message === "idempotency_key_inconsistent" || message === "idempotency_key_legacy_hash_missing")
     return "idempotency_key_inconsistent";
+
+  // CI-1.03 — sentinel messages for isolation refusals raised without a typed
+  // AgentError code (e.g. thrown across an adapter boundary). Exact match only:
+  // these labels must never be produced from interpolated caller input.
+  if (message === "context_not_bound") return "context_not_bound";
+  if (message === "context_inactive") return "context_inactive";
+  if (message === "resource_unavailable") return "resource_unavailable";
+  if (message === "scope_insufficient") return "scope_insufficient";
+  if (message === "workspace_denied") return "workspace_denied";
+  if (message === "context_epoch_stale") return "context_epoch_stale";
+  if (message === "handoff_approval_required") return "handoff_approval_required";
+  if (message === "transfer_in_progress") return "transfer_in_progress";
+  if (message === "handoff_token_expired") return "handoff_token_expired";
+  if (message === "worktree_conflict") return "worktree_conflict";
 
   // Node fs errno codes.
   if (code === "ENOENT" || message.includes("not found")) return "resource_not_found";

@@ -47,6 +47,19 @@ specs above and by the traceability matrix.
 | `RELEASE_HARDENING_2026-09-19.md` | Early hardening pass evidence |
 | `implementation/R7_LOCAL_OPERATIONS_RUNBOOK_2026-09-23.md` | Authoritative implementation runbook referenced by `OPERATIONS.md` |
 
+## Chat Isolation program (CI, in progress)
+
+The CI program isolates multiple host conversations (ChatGPT chats) that share
+one HooshiX MCP endpoint. Reference design: the `HooshiX_Chat_Isolation_Design_v1`
+package. The program runs leaf-by-leaf under `CI_MASTER_PLAN.md`; **no per-chat
+privacy claim is valid before CI-G7.**
+
+| Document | Status |
+|---|---|
+| `implementation/CI0_BASELINE_AUDIT_2026-10-02.md` | Read-only baseline audit (CI-0.01–CI-0.05): workspace pool, singleton inventory, OAuth identity evidence, R-program state |
+| `implementation/CIG0_FEASIBILITY_GATE_2026-10-02.md` | Feasibility gate decision: `SERVER_SIDE_READY / HOST_VERIFICATION_PENDING`; root cause is server-side principal issuance, not the host product |
+| `implementation/CI_MASTER_PLAN.md` | **Authoritative** — leaf-level plan CI-1..CI-9 adapted to the real codebase, with gates CI-G1..CI-G9 |
+
 ## Release provenance
 
 Released versions are recorded in `MIGRATIONS.md` (schema) and `RELEASE.md`

@@ -17,7 +17,22 @@ export type ErrorCode =
   | "GOVERNANCE_BLOCKED"
   | "WORKSPACE_CONTEXT_INVALID"
   | "MEMORY_CONTENT_REQUIRED"
-  | "EXECUTION";
+  | "EXECUTION"
+  /**
+   * CI-1.03 — Chat Isolation error codes (design 09 §2). They exist so the
+   * gateway can distinguish "refused by isolation policy" from a generic
+   * EXECUTION failure, without leaking which Context or record was involved.
+   */
+  | "CONTEXT_NOT_BOUND"
+  | "CONTEXT_INACTIVE"
+  | "RESOURCE_UNAVAILABLE"
+  | "SCOPE_INSUFFICIENT"
+  | "WORKSPACE_DENIED"
+  | "CONTEXT_EPOCH_STALE"
+  | "HANDOFF_APPROVAL_REQUIRED"
+  | "TRANSFER_IN_PROGRESS"
+  | "HANDOFF_TOKEN_EXPIRED"
+  | "WORKTREE_CONFLICT";
 
 export class AgentError extends Error {
   readonly code: ErrorCode;
@@ -61,6 +76,87 @@ export class WorkspaceContextInvalidError extends AgentError {
     this.name = "WorkspaceContextInvalidError";
     this.reason = reason;
     this.workspace = workspace;
+  }
+}
+
+/**
+ * CI-1.03 — Chat Isolation errors.
+ *
+ * Every message is a fixed sentinel, never interpolating ids, paths or Context
+ * state. Two reasons:
+ *   1. `classifyHandlerFailure` matches these exact strings (below), so a
+ *      caller gets a stable recoverable label.
+ *   2. `RESOURCE_UNAVAILABLE` is deliberately identical whether a record is
+ *      missing or merely owned by another Context — the server must not become
+ *      an oracle that lets chat B enumerate chat A's task ids (threat T07).
+ */
+export class ContextNotBoundError extends AgentError {
+  constructor() {
+    super("CONTEXT_NOT_BOUND", "context_not_bound");
+    this.name = "ContextNotBoundError";
+  }
+}
+
+export class ContextInactiveError extends AgentError {
+  constructor() {
+    super("CONTEXT_INACTIVE", "context_inactive");
+    this.name = "ContextInactiveError";
+  }
+}
+
+export class ResourceUnavailableError extends AgentError {
+  constructor() {
+    super("RESOURCE_UNAVAILABLE", "resource_unavailable");
+    this.name = "ResourceUnavailableError";
+  }
+}
+
+export class ScopeInsufficientError extends AgentError {
+  constructor() {
+    super("SCOPE_INSUFFICIENT", "scope_insufficient");
+    this.name = "ScopeInsufficientError";
+  }
+}
+
+export class WorkspaceDeniedError extends AgentError {
+  constructor() {
+    super("WORKSPACE_DENIED", "workspace_denied");
+    this.name = "WorkspaceDeniedError";
+  }
+}
+
+export class ContextEpochStaleError extends AgentError {
+  constructor() {
+    super("CONTEXT_EPOCH_STALE", "context_epoch_stale");
+    this.name = "ContextEpochStaleError";
+  }
+}
+
+export class HandoffApprovalRequiredError extends AgentError {
+  constructor() {
+    super("HANDOFF_APPROVAL_REQUIRED", "handoff_approval_required");
+    this.name = "HandoffApprovalRequiredError";
+  }
+}
+
+export class TransferInProgressError extends AgentError {
+  constructor() {
+    super("TRANSFER_IN_PROGRESS", "transfer_in_progress");
+    this.name = "TransferInProgressError";
+  }
+}
+
+export class HandoffTokenExpiredError extends AgentError {
+  constructor() {
+    super("HANDOFF_TOKEN_EXPIRED", "handoff_token_expired");
+    this.name = "HandoffTokenExpiredError";
+  }
+}
+
+export class WorktreeConflictError extends AgentError {
+  constructor() {
+    super("WORKTREE_CONFLICT", "worktree_conflict");
+    this.name = "WorktreeConflictError";
   }
 }
 
