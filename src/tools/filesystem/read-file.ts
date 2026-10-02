@@ -5,7 +5,7 @@ import type { McpServer } from "../../adapters/inbound/mcp/legacy-sdk-bridge.js"
 export function registerReadFileTool(server: McpServer) {
   server.registerTool("read_file", {
     title: "Read File",
-    description: "📖 READ — Read a file's text content. Sensitive files (.env, .token, keys) always rejected; files >1MB rejected.\n\nExamples: { \"path\": \"src/index.ts\" } · { \"path\": \"D:/Projects/my-api/src/index.ts\" } — relative paths resolve against the active workspace.",
+    description: "📖 READ — Read a file's text content. Sensitive files (.env, .token, keys) always rejected; files >1MB rejected. includeSha256=true returns { content, sha256 } instead of a plain string.\n\nExamples: { \"path\": \"src/index.ts\" } · { \"path\": \"src/index.ts\", \"includeSha256\": true } — relative paths resolve against the active workspace.",
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true },
     inputSchema: z.object({
       path: z.string(),

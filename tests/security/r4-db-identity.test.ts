@@ -17,6 +17,13 @@ import {openAgentDatabase,resetAgentDatabase} from "../../src/core/memory/databa
 describe("H3 removed database is not silently re-created",()=>{
   const dbPath=path.resolve("data",`h3-identity-${process.env.VITEST_WORKER_ID??"single"}.db`);
   const identityPath=`${dbPath}.identity`;
+  // The global setup owns HOOSHIX_DB_PATH (it points every worker at an isolated
+  // tree). This suite repoints it at a scratch fixture; the previous afterEach
+  // DELETED the variable, so the global beforeEach that ran before the next test
+  // reopened the database at the default ./data/agent-memory.db — the LIVE
+  // production database — and ran migrations and workspace-root writes on it.
+  // Restore, never delete.
+  const inheritedDbPath=process.env.HOOSHIX_DB_PATH;
 
   function wipe():void{
     for(const suffix of ["","-wal","-shm",".identity"]) fs.rmSync(dbPath+suffix,{force:true});
@@ -32,7 +39,8 @@ describe("H3 removed database is not silently re-created",()=>{
   });
   afterEach(()=>{
     resetAgentDatabase();
-    delete process.env.HOOSHIX_DB_PATH;
+    if(inheritedDbPath===undefined) delete process.env.HOOSHIX_DB_PATH;
+    else process.env.HOOSHIX_DB_PATH=inheritedDbPath;
     wipe();
   });
 

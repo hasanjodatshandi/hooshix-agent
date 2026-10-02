@@ -21,6 +21,7 @@ interface TaskRow {
   task_revision: number | null;
   created_at: string;
   updated_at: string;
+  project_id?: string | null;
 }
 
 interface StepRow {
@@ -95,8 +96,8 @@ export function saveTaskPlan(plan: TaskPlan, status: TaskState = plan.state ?? "
     return db.transaction(() => {
       assertTaskLeaseWrite(db,plan.id);
       db.prepare(`
-        INSERT INTO tasks(id, title, description, status, correlation_id, idempotency_key, request_hash, execution_context, max_recovery, retry_policy, total_run_count, task_revision, principal_id, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO tasks(id, title, description, status, correlation_id, idempotency_key, request_hash, execution_context, max_recovery, retry_policy, total_run_count, task_revision, principal_id, project_id, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(id) DO UPDATE SET title=excluded.title, description=excluded.description,
           status=excluded.status, correlation_id=COALESCE(excluded.correlation_id, tasks.correlation_id),
           idempotency_key=COALESCE(excluded.idempotency_key, tasks.idempotency_key),
@@ -105,6 +106,7 @@ export function saveTaskPlan(plan: TaskPlan, status: TaskState = plan.state ?? "
           max_recovery=COALESCE(excluded.max_recovery, tasks.max_recovery),
           retry_policy=COALESCE(excluded.retry_policy, tasks.retry_policy),
           total_run_count=excluded.total_run_count, task_revision=excluded.task_revision,
+          project_id=COALESCE(excluded.project_id, tasks.project_id),
           updated_at=excluded.updated_at
        `).run(plan.id, plan.task, plan.description ?? plan.task, status, correlationId ?? null, plan.idempotencyKey ?? null, plan.requestHash ?? null,
         plan.executionContext ? JSON.stringify(plan.executionContext) : null,
@@ -114,6 +116,9 @@ export function saveTaskPlan(plan: TaskPlan, status: TaskState = plan.state ?? "
         // Ownership is set at creation and never re-assigned: a task's audit
         // trail belongs to the client that created it.
         plan.executionContext?.principalId ?? "local-stdio",
+        // The project binding is likewise set at creation; a later save of the
+        // same plan cannot rebind a task to a different project.
+        plan.projectId ?? null,
         plan.createdAt ?? now, now);
 
       const statement = db.prepare(`
@@ -266,7 +271,7 @@ function hydrateTaskById(db:Database.Database,taskId:string):TaskPlan|null {
   const task=db.prepare(`
     SELECT id,title,description,status,correlation_id,idempotency_key,request_hash,
       execution_context,max_recovery,retry_policy,total_run_count,
-      task_revision,created_at,updated_at
+      task_revision,project_id,created_at,updated_at
     FROM tasks WHERE id=?
   `).get(taskId) as TaskRow|undefined;
   if(!task)return null;
@@ -306,6 +311,7 @@ function hydrateTaskById(db:Database.Database,taskId:string):TaskPlan|null {
     retryPolicy:parseJson(task.retry_policy??null,undefined) as TaskPlan["retryPolicy"],
     totalRunCount:task.total_run_count??undefined,
     revision:task.task_revision??0,
+    projectId:task.project_id??undefined,
     createdAt:task.created_at,
     updatedAt:task.updated_at,
     pendingApproval,
@@ -324,11 +330,17 @@ export function getTaskPlan(taskId:string):TaskPlan|null {
   return withAgentDatabase(db=>hydrateTaskById(db,taskId));
 }
 
-export function listTasks(limit = 50): Array<Record<string, unknown>> {
-  return withAgentDatabase((db) => db.prepare(`
-    SELECT id, title, description, status, correlation_id, created_at, updated_at
-    FROM tasks ORDER BY updated_at DESC LIMIT ?
-  `).all(limit) as Array<Record<string, unknown>>);
+export function listTasks(limit = 50, projectId?: string): Array<Record<string, unknown>> {
+  return withAgentDatabase((db) => {
+    const sql = projectId
+      ? `SELECT id, title, description, status, correlation_id, project_id, created_at, updated_at
+         FROM tasks WHERE project_id = ? ORDER BY updated_at DESC LIMIT ?`
+      : `SELECT id, title, description, status, correlation_id, project_id, created_at, updated_at
+         FROM tasks ORDER BY updated_at DESC LIMIT ?`;
+    const stmt = projectId ? db.prepare(sql) : db.prepare(sql);
+    const rows = (projectId ? stmt.all(projectId, limit) : stmt.all(limit)) as Array<Record<string, unknown>>;
+    return rows;
+  });
 }
 
 /**
@@ -410,6 +422,26 @@ export function getMemoryItem(id: number, principalId?: string): Record<string, 
 
 export function deleteMemoryItem(id: number, principalId?: string): boolean {
   return withAgentDatabase((db) => db.prepare(principalScopedMemory("DELETE FROM memory_items WHERE id = ?", principalId)).run(id, ...(principalId ? [principalId] : [])).changes > 0);
+}
+
+/**
+ * In-place update of a memory record's kind and/or content. The record is
+ * loaded first so an unknown id or a principal mismatch reports nothing-changed
+ * rather than mutating another owner's row. updated_at records that the row is
+ * no longer the append-only history it was created as.
+ */
+export function updateMemoryItem(input: { id: number; kind?: string; content?: unknown; principalId?: string }): { id: number; updated: boolean } {
+  return withAgentDatabase((db) => {
+    const existing = db.prepare(principalScopedMemory("SELECT id FROM memory_items WHERE id = ?", input.principalId)).get(input.id, ...(input.principalId ? [input.principalId] : [])) as { id: number } | undefined;
+    if (!existing) return { id: input.id, updated: false };
+    const now = new Date().toISOString();
+    const sets: string[] = ["updated_at = ?"];
+    const values: unknown[] = [now];
+    if (input.kind !== undefined) { sets.push("kind = ?"); values.push(input.kind); }
+    if (input.content !== undefined) { sets.push("content = ?"); values.push(JSON.stringify(input.content)); }
+    db.prepare(`UPDATE memory_items SET ${sets.join(", ")} WHERE id = ?`).run(...values, input.id);
+    return { id: input.id, updated: true };
+  });
 }
 
 /**

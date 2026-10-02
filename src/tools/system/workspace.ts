@@ -32,7 +32,7 @@ export function registerWorkspaceTools(server: McpServer): void {
     "add_workspace_roots",
     {
       title: "Add Workspace Roots",
-      description: "📂 WORKSPACE — Add one or more directories to the persistent allowed workspace roots pool (idempotent). Roots must exist on disk. Allowed roots survive service restarts; the active workspace is session state and may reset to null after restart. Does NOT switch the active workspace — use set_workspace for that.\n\nExample: { \"paths\": [\"D:/Projects/app-a\", \"D:/Projects/app-b\"] }",
+      description: "📂 WORKSPACE — Add one or more directories to the persistent allowed workspace roots pool (idempotent). Roots must exist on disk. Allowed roots survive service restarts; the active workspace is session state and may reset to null after restart. Does NOT switch the active workspace — use set_workspace for that. One exception: when the pool is empty (fresh install or all roots removed) the first added root also becomes the active workspace, since file tools are denied with no active root.\n\nExample: { \"paths\": [\"D:/Projects/app-a\", \"D:/Projects/app-b\"] }",
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
       inputSchema: z.object({
         paths: z.array(z.string().min(1)).min(1).max(50).describe("Absolute directory paths to allow."),

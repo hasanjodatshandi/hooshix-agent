@@ -11,7 +11,7 @@ const SAFE_IDENTIFIER = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
  * CURRENT head instead of a hardcoded version that silently rots as new
  * migrations land. If you add a migration, bump this to match it.
  */
-export const LATEST_MIGRATION_VERSION = 20;
+export const LATEST_MIGRATION_VERSION = 21;
 
 export function ensureColumn(
   db: Database.Database,
@@ -384,6 +384,18 @@ export function runMigrations(db: Database.Database): void {
     db.prepare("UPDATE tasks SET status='planning' WHERE status='created'").run();
     db.prepare("UPDATE tasks SET status='executing' WHERE status='checkpointing'").run();
     db.prepare("UPDATE tasks SET status='executing' WHERE status='resuming'").run();
+  });
+
+  // A Task is now owned directly by a Project. Until now the only link was an
+  // optional memory_items row carrying both ids — listing a project's tasks
+  // required a memory scan and could not be enforced by the schema. The column
+  // stays nullable so existing tasks remain valid; new tasks carry it from
+  // task_create. memory_items gains updated_at so memory_update can record when
+  // a record last changed (append-only rows have no such column today).
+  migrate(db,21,"task-project-binding-and-memory-timestamps",()=>{
+    ensureColumn(db,"tasks","project_id","TEXT");
+    ensureColumn(db,"memory_items","updated_at","TEXT");
+    db.exec("CREATE INDEX IF NOT EXISTS idx_tasks_project_id ON tasks(project_id,updated_at DESC)");
   });
 
 }

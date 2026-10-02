@@ -39,7 +39,8 @@ specs above and by the traceability matrix.
 
 | Document | Status |
 |---|---|
-| `FULL_AUDIT_2026-10-01.md` | Latest full audit (evidence-based, project-audit-skill); all 5 findings remediated in-session |
+| `FULL_AUDIT_2026-10-02.md` | Latest full audit — Task↔Project direct binding + `memory_update`, tool-doc sync pass, and CRITICAL-01 (tests opening the production database) found and fixed in-session |
+| `FULL_AUDIT_2026-10-01.md` | Prior full audit (evidence-based, project-audit-skill); all 5 findings remediated in-session |
 | `FULL_AUDIT_2026-09-30.md` | Prior full audit; finding status mirrored in the traceability matrix |
 | `HOOSHIX_AUDIT_CONSOLIDATED_FINAL.md` | Earlier consolidated audit (superseded by the above for status) |
 | `RELEASE_HARDENING_2026-09-19.md` | Early hardening pass evidence |

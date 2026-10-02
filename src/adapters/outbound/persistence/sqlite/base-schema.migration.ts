@@ -105,7 +105,8 @@ export function applyBaseSchemaMigration(db:Database.Database):void{
       task_id TEXT,
       kind TEXT NOT NULL,
       content TEXT NOT NULL,
-      created_at TEXT NOT NULL
+      created_at TEXT NOT NULL,
+      updated_at TEXT
     );
     CREATE TABLE IF NOT EXISTS file_backups (
       id TEXT PRIMARY KEY,

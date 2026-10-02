@@ -20,16 +20,27 @@ describe("R7.10 README tool catalog contract", () => {
   it("every tool named in README is really registered (no stale documentation)", () => {
     const readme = fs.readFileSync("README.md", "utf8");
     const registered = new Set(ALL_REGISTERED_TOOLS as readonly string[]);
-    const mentioned: string[] = [];
-    for (const match of readme.matchAll(/`([a-z_]+)`/g)) {
-      const name = match[1];
-      // Only identifiers that look like tool calls are in scope; skip words that
-      // merely coincide with a tool name (e.g. a config variable or prose term).
-      if ((ALL_REGISTERED_TOOLS as readonly string[]).includes(name)) mentioned.push(name);
+    // The public contract is the README's tool LIST (the "ابزارهای MCP" bullet
+    // block), not stray backticked words in prose. Every name listed there must
+    // be a real registered operation. The previous version of this test only
+    // collected names that were already in ALL_REGISTERED_TOOLS, which made it
+    // structurally incapable of ever finding a stale entry — `package_restore`
+    // stayed listed in the README for two releases after the tool was removed.
+    const lines = readme.split(/\r?\n/);
+    const heading = lines.findIndex((line) => /^##\s*ابزارهای MCP/.test(line));
+    expect(heading, "README must contain the ابزارهای MCP tool list section").toBeGreaterThanOrEqual(0);
+    let end = lines.length;
+    for (let index = heading + 1; index < lines.length; index++) {
+      if (/^##\s/.test(lines[index])) { end = index; break; }
     }
-    expect(mentioned.length, "README must reference at least the core tool set").toBeGreaterThan(0);
-    const stale = [...new Set(mentioned)].filter((name) => !registered.has(name));
-    expect(stale).toEqual([]);
+    const documented: string[] = [];
+    for (const line of lines.slice(heading + 1, end)) {
+      if (!line.startsWith("- ")) continue;
+      for (const match of line.matchAll(/`([a-z_]+)`/g)) documented.push(match[1]);
+    }
+    expect(documented.length, "README tool list must reference at least the core tool set").toBeGreaterThan(0);
+    const stale = [...new Set(documented)].filter((name) => !registered.has(name));
+    expect(stale, `README lists tools that are not registered: ${stale.join(", ")}`).toEqual([]);
   });
 
   it("R9.04 every registered tool is documented in the README (no silent omissions)", () => {

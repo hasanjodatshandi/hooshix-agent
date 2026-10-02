@@ -53,7 +53,7 @@ export class TaskRuntimeService {
     catch { return false; }
   }
 
-  create(input: { title: string; description?: string; steps: Array<Omit<TaskStep, "id" | "status"> & Partial<Pick<TaskStep, "id" | "status">>>; correlationId?: string; idempotencyKey?: string; retryPolicy?: { maxTotalAttempts?: number; maxConsecutiveFailures?: number } }) {
+  create(input: { title: string; description?: string; steps: Array<Omit<TaskStep, "id" | "status"> & Partial<Pick<TaskStep, "id" | "status">>>; correlationId?: string; idempotencyKey?: string; retryPolicy?: { maxTotalAttempts?: number; maxConsecutiveFailures?: number }; projectId?: string }) {
     const serialized = JSON.stringify(input);
     if (Buffer.byteLength(serialized, "utf8") > 8 * 1024 * 1024) throw new Error("Task plan exceeds the 8 MiB limit");
     const plan = createTaskPlan(input.title, input.steps, input.description);
@@ -61,6 +61,7 @@ export class TaskRuntimeService {
     plan.idempotencyKey = input.idempotencyKey;
     plan.state = "planning";
     plan.retryPolicy = input.retryPolicy;
+    plan.projectId = input.projectId;
     // Capture current workspace as immutable task execution context
     const identity=getTrustedInboundIdentity();
     plan.executionContext = {
@@ -100,6 +101,7 @@ export class TaskRuntimeService {
     }
     saveMemoryItem({
       taskId: plan.id, kind: "task_created",
+      projectId: plan.projectId,
       content: { title: plan.task, steps: plan.steps.length, workspace: plan.executionContext.workspace },
       // Attribute the lifecycle note to the task's owner, not the shared
       // local-stdio bucket, so it stays with the principal who created it.
@@ -113,8 +115,8 @@ export class TaskRuntimeService {
     if(plan) this.assertTaskActor(plan,false);
     return plan;
   }
-  list(limit?: number) {
-    return listTasks(limit).filter(row=>{
+  list(limit?: number, projectId?: string) {
+    return listTasks(limit, projectId).filter(row=>{
       const plan=getTaskPlan(String(row.id));
       return !!plan && this.canReadTask(plan);
     });

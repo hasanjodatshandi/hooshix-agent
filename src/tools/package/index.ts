@@ -14,7 +14,7 @@ const schema = z.object({
 
 function register(server: McpServer, tool: "install_package" | "remove_package" | "update_package", action: PackageAction) {
   const title = action[0].toUpperCase() + action.slice(1) + " Package";
-  const desc = `📦 PACKAGE (${action}, needs approval) — ${action.charAt(0).toUpperCase() + action.slice(1)} a package. Managers: ${PACKAGE_MANAGERS.join(" · ")}. System-level managers (winget, choco, apt, dnf, pacman, zypper) require ADMIN_MODE.\n\nExamples: { \"manager\": \"npm\", \"name\": \"lodash\" } · { \"manager\": \"cargo\", \"name\": \"ripgrep\" }\n\nReturns snapshotId + verification result. cwd/timeout optional.`;
+  const desc = `📦 PACKAGE (${action}, needs approval) — ${action.charAt(0).toUpperCase() + action.slice(1)} a package. Managers: ${PACKAGE_MANAGERS.join(" · ")}. System-level managers (winget, choco, apt, dnf, pacman, zypper) require ADMIN_MODE.\n\nExamples: { \"manager\": \"npm\", \"name\": \"lodash\" } · { \"manager\": \"cargo\", \"name\": \"ripgrep\" }\n\nReturns snapshotId + verification result. Verification is SKIPPED (verificationSkipped: true) for managers with no verification command (go, maven). cwd/timeout optional (timeout 1000-600000ms, default 300000).`;
   server.registerTool(tool, {
     title,
     description: desc,

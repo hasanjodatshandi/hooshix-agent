@@ -25,6 +25,17 @@ describe("R8.06 parallel worker isolation", () => {
   it("does not inject a single shared database path for every worker", () => {
     expect(read("vitest.config.ts")).not.toMatch(/HOOSHIX_DB_PATH\s*:/);
   });
+  it("re-asserts the worker database path before every test so a test that mutates the env cannot reopen the live database", () => {
+    // A suite may repoint or delete process.env.HOOSHIX_DB_PATH (r4-db-identity
+    // repoints it at a scratch fixture and used to delete it in afterEach). The
+    // DB-opening steps in the setup's beforeEach — replaceWorkspaceRoots above
+    // all — then fell back to the default ./data/agent-memory.db, which is the
+    // LIVE production database: migrations ran against it and one production
+    // workspace-root row was touched. The setup owns the path, so it must
+    // re-assert it before anything opens a connection.
+    const setup = read("tests/setup/database-cleanup.ts");
+    expect(setup).toMatch(/beforeEach\(\(\) => \{[\s\S]*?process\.env\.HOOSHIX_DB_PATH\s*=\s*databasePath/);
+  });
   it("keeps the filesystem scratch root worker-scoped", () => {
     expect(RUNTIME_FILES_ROOT).toContain(process.env.VITEST_WORKER_ID ?? "single");
     // No test may write to a fixed shared runtime-files tree ever again.

@@ -37,6 +37,14 @@ function rmSyncWithRetry(filePath: string, options?: fs.RmOptions): void {
 }
 
 beforeEach(() => {
+  // This setup owns the worker's database path (set once at module load). A
+  // test may repoint or delete process.env.HOOSHIX_DB_PATH in its own
+  // beforeEach/afterEach; without re-asserting it here, the DB-opening steps
+  // below (and any code importing this worker's config lazily) would fall back
+  // to the default ./data/agent-memory.db — the LIVE production database. A
+  // prior version of r4-db-identity deleted the variable in afterEach, so the
+  // replaceWorkspaceRoots call below opened and wrote to production data.
+  process.env.HOOSHIX_DB_PATH = databasePath;
   resetAgentDatabase();
   resetMigrationsFlag();
   resetColumnsFlag();

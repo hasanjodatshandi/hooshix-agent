@@ -1,10 +1,10 @@
 # HooshiX Database Migrations
 
-Source of truth: `src/core/memory/database/migrations.ts` and `src/adapters/outbound/persistence/sqlite/base-schema.migration.ts`. `LATEST_MIGRATION_VERSION = 20`, pinned by `tests/core/r10-release-readiness.test.ts` so the constant cannot silently drift from the highest `migrate()` call.
+Source of truth: `src/core/memory/database/migrations.ts` and `src/adapters/outbound/persistence/sqlite/base-schema.migration.ts`. `LATEST_MIGRATION_VERSION = 21`, pinned by `tests/core/r10-release-readiness.test.ts` so the constant cannot silently drift from the highest `migrate()` call.
 
 ## How migrations work
 
-- A brand-new database gets `applyBaseSchemaMigration()` first (the v0 baseline), then `runMigrations()` walks 1..20.
+- A brand-new database gets `applyBaseSchemaMigration()` first (the v0 baseline), then `runMigrations()` walks 1..21.
 - Each migration is idempotent: `migrate()` checks `schema_migrations` inside one transaction and returns immediately if already applied.
 - Migrations run **once per process** (at first DB access), not per call.
 - `foreign_keys` is ON. The fresh-DB path is asserted FK-clean end to end.
@@ -33,6 +33,7 @@ Source of truth: `src/core/memory/database/migrations.ts` and `src/adapters/outb
 | 18 | principal-owned-projects-and-memory | `principal_id` ownership on projects + memory, scoped reads |
 | 19 | principal-owned-tasks | `principal_id` ownership on tasks + `idx_tasks_principal` |
 | 20 | consolidate-canonical-task-states | rewrites legacy `created`→`planning`, `checkpointing`/`resuming`→`executing` so no row is left in a state the canonical `TaskState` union no longer admits |
+| 21 | task-project-binding-and-memory-timestamps | nullable `tasks.project_id` + `idx_tasks_project_id` (a Task is owned directly by a Project; `task_list(projectId)` filters on it) and nullable `memory_items.updated_at` (records the last in-place change by `memory_update`) |
 
 ## Rehearsal
 

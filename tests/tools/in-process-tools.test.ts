@@ -147,6 +147,44 @@ describe("in-process MCP tool coverage", () => {
     expect(cancelled.cancelled).toBe(true);
   });
 
+  it("task_create binds a task to a project and task_list filters by it", async () => {
+    const project = json(await client.callTool({ name: "project_save", arguments: { name: "Bound", path: root } }));
+    const bound = json(await client.callTool({ name: "task_create", arguments: {
+      projectId: project.id, title: "project task",
+      steps: [{ action: "read", tool: "read_file", arguments: { path: "README.md" } }],
+    } }));
+    const unbound = json(await client.callTool({ name: "task_create", arguments: {
+      title: "loose task",
+      steps: [{ action: "read", tool: "read_file", arguments: { path: "README.md" } }],
+    } }));
+    // The bound task carries the projectId back on read.
+    const got = json(await client.callTool({ name: "task_get", arguments: { taskId: bound.id } }));
+    expect(got.projectId).toBe(project.id);
+    expect(json(await client.callTool({ name: "task_get", arguments: { taskId: unbound.id } })).projectId).toBeUndefined();
+    // task_list(projectId) sees only the bound task.
+    const scoped = json(await client.callTool({ name: "task_list", arguments: { projectId: project.id } }));
+    const scopedIds = scoped.map((row: { id: string }) => row.id);
+    expect(scopedIds).toContain(bound.id);
+    expect(scopedIds).not.toContain(unbound.id);
+  });
+
+  it("memory_update mutates content in place without creating a new record", async () => {
+    const project = json(await client.callTool({ name: "project_save", arguments: { name: "Mut", path: root } }));
+    const mem = json(await client.callTool({ name: "memory_add", arguments: { projectId: project.id, kind: "status", content: "before" } }));
+    const updated = json(await client.callTool({ name: "memory_update", arguments: { memoryId: mem.id, content: "after", kind: "progress" } }));
+    expect(updated).toEqual({ id: mem.id, updated: true });
+    const got = json(await client.callTool({ name: "memory_get", arguments: { memoryId: mem.id } }));
+    expect(got.content).toBe("after");
+    expect(got.kind).toBe("progress");
+    expect(got.updated_at).toBeTruthy();
+    // Still one record — update never appended a sibling.
+    const listed = json(await client.callTool({ name: "memory_list", arguments: { projectId: project.id } }));
+    expect(listed.items.length).toBe(1);
+    // An empty update is rejected with a typed argument error.
+    const empty = await client.callTool({ name: "memory_update", arguments: { memoryId: mem.id } });
+    expect(empty).toMatchObject({ isError: true });
+  });
+
   it("memory/project tools", async () => {
     const project = json(await client.callTool({ name: "project_save", arguments: { name: "P", path: root } }));
     const fetched = json(await client.callTool({ name: "project_get", arguments: { projectId: project.id } }));
@@ -308,13 +346,13 @@ describe("in-process MCP tool coverage", () => {
     expect(direct.isError).toBe(true); // approval required (or not a snapshot) — never executes
   });
 
-  it("registry completeness: MCP tools/list matches ALL_REGISTERED_TOOLS exactly (52 tools)", async () => {
+  it("registry completeness: MCP tools/list matches ALL_REGISTERED_TOOLS exactly (53 tools)", async () => {
     const { ALL_REGISTERED_TOOLS } = await import("../../src/core/orchestrator/tool-orchestrator.js");
     const tools = await client.listTools();
     const registered = tools.tools.map((t: { name: string }) => t.name).sort();
     const canonical = [...ALL_REGISTERED_TOOLS].sort();
     expect(registered).toEqual(canonical);
-    expect(registered.length).toBe(52);
+    expect(registered.length).toBe(53);
     // Every registered tool has a real description and a title annotation.
     for (const t of tools.tools as Array<{ name: string; description?: string; annotations?: { title?: string } }>) {
       expect({ name: t.name, hasDescription: (t.description ?? "").length > 0, hasTitle: !!t.annotations?.title }).toEqual({ name: t.name, hasDescription: true, hasTitle: true });

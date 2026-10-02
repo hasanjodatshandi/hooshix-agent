@@ -86,7 +86,7 @@ At minimum include descriptors for:
 
 - `task_create`, `task_get`, `task_list`, `task_run`, `task_resume`, `task_approve`, `task_cancel`, `task_append_steps`, `task_report`, `task_snapshot`, `task_rollback`, `task_replay`, `task_link`, `task_links`, `task_step_risks`;
 - `project_save`, `project_get`, `project_list`, `project_archive`, `project_delete`;
-- `memory_add`, `memory_get`, `memory_list`, `memory_delete`;
+- `memory_add`, `memory_get`, `memory_list`, `memory_update`, `memory_delete`;
 - workspace root management;
 - monitoring operations.
 

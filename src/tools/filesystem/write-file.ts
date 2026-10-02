@@ -5,7 +5,7 @@ import type { McpServer } from "../../adapters/inbound/mcp/legacy-sdk-bridge.js"
 export function registerWriteFileTool(server: McpServer) {
   server.registerTool("write_file", {
     title: "Write File",
-    description: "✏️ WRITE — Overwrite a file with new content (creates or replaces). Atomic; returns backupId for undo. Sensitive files rejected; content ≤1MB.\n\nExample: { \"path\": \"src/index.ts\", \"content\": \"import ...\" }",
+    description: "✏️ WRITE — Overwrite a file with new content (creates or replaces). Atomic; returns backupId for undo. Sensitive files rejected; content ≤1MB. ifMatchSha256 (hex) is a precondition — the write throws STALE_WRITE if the current file hash differs, for read-modify-write safety. idempotencyKey caches the response so a retried write is not re-applied.\n\nExample: { \"path\": \"src/index.ts\", \"content\": \"import ...\" }",
     annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
     inputSchema: z.object({
       path: z.string(),

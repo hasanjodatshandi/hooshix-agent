@@ -5,7 +5,7 @@ import type { McpServer } from "../../adapters/inbound/mcp/legacy-sdk-bridge.js"
 export function registerModifyFileTool(server: McpServer) {
   server.registerTool("modify_file", {
     title: "Modify File",
-    description: "✏️ WRITE — Find & replace text in a file: replaces ALL literal occurrences (no regex). Returns backupId + replacedOccurrences. Read the file first to get the exact search string.\n\nExample: { \"path\": \"src/index.ts\", \"search\": \"old name\", \"replacement\": \"new name\" }",
+    description: "✏️ WRITE — Find & replace text in a file: replaces ALL literal occurrences (no regex). Returns backupId + replacedOccurrences. Read the file first to get the exact search string. ifMatchSha256 (hex) is a precondition — the edit throws STALE_WRITE if the current file hash differs, for read-modify-write safety.\n\nExample: { \"path\": \"src/index.ts\", \"search\": \"old name\", \"replacement\": \"new name\" }",
     annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false },
     inputSchema: z.object({
       path: z.string(),

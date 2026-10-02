@@ -36,9 +36,9 @@ pnpm run dev
 - Files: `list_directory`, `read_file`, `search_files`, `create_file`, `write_file`, `modify_file`, `delete_file`, `restore_file`
 - Shell: `execute_command`
 - Git: `git_status`, `git_diff`, `git_clone`, `git_commit`, `git_branch`, `git_checkout`, `git_add`, `git_init`, `git_log`
-- Packages: `install_package`, `remove_package`, `update_package`, `package_restore`
+- Packages: `install_package`, `remove_package`, `update_package`
 - Tasks: `task_create`, `task_get`, `task_list`, `task_run`, `task_approve`, `task_resume`, `task_report`, `task_replay`, `task_cancel`, `task_append_steps`, `task_link`, `task_links`, `task_step_risks`, `task_snapshot`, `task_rollback`, `task_reconcile`
-- Context: `project_save`, `project_get`, `project_list`, `project_archive`, `project_delete`, `memory_add`, `memory_get`, `memory_list`, `memory_delete`
+- Context: `project_save`, `project_get`, `project_list`, `project_archive`, `project_delete`, `memory_add`, `memory_get`, `memory_list`, `memory_update`, `memory_delete`
 
 **فرمان‌های مجاز `execute_command`:** `node`, `npm`, `pnpm`, `git`, `python`, `py`, `gh`. دستورهای فقط-خواندنی (مثل `git status`، `gh pr list`، `node --version`) مستقیم اجرا می‌شوند؛ اجرای کد (اسکریپت node/python، `npm run/test`، git mutating، gh mutating) نیازمند step تاییدشده است.
 
@@ -251,7 +251,7 @@ HooshiX automatically recovers from failures when possible:
 - پیش از overwrite، modify یا delete یک backup در SQLite ذخیره می‌شود و با `restore_file` قابل بازگردانی است؛ restore خودش محتوای جاری جایگزین‌شده را backup می‌گیرد (`displacedBackupId`).
 - processها با `shell: false`، executable allowlist (بدون PowerShell)، argument validation، timeout و output cap اجرا می‌شوند. ابزارهای code-execution (node/python script، `npm run`، git/gh mutating) نیازمند approval هستند. **approval در فراخوانی مستقیم MCP هم الزامی است**؛ اگر می‌خواهید رفتار قبلی (auto-approve مستقیم) را داشته باشید `HOOSHIX_DIRECT_AUTO_APPROVE=1` را ست کنید.
 - Git clone فقط URL امن HTTPS بدون credential توکار و مقصد جدید داخل workspace را می‌پذیرد. `task_rollback` فقط snapshot واقعی task (نه backup فایل) را می‌پذیرد، HEAD را با اعتبارسنجی `/^[0-9a-f]{40}$/` و argv جدا از هم اجرا می‌کند و cwd آن باید داخل workspace و منطبق بر snapshot باشد.
-- package operation فقط پس از یک command مستقلِ verification موفق اعلام می‌شود؛ winget و Chocolatey به `ADMIN_MODE` نیاز دارند. `package_restore` نیز مثل بقیه عملیات‌های حساس تحت governance است.
+- package operation فقط پس از یک command مستقلِ verification موفق اعلام می‌شود؛ winget و Chocolatey به `ADMIN_MODE` نیاز دارند.
 - audit logها محتوی فایل و خروجی command را کپی نمی‌کنند و آرگومان‌های شبیه secret (حتی مقادیر خام مثل `sk-...`, `ghp_...`) را redacted می‌کنند. خروجی لازم در execution history همان task نگهداری می‌شود.
 - خطاها به‌صورت typed (`TIMEOUT`, `NETWORK`, `SECURITY_POLICY`, ...) دسته‌بندی می‌شوند؛ timeout و network با **backoff نمایی** (پایه ۱ ثانیه، سقف ۳۰ ثانیه) retry می‌شوند و state `verifying` نیز مسیر resume دارد.
 - retention پاک‌سازی خودکار رکوردهای قدیمی (پیش‌فرض ۹۰ روز، `HOOSHIX_RETENTION_DAYS`).

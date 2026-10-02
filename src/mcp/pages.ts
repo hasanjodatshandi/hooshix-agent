@@ -187,6 +187,7 @@ function getToolDescription(tool: ToolName): string {
     memory_list: "🧠 MEMORY (read) — List stored memory notes; filter by taskId, projectId, or kind; paginated.",
     memory_get: "🧠 MEMORY (read) — Fetch one memory record by id.",
     memory_delete: "🧠 MEMORY — Permanently delete one memory record by id.",
+    memory_update: "🧠 MEMORY — Update a memory record's kind and/or content in place (mutable current state).",
   };
   return descriptions[tool] ?? tool;
 }

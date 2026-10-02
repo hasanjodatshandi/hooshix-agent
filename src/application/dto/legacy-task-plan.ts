@@ -64,6 +64,10 @@ export interface TaskPlan {
   updatedAt?: string;
   retryPolicy?: RetryPolicy;
   totalRunCount?: number;
+  /** The Project this Task belongs to. Optional: tasks predating the direct
+   *  binding (migration 21) and tasks created without a project context have
+   *  none; task_list(projectId) filters on it. */
+  projectId?: string;
   pendingApproval?: {
     approvalId: number;
     stepId: number;
