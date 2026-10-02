@@ -244,14 +244,16 @@ export async function writeWorkspaceFile(targetPath: string, content: string, co
   return audit("write", targetPath, correlationId, async (traceId) => {
     policyDecisionPoint.assertAllowed({ tool: "write_file", arguments: { path: targetPath }, correlationId });
     if (Buffer.byteLength(content, "utf8") > MAX_FILE_BYTES) throw new Error(`Content exceeds ${MAX_FILE_BYTES} byte limit`);
-    // Idempotency: check for cached response
+    const filePath = validateWorkspace(targetPath);
+    assertNotSensitive(filePath);
+    // Idempotency: the request is keyed on the CANONICAL absolute path, so the
+    // same key against a different workspace is a distinct request rather than
+    // a silent cross-workspace no-op that returns another workspace's receipt.
     if (options?.idempotencyKey) {
-      const reqHash = normalizeRequest(targetPath, content);
+      const reqHash = normalizeRequest(filePath, content);
       const cached = getIdempotentResponse(options.idempotencyKey, "write", reqHash);
       if (cached !== undefined) return cached as FileMutationResult;
     }
-    const filePath = validateWorkspace(targetPath);
-    assertNotSensitive(filePath);
     await fs.mkdir(path.dirname(filePath), { recursive: true });
     validateWorkspace(path.dirname(filePath));
     const existed = await fs.access(filePath).then(() => true, () => false);
@@ -277,7 +279,7 @@ export async function writeWorkspaceFile(targetPath: string, content: string, co
     const result: FileMutationResult = { backupId, path: targetPath, created: !existed, previousState: existed ? "present" : "absent" };
     // Cache idempotent response
     if (options?.idempotencyKey) {
-      storeIdempotentResponse(options.idempotencyKey, "write", normalizeRequest(targetPath, content), result);
+      storeIdempotentResponse(options.idempotencyKey, "write", normalizeRequest(filePath, content), result);
     }
     return result;
   });
@@ -323,9 +325,11 @@ export async function deleteWorkspaceFile(targetPath: string, correlationId?: st
     const filePath = validateWorkspace(targetPath);
     assertNotSensitive(filePath);
     policyDecisionPoint.assertAllowed({ tool: "delete_file", arguments: { path: targetPath }, correlationId });
-    // Idempotency: check for cached response
+    // Idempotency: keyed on the canonical absolute path so a retry of the same
+    // key in a different workspace is a distinct request, not a cached no-op
+    // that reports a deletion which never happened there.
     if (options?.idempotencyKey) {
-      const reqHash = normalizeRequest(targetPath);
+      const reqHash = normalizeRequest(filePath);
       const cached = getIdempotentResponse(options.idempotencyKey, "delete", reqHash);
       if (cached !== undefined) return cached as FileMutationResult;
     }
@@ -334,7 +338,7 @@ export async function deleteWorkspaceFile(targetPath: string, correlationId?: st
       // Already absent — return idempotent success for retry safety
       const result: FileMutationResult = { path: targetPath, previousState: "absent" as const };
       if (options?.idempotencyKey) {
-        storeIdempotentResponse(options.idempotencyKey, "delete", normalizeRequest(targetPath), result);
+        storeIdempotentResponse(options.idempotencyKey, "delete", normalizeRequest(filePath), result);
       }
       return result;
     }
@@ -343,7 +347,7 @@ export async function deleteWorkspaceFile(targetPath: string, correlationId?: st
     recordFileBackupPostcondition(backupId,"absent");
     const result = { backupId, path: targetPath, previousState: "present" as const };
     if (options?.idempotencyKey) {
-      storeIdempotentResponse(options.idempotencyKey, "delete", normalizeRequest(targetPath), result);
+      storeIdempotentResponse(options.idempotencyKey, "delete", normalizeRequest(filePath), result);
     }
     return result;
   });

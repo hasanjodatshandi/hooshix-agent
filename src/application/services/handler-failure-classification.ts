@@ -21,7 +21,29 @@
 export function classifyHandlerFailure(error: unknown): string {
   if (!(error instanceof Error)) return "tool_handler_failure";
   const message = error.message;
-  const code = (error as NodeJS.ErrnoException).code;
+  const code = (error as NodeJS.ErrnoException & { code?: string }).code;
+
+  // AgentError carries a typed code (src/core/errors.ts). Importing that
+  // module here would break the layering rule (application may not import
+  // core), so the closed code union is mirrored structurally. This keeps
+  // semantic failures distinguishable instead of collapsing to
+  // tool_handler_failure, which forced callers to blind-retry.
+  if (typeof code === "string") {
+    switch (code) {
+      case "TIMEOUT": return "timeout";
+      case "NETWORK": return "network";
+      case "SECURITY_POLICY":
+      case "GOVERNANCE_BLOCKED": return "security_policy";
+      case "MISSING_CONTEXT_VARIABLE": return "missing_context_variable";
+      case "FILE_NOT_FOUND": return "resource_not_found";
+      case "APPROVAL_REQUIRED": return "approval_required";
+      case "INVALID_ARGUMENT": return "invalid_argument";
+      case "UNKNOWN_TOOL": return "unknown_tool";
+      case "WORKSPACE_CONTEXT_INVALID": return "workspace_context_invalid";
+      case "MEMORY_CONTENT_REQUIRED": return "memory_content_required";
+      default: break; // EXECUTION or an unknown code — fall through to heuristics.
+    }
+  }
 
   // Workspace guard (src/security/workspace-guard.ts) — the single most common
   // recoverable failure: no active root, or a path the active root does not cover.
@@ -29,6 +51,7 @@ export function classifyHandlerFailure(error: unknown): string {
   // caller can test one string regardless of which layer caught it.
   if (message.includes("no active workspace")) return "workspace_missing_or_ungranted";
   if (message.includes("path outside workspace") || message.includes("Access denied: invalid")) return "path_outside_workspace";
+  if (message.includes("Cannot remove the active workspace")) return "cannot_remove_active_workspace";
 
   // Filesystem service guards (src/services/filesystem/filesystem-service.ts).
   if (message.includes("sensitive-file denylist")) return "sensitive_file_rejected";
@@ -36,6 +59,16 @@ export function classifyHandlerFailure(error: unknown): string {
   if (message.includes("Target is not a file")) return "not_a_file";
   if (message.includes("Target already exists")) return "target_already_exists";
   if (message.includes("Target text was not found")) return "search_text_not_found";
+  // Optimistic-concurrency precondition (write_file/modify_file ifMatchSha256).
+  if (message.includes("STALE_WRITE")) return "stale_write";
+
+  // Project/memory record guards.
+  if (message.includes("already registered to project")) return "duplicate_project_record";
+
+  // Task control-plane guards: a terminal or non-failed Task cannot receive
+  // corrective steps, and reconciliation requires a specific terminal state.
+  if (message.includes("task_append")) return "task_append_rejected";
+  if (message.includes("reconciliation_requires")) return "reconciliation_state_invalid";
 
   // Node fs errno codes.
   if (code === "ENOENT" || message.includes("not found")) return "resource_not_found";

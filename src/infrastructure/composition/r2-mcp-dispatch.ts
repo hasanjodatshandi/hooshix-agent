@@ -36,12 +36,17 @@ export async function executeAuthorizedDirectTool(
     const raw=await runWithWorkspaceScope(scope.root,()=>
       dispatchToHandler(name,args,trace,snapshot));
     if(name==="read_file") {
-      const value=typeof raw==="string"?raw:(raw as {content:string;sha256:string}).content;
-      return {
-        path:args.path,text:value,length:value.length,
-        ...(typeof raw==="string"?{}:{sha256:(raw as {sha256:string}).sha256}),
-        content:[{type:"text" as const,text:value}],_meta:{correlationId:trace},
-      };
+      // includeSha256 contract: the payload becomes { content, sha256 }.
+      // Machine-readable fields must ride inside the content block: extra
+      // top-level siblings are not part of the CallToolResult shape, so
+      // strict clients silently dropped the hash and the safe
+      // read-modify-write workflow (ifMatchSha256) could never obtain one.
+      if(typeof raw==="string")
+        return {content:[{type:"text" as const,text:raw}],_meta:{correlationId:trace}};
+      const hashed=raw as {content:string;sha256:string};
+      return {content:[{type:"text" as const,
+        text:JSON.stringify({content:hashed.content,sha256:hashed.sha256},null,2)}],
+        _meta:{correlationId:trace}};
     }
     if(name==="list_directory") {
       const entries=raw as string[];

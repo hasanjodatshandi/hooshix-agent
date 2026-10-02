@@ -132,6 +132,29 @@ export function analyzeTaskHistory(taskId: string): ReflectionReport {
       summary = { actions, toolsUsed, artifacts: artifacts.length > 0 ? artifacts : undefined };
     }
 
+    // The persisted plan is authoritative. The executions audit row can be
+    // absent — a crashed/aborted loop, or a step reconciled to failed without
+    // a matching execution row — while the Task still durably ended failed.
+    // Reporting "No failure detected / path succeeded" for such a Task would
+    // mislead an upstream agent into reusing outputs of a failed run.
+    const failedPlanSteps = plan?.steps.filter((s) => s.status === "failed" || s.status === "reconciled_failed") ?? [];
+    if (!hasIssue && failedPlanSteps.length > 0) {
+      const last = failedPlanSteps[failedPlanSteps.length - 1]!;
+      const record = getTaskReconciliations(taskId)
+        .map((row) => row.content as { stepId?: number; finding?: string } | undefined)
+        .find((row) => row?.stepId === last.id);
+      return {
+        problem: `Step ${last.id} failed: ${last.action}`,
+        cause: last.error
+          ?? (record ? `Reconciliation finding: ${record.finding ?? "undetermined"}` : "Task ended in a failed state without a recorded execution error"),
+        solution: record
+          ? "Reconciliation resolved the interrupted step; the original tool result remains unknown — do not replay it or reuse its outputs"
+          : "Ask for an explicit corrective plan before retrying; do not assume the prior run succeeded",
+        confidence: 0.4,
+        futureRecommendation: "Treat this Task as failed. Reconcile or replay the failed step with a corrective plan rather than reusing its outputs.",
+      };
+    }
+
     return {
       problem: isBlocked
         ? `Step blocked by governance policy: ${latestIssue!.action}`

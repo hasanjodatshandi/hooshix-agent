@@ -3,7 +3,7 @@ import { validateToolName, type ToolName } from "../../application/services/lega
 import { auditToolCall } from "../memory/tool-audit.js";
 import { dispatchToHandler } from "./legacy-tool-handler-composition.js";
 import { resolveTaskWorkspace } from "../../security/task-workspace.js";
-import { runWithWorkspaceScope } from "../../security/workspace-guard.js";
+import { runWithWorkspaceScope, sameRootIdentity } from "../../security/workspace-guard.js";
 import { getActiveWorkspace, isUnrestrictedMode } from "../../security/workspace-guard.js";
 import { createR2RuntimeGateway, requireSuccessfulGateway } from "./r2-runtime-gateway.js";
 import { getTrustedTaskApproval } from "../governance/r2-trusted-task-approval.js";
@@ -105,7 +105,10 @@ export function createLocalToolExecutor(correlationId: string, taskId?: string, 
     });
     // The snapshot of the root pool is preserved by the plan, but a Task
     // receives file access only to its originally selected workspace.
-    if(active && !capturedRoots.includes(active)) throw new Error("task_workspace_not_in_captured_roots");
+    // Windows roots are case-insensitive; a captured "C:\TEMP" must match a
+    // runtime "c:\temp" instead of failing task_workspace_not_in_captured_roots.
+    if(active && !capturedRoots.some((root) => sameRootIdentity(root, active)))
+      throw new Error("task_workspace_not_in_captured_roots");
     const execute=()=>auditToolCall(tool,correlationId,taskId,async()=>{
       const gateway=createR2RuntimeGateway({
         execute:async(id,args)=>{

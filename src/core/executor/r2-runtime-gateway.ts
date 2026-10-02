@@ -10,7 +10,7 @@ import { operationDescriptorPort, getOperationDescriptor } from "../../applicati
 import { getConfiguredPermissionLevel } from "../../infrastructure/config/permission-config.js";
 import { readLegacyWorkspaceBootstrapSettings } from "../../infrastructure/config/legacy-workspace-bootstrap.js";
 import { getTrustedInboundIdentity } from "../runtime/r2-trusted-inbound-identity.js";
-import { getActiveWorkspace, isUnrestrictedMode, listWorkspaceRoots } from "../../security/workspace-guard.js";
+import { getActiveWorkspace, isUnrestrictedMode, listWorkspaceRoots, sameRootIdentity } from "../../security/workspace-guard.js";
 import { policyDecisionPoint } from "../../core/governance/policy-decision-point.js";
 import { getApprovalRequest, claimApprovedTaskEffect } from "../../core/governance/approval-memory.js";
 import { getTaskPlan } from "../../core/memory/task-repository.js";
@@ -127,6 +127,7 @@ export function createR2RuntimeGateway(handler:ToolHandlerPort) {
       const plan=getTaskPlan(taskId);
       const step=plan?.steps.find(item=>item.id===stepId);
       const ctx=plan?.executionContext;
+      const root=scope.root;
       if(!record||!step||!ctx||!record.request_fingerprint||
          !record.expires_at||record.expires_at<=new Date().toISOString()||
          record.status!=="consumed"||record.dispatched_at!==null||
@@ -134,12 +135,13 @@ export function createR2RuntimeGateway(handler:ToolHandlerPort) {
          record.tool_id!==toolId||record.action!==step.action||
          record.principal_id!==principal.id||record.session_id!==scope.sessionId||
          ctx.principalId!==principal.id||ctx.sessionId!==scope.sessionId||
-         ctx.workspace!==scope.root||
-         (ctx.unrestricted || requestsUnrestrictedEffect(toolId,args))!==scope.unrestricted ||
-         (scope.root!==null &&
-          (!(ctx.allowedRootsSnapshot??ctx.roots).includes(scope.root) ||
-           scope.allowedRoots.length!==1 || scope.allowedRoots[0]!==scope.root)) ||
-         (scope.root===null && scope.allowedRoots.length!==0))
+         root!==null &&
+         ((typeof ctx.workspace==="string" && !sameRootIdentity(ctx.workspace, root))||
+          (typeof ctx.workspace!=="string" && ctx.workspace!==root)||
+          (ctx.unrestricted || requestsUnrestrictedEffect(toolId,args))!==scope.unrestricted ||
+          !(ctx.allowedRootsSnapshot??ctx.roots).some((allowed) => sameRootIdentity(allowed, root)) ||
+          scope.allowedRoots.length!==1 || !sameRootIdentity(scope.allowedRoots[0]!, root)) ||
+         (root===null && scope.allowedRoots.length!==0))
         return false;
       let actual:string;
       try {actual=fingerprintTaskEffect({

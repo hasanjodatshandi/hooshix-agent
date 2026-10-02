@@ -52,7 +52,7 @@ function canonicalRootIdentity(p: string): string {
 }
 
 /** Equality of two paths as workspace identities (case-insensitive on win32). */
-function sameRootIdentity(a: string, b: string): boolean {
+export function sameRootIdentity(a: string, b: string): boolean {
   return canonicalRootIdentity(a) === canonicalRootIdentity(b);
 }
 

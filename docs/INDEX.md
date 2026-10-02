@@ -39,7 +39,8 @@ specs above and by the traceability matrix.
 
 | Document | Status |
 |---|---|
-| `FULL_AUDIT_2026-10-02.md` | Latest full audit — Task↔Project direct binding + `memory_update`, tool-doc sync pass, and CRITICAL-01 (tests opening the production database) found and fixed in-session |
+| `E2E_AUDIT_REMEDIATION_2026-10-02.md` | Latest — remediation of the 2026-10-02 end-to-end audit of all 53 tools via a real MCP client (governance deadlock, `read_file` includeSha256, file idempotency, Windows root casing, error taxonomy, reflection) |
+| `FULL_AUDIT_2026-10-02.md` | Prior full audit — Task↔Project direct binding + `memory_update`, tool-doc sync pass, and CRITICAL-01 (tests opening the production database) found and fixed in-session |
 | `FULL_AUDIT_2026-10-01.md` | Prior full audit (evidence-based, project-audit-skill); all 5 findings remediated in-session |
 | `FULL_AUDIT_2026-09-30.md` | Prior full audit; finding status mirrored in the traceability matrix |
 | `HOOSHIX_AUDIT_CONSOLIDATED_FINAL.md` | Earlier consolidated audit (superseded by the above for status) |

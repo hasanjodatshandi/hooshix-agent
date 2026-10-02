@@ -46,7 +46,7 @@ Only the tool name in the first column is a registered operation name.
 | `task_append_steps` | high | never | none |
 | `task_link` | medium | on-risk | none |
 | `project_save` | medium | on-risk | none |
-| `project_delete` | high | always | none |
+| `project_delete` | high | on-risk | none |
 | `project_archive` | medium | on-risk | none |
 
 ## Execute & Git
@@ -89,7 +89,7 @@ Only the tool name in the first column is a registered operation name.
 |---|---|---|---|
 | `memory_add` | medium | on-risk | none |
 | `memory_update` | medium | on-risk | none |
-| `memory_delete` | high | always | none |
+| `memory_delete` | high | on-risk | none |
 
 ## Security classes
 

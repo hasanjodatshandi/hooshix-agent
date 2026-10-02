@@ -64,4 +64,44 @@ describe("reflection engine", () => {
     expect(report.solution).not.toContain("Existing execution path succeeded");
     expect(report.futureRecommendation).toContain("reconciliation");
   });
+
+  it("does not claim success when a reconciled_failed task has no execution row", async () => {
+    // Reproduces the 2026-10-02 audit finding: a Task whose step timed out and
+    // was reconciled to confirmed_failed has an EMPTY executions table, so the
+    // legacy reflection reported "No failure detected / path succeeded".
+    const { createTaskPlan } = await import("../../src/core/planner/task-planner.js");
+    const { saveTaskPlan } = await import("../../src/core/memory/task-repository.js");
+    const plan = createTaskPlan("reconciled-failure-reflection", [
+      { action: "write probe then exceed timeout", tool: "execute_command", arguments: { command: "node", args: ["-e", ""] }, status: "pending" },
+    ]);
+    plan.state = "failed";
+    plan.steps[0].status = "reconciled_failed";
+    plan.steps[0].error = "No effect reported by independent verification; original tool result remains unknown";
+    saveTaskPlan(plan, "failed", plan.correlationId);
+
+    const report = analyzeTaskHistory(plan.id);
+    expect(report.problem).toContain("failed");
+    expect(report.problem).toContain("write probe then exceed timeout");
+    expect(report.cause).not.toBe("No failure detected");
+    expect(report.solution).not.toContain("Existing execution path succeeded");
+    expect(report.futureRecommendation).toContain("failed");
+  });
+
+  it("does not claim success when a task durably failed but executions only recorded successes", async () => {
+    const { createTaskPlan } = await import("../../src/core/planner/task-planner.js");
+    const { saveTaskPlan } = await import("../../src/core/memory/task-repository.js");
+    const plan = createTaskPlan("failed-task-missing-execution-row", [
+      { action: "unrecorded failure", tool: "read_file", arguments: { path: "README.md" }, status: "failed" },
+    ]);
+    plan.state = "failed";
+    plan.steps[0].error = "the step actually failed";
+    saveTaskPlan(plan, "failed", plan.correlationId);
+    // An unrelated success row must not mask the persisted failed step.
+    saveExecutionMemory({ taskId: plan.id, stepId: 1, action: "unrecorded failure", result: { ok: true }, status: "completed" });
+
+    const report = analyzeTaskHistory(plan.id);
+    expect(report.problem).toContain("unrecorded failure");
+    expect(report.cause).toBe("the step actually failed");
+    expect(report.solution).not.toContain("Existing execution path succeeded");
+  });
 });
