@@ -11,7 +11,7 @@ const SAFE_IDENTIFIER = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
  * CURRENT head instead of a hardcoded version that silently rots as new
  * migrations land. If you add a migration, bump this to match it.
  */
-export const LATEST_MIGRATION_VERSION = 22;
+export const LATEST_MIGRATION_VERSION = 23;
 
 export function ensureColumn(
   db: Database.Database,
@@ -416,6 +416,109 @@ export function runMigrations(db: Database.Database): void {
         created_at TEXT NOT NULL,
         PRIMARY KEY (id, operation, request_hash)
       );
+    `);
+  });
+
+  // CI-2.01 — Chat Isolation control plane. Created here (NOT in base-schema)
+  // deliberately: runMigrations executes on fresh and existing databases alike,
+  // so a single idempotent definition serves both and there is no fresh-only
+  // gap of the kind migration 22 repaired for idempotency_responses.
+  //
+  // These tables are additive: nothing in the shipped code path reads them yet
+  // (CTX_ISOLATION_MODE=OFF), so applying the migration to an existing
+  // deployment cannot change behavior. CI-2.02/Ci-2.05 wire the resolvers that
+  // use them, still behind the flag.
+  migrate(db,23,"ci-control-schema",()=>{
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS context_registry (
+        context_id TEXT NOT NULL PRIMARY KEY,
+        owner_id TEXT NOT NULL,
+        project_label TEXT NOT NULL,
+        state TEXT NOT NULL DEFAULT 'ACTIVE'
+          CHECK (state IN ('ACTIVE','FROZEN','TRANSFERRING','ARCHIVED')),
+        workspace_grant_id TEXT NOT NULL,
+        storage_locator TEXT NOT NULL UNIQUE,
+        context_epoch INTEGER NOT NULL DEFAULT 1,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_context_owner_state
+        ON context_registry(owner_id, state);
+
+      CREATE TABLE IF NOT EXISTS context_binding (
+        binding_id TEXT NOT NULL PRIMARY KEY,
+        owner_id TEXT NOT NULL,
+        context_id TEXT NOT NULL REFERENCES context_registry(context_id),
+        connection_id TEXT NOT NULL,
+        credential_hash TEXT NOT NULL,
+        credential_version INTEGER NOT NULL DEFAULT 1,
+        scopes_json TEXT NOT NULL DEFAULT '[]',
+        state TEXT NOT NULL DEFAULT 'ACTIVE'
+          CHECK (state IN ('ACTIVE','REVOKED','EXPIRED')),
+        created_at TEXT NOT NULL,
+        UNIQUE (connection_id, credential_version),
+        UNIQUE (credential_hash, credential_version)
+      );
+      CREATE INDEX IF NOT EXISTS idx_binding_context
+        ON context_binding(context_id, state);
+
+      CREATE TABLE IF NOT EXISTS workspace_grant (
+        grant_id TEXT NOT NULL PRIMARY KEY,
+        context_id TEXT NOT NULL REFERENCES context_registry(context_id),
+        canonical_root TEXT NOT NULL,
+        worktree_locator TEXT,
+        access_mode TEXT NOT NULL DEFAULT 'READ_WRITE'
+          CHECK (access_mode IN ('READ_ONLY','READ_WRITE')),
+        lease_id TEXT,
+        grant_version INTEGER NOT NULL DEFAULT 1,
+        created_at TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_grant_context
+        ON workspace_grant(context_id, grant_version);
+
+      CREATE TABLE IF NOT EXISTS ownership_lease (
+        context_id TEXT NOT NULL PRIMARY KEY
+          REFERENCES context_registry(context_id),
+        owner_binding_id TEXT NOT NULL REFERENCES context_binding(binding_id),
+        context_epoch INTEGER NOT NULL,
+        lease_deadline_ms INTEGER NOT NULL,
+        fencing_token TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS handoff_intent (
+        intent_id TEXT NOT NULL PRIMARY KEY,
+        source_context_id TEXT NOT NULL REFERENCES context_registry(context_id),
+        source_binding_id TEXT NOT NULL REFERENCES context_binding(binding_id),
+        target_connection_id TEXT NOT NULL,
+        target_context_id TEXT REFERENCES context_registry(context_id),
+        kind TEXT NOT NULL CHECK (kind IN ('TRANSFER','FORK')),
+        state TEXT NOT NULL DEFAULT 'PREPARED'
+          CHECK (state IN ('PREPARED','APPROVED','DRAINING','COMMITTED',
+                           'CANCELLED','EXPIRED','FAILED')),
+        source_epoch INTEGER NOT NULL,
+        ticket_hash TEXT NOT NULL UNIQUE,
+        expires_at TEXT NOT NULL,
+        approved_by_owner_id TEXT,
+        approved_at TEXT,
+        committed_at TEXT,
+        created_at TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_intent_source_state
+        ON handoff_intent(source_context_id, state);
+
+      CREATE TABLE IF NOT EXISTS security_audit (
+        id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+        owner_id TEXT,
+        context_id TEXT,
+        binding_id TEXT,
+        action TEXT NOT NULL,
+        decision TEXT NOT NULL CHECK (decision IN ('ALLOW','DENY')),
+        trace_id TEXT,
+        occurred_at TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_audit_context_time
+        ON security_audit(context_id, occurred_at);
     `);
   });
 

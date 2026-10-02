@@ -25,9 +25,15 @@ describe("R6 file-idempotency table upgrade for pre-existing databases", () => {
         applyBaseSchemaMigration(db);
         runMigrations(db);
         // Simulate a database that predates the table: it sits at the pre-22
-        // migration head and never received idempotency_responses.
+        // migration head and never received idempotency_responses. Newer
+        // migrations (23, ci-control-schema) must be rolled back too, so the
+        // simulated head is 21 and re-running repairs everything in order.
         db.exec("DROP TABLE idempotency_responses");
-        db.prepare("DELETE FROM schema_migrations WHERE version = 22").run();
+        for (const table of [
+          "security_audit", "handoff_intent", "ownership_lease",
+          "workspace_grant", "context_binding", "context_registry",
+        ]) db.exec(`DROP TABLE IF EXISTS ${table}`);
+        db.prepare("DELETE FROM schema_migrations WHERE version IN (22, 23)").run();
         expect(
           db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='idempotency_responses'").get(),
         ).toBeUndefined();
@@ -63,12 +69,17 @@ describe("R6 file-idempotency table upgrade for pre-existing databases", () => {
     try {
       // Seed a legacy database: fully migrated to the pre-22 head, but without
       // the idempotency table (as every live deployment predating it is).
+      // Migration 23's tables are dropped as well so the seed truly predates 22.
       const seed = fixture.openDatabase();
       try {
         applyBaseSchemaMigration(seed);
         runMigrations(seed);
         seed.exec("DROP TABLE idempotency_responses");
-        seed.prepare("DELETE FROM schema_migrations WHERE version = 22").run();
+        for (const table of [
+          "security_audit", "handoff_intent", "ownership_lease",
+          "workspace_grant", "context_binding", "context_registry",
+        ]) seed.exec(`DROP TABLE IF EXISTS ${table}`);
+        seed.prepare("DELETE FROM schema_migrations WHERE version IN (22, 23)").run();
       } finally {
         seed.close();
       }

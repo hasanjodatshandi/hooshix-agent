@@ -269,7 +269,7 @@ CI-1 (domain) ──► CI-2 (control DB + principal مجزا) ──► CI-3 (w
 |---|---|
 | CI-G0 | ✅ تصمیم سندبندی شده (`SERVER_SIDE_READY / HOST_VERIFICATION_PENDING`) |
 | CI-G1 | ✅ **تأیید شد** — CI-1.01 تا CI-1.04 کامل؛ ۹۳۴ تست / ۲۰۳ فایل سبز؛ G1 global + R7 secret policy PASS؛ build تمیز |
-| CI-G2 | 🔄 بعدی — CI-2.01 (migration 23 control tables) |
+| CI-G2 | 🔄 در حال اجرا — CI-2.01 کامل، بعدی CI-2.02 |
 | CI-G3..CI-G9 | ⬜ NOT_STARTED |
 
 ### CI-1 — انجام‌شده (commit نشده)
@@ -283,4 +283,14 @@ CI-1 (domain) ──► CI-2 (control DB + principal مجزا) ──► CI-3 (w
 
 تست‌ها: `tests/ci/ci-1-0{1,2,3,4}-*.test.ts` — ۴۵ تست.
 
-**leaf بعدی:** **CI-2.01** — migration 23 (control tables: `context_registry`، `context_binding`، `workspace_grant`، `ownership_lease`، `handoff_intent`، `security_audit`). اول روی کپی DB آزمایشی، طبق قانون migration ledger.
+### CI-2.01 — انجام‌شده (commit نشده)
+
+- migration `23` (`ci-control-schema`) با شش جدول: `context_registry`، `context_binding`، `workspace_grant`، `ownership_lease`، `handoff_intent`، `security_audit` — با CHECKهای state، UNIQUEهای binding، FKها و indexها.
+- **طراحی:** جداول فقط در migration ساخته می‌شوند (نه base-schema) تا fresh-only gap نباشد؛ `runMigrations` روی DB تازه و قدیمی هر دو اجرا می‌شود.
+- **additive:** هیچ مسیر تولیدی‌ای این جداول را نمی‌خواند تا `CTX_ISOLATION_MODE=OFF` است.
+- **backup rehearsal اجرا شد:** migration روی کپی دیتابیس تولید (۱۱۲۵ task واقعی) اعمال شد — head 22→23، شش جدول ایجاد شد، `integrity_check=ok`، `foreign_key_check=[]`، re-run no-op، هیچ row موجودی دست‌نخورد.
+- `LATEST_MIGRATION_VERSION` 22 → 23 و `docs/MIGRATIONS.md` به‌روز شد.
+- تست مسیر upgrade در `tests/core/r6-idempotency-responses-upgrade.test.ts` برای شبیه‌سازی head قبل از 22 به‌روز شد (اثر جانبی طبیعی اضافه‌شدن migration).
+- `tests/ci/ci-2-01-control-schema-migration.test.ts` — ۸ تست (fresh، upgrade، idempotent، PKها، FK، CHECK، UNIQUE).
+
+**leaf بعدی:** **CI-2.02** — صدور principal/connection مجزا per connection. این قلب رفع CI-G0 است: `issueCode`/`issueGrant` یک `connectionId` و `principalId` مجزا تولید و در `context_binding` ذخیره می‌کنند.
