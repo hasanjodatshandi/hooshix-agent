@@ -269,7 +269,7 @@ CI-1 (domain) ──► CI-2 (control DB + principal مجزا) ──► CI-3 (w
 |---|---|
 | CI-G0 | ✅ تصمیم سندبندی شده (`SERVER_SIDE_READY / HOST_VERIFICATION_PENDING`) |
 | CI-G1 | ✅ **تأیید شد** — CI-1.01 تا CI-1.04 کامل؛ ۹۳۴ تست / ۲۰۳ فایل سبز؛ G1 global + R7 secret policy PASS؛ build تمیز |
-| CI-G2 | 🔄 در حال اجرا — CI-2.01 و CI-2.02 کامل، بعدی CI-2.03 |
+| CI-G2 | 🔄 در حال اجرا — CI-2.01 تا CI-2.03 کامل، بعدی CI-2.04 |
 | CI-G3..CI-G9 | ⬜ NOT_STARTED |
 
 ### CI-1 — انجام‌شده (commit نشده)
@@ -302,4 +302,4 @@ CI-1 (domain) ──► CI-2 (control DB + principal مجزا) ──► CI-3 (w
 - **backup rehearsal اجرا شد:** کپی DB تولید head 22→24، `principal_id` اضافه شد، `integrity_check=ok`، rerun no-op، ۱۱۲۵ task دست‌نخورد.
 - `tests/ci/ci-2-02-connection-issuance.test.ts` — ۱۱ تست: flag parsing، four-identity distinctness، credential hash، reuse، double-provision.
 
-**leaf بعدی:** **CI-2.03** — Legacy Context پین‌شده: تمام grantهای موجود با `principal="operator"` به یک Context LEGACY map شوند (نه invalidate خودکار)، و هیچ fallbackی برای connection جدید وجود نداشته باشد.
+**leaf بعدی:** **CI-2.04** — ownership lease با CAS در SQLite: `UPDATE ... WHERE context_id=? AND context_epoch=? AND owner_binding_id=?` با assert `changes===1` در همان transaction (الگوی `task-lease.adapter.ts` موجود).
