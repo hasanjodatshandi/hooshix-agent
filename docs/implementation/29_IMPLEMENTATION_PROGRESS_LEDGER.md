@@ -1208,3 +1208,18 @@ Fixed by migration 22 `file-idempotency-response-cache-table` (`CREATE TABLE IF 
 **MEDIUM — `idempotency_key_payload_conflict` still surfaced as `tool_handler_failure`.** The runtime threw the correct deterministic error (a reused key with a changed payload must be rejected, never silently merged), but the MCP error classifier did not know it, so a client saw an opaque failure and blind-retried a request that can never succeed. `classifyHandlerFailure` now passes `idempotency_key_payload_conflict` through verbatim and maps its two siblings (`idempotency_key_inconsistent`, `idempotency_key_legacy_hash_missing`) to `idempotency_key_inconsistent`. Regression: the label is asserted through the in-process MCP server in `tests/e2e/r2-control-plane-delete-and-failure-reasons.test.ts`.
 
 **Verification:** 887 tests / 199 files pass (3 new); build clean; lint green; `docs/TOOLS.md` regenerated (no change — no tool descriptors moved). Live server restarted onto the new dist (PID 19848, both health endpoints 200); production database upgraded to head 22 with integrity verified and no data rows changed.
+
+
+---
+
+## 2026-10-02 (IV) — The last open item: the Windows Python launcher timeout was a missing LOCALAPPDATA in the child env
+
+A second retest against HEAD `a729a97` confirmed every earlier fix on the live database — write/delete idempotency replays return the same `backupId`, `task_create` with a reused key and a changed payload now returns `idempotency_key_payload_conflict` directly, and migration 22 created `idempotency_responses` with the right schema. The only remaining issue was `python`/`py` timing out.
+
+Root-caused by reproducing exactly how HooshiX spawns: `cmd /c python --version` returned in ~113ms, so the interpreter was fine. But with the child-process env allowlist, pymanager logged `Failed to read unmanaged installs: expected str, bytes or os.PathLike object, not NoneType` and then `Python install manager was successfully updated to 26.3` — it never came back. On Windows, `python`/`py` resolve to Microsoft App Execution Alias stubs in `%LOCALAPPDATA%\Microsoft\WindowsApps` that activate the Windows Python Install Manager instead of an interpreter. pymanager reads its install index from under `%LOCALAPPDATA%`; without the variable it sees `NoneType`, decides to install a manager update (this is the `Python/` folder every retest created), and does not return — so `execute_command` reports a timeout on a machine where Python 3.14.6 is installed and healthy.
+
+Fixed by adding `LOCALAPPDATA` to `ALLOWED_CHILD_ENV_KEYS` in `src/infrastructure/config/app-config.ts`. It is a standard Windows user path, not a secret, so handing it to untrusted command code does not weaken the allowlist's purpose (which is withholding HOOSHIX_* secrets). Verified: `python --version`, `py --version`, real script execution and file I/O in the workspace all resolve in ~110-140ms.
+
+Regression coverage in `tests/security/r4-child-env-excludes-secrets.test.ts`: a pure assertion that the allowlist forwards `LOCALAPPDATA` (protecting the exact invariant that broke), plus a Windows-only functional test that runs `python --version` through the sole spawn choke point (`services/spawn.ts`) with a short timeout — removing the variable from the list makes this test hang and time out rather than pass silently.
+
+This closes the last item from the E2E audit. **Verification:** 889 tests / 199 files pass; build clean; lint green; live server restarted onto the new dist (PID 12628, both health endpoints 200).

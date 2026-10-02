@@ -138,4 +138,39 @@ describe("4.9 child process env excludes sensitive credentials",()=>{
       }
     });
   });
+
+  describe("Windows packaged-app activation",()=>{
+
+    it("forwards LOCALAPPDATA so the Windows Python launcher resolves instead of hanging",()=>{
+      // Regression for the 2026-10-02 retest: python/py resolve to Microsoft
+      // App Execution Alias stubs that activate the Windows Python Install
+      // Manager (pymanager). pymanager locates its install index under
+      // %LOCALAPPDATA%; without the variable it logs "Failed to read unmanaged
+      // installs: ... NoneType", decides to install a manager update, and does
+      // not return — execute_command then reports a timeout on a machine where
+      // the interpreter is installed and healthy. Dropping LOCALAPPDATA from
+      // the allowlist reintroduces exactly that hang.
+      const childEnv=buildChildProcessEnvironment({
+        PATH:"C:\\Windows\\System32",
+        LOCALAPPDATA:"C:\\Users\\probe\\AppData\\Local",
+      });
+      expect(childEnv.LOCALAPPDATA).toBe("C:\\Users\\probe\\AppData\\Local");
+    });
+
+    it("python --version resolves through the governed spawn choke point",async()=>{
+      if(process.platform!=="win32") return;
+      // End-to-end proof through the only spawn path: before LOCALAPPDATA was
+      // allowlisted this hung until the tool timed out (pymanager self-update);
+      // now the interpreter resolves in well under a second.
+      const fixture=createDisposableFixture("r4-python-launcher");
+      try{
+        const result=await spawn("python",["--version"],{cwd:fixture.root,timeout:20000,reject:false});
+        expect(result.timedOut,"python --version timed out — LOCALAPPDATA likely missing from the child env").toBe(false);
+        expect(result.exitCode,result.stderr).toBe(0);
+        expect(result.stdout.trim()).toMatch(/^Python /);
+      }finally{
+        fixture.cleanup();
+      }
+    });
+  });
 });

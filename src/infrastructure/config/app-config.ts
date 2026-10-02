@@ -180,6 +180,7 @@ export function parseLogDirectory(env: Readonly<Record<string, string | undefine
 const ALLOWED_CHILD_ENV_KEYS = [
   "PATH",
   "PATHEXT",        // Windows executable-resolution suffixes
+  "LOCALAPPDATA",   // Windows user-local app data (see the note below)
   "SystemRoot",     // Windows: where the system DLLs live
   "WINDIR",
   "COMSPEC",        // Windows default command interpreter
@@ -192,6 +193,17 @@ const ALLOWED_CHILD_ENV_KEYS = [
   "TEMP",
   "TMP",
 ] as const;
+
+// Why LOCALAPPDATA is on the list: on Windows, `python` and `py` typically
+// resolve to Microsoft App Execution Alias stubs in %LOCALAPPDATA%\Microsoft\
+// WindowsApps, which activate the Windows Python Install Manager (pymanager)
+// rather than an interpreter directly. pymanager locates its install index
+// under %LOCALAPPDATA%; without the variable it logs "Failed to read unmanaged
+// installs: expected str, bytes or os.PathLike object, not NoneType", decides
+// to install an available manager update, and does not return for a long time —
+// so execute_command reports a timeout while the machine is fine and the
+// interpreter is installed. LOCALAPPDATA is a standard Windows user path, not a
+// secret, so it is safe to hand to untrusted command code.
 
 export function buildChildProcessEnvironment(env: Readonly<Record<string, string | undefined>> = process.env): Record<string, string> {
   const childEnv: Record<string, string> = {};

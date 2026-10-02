@@ -123,3 +123,31 @@
 - ۸۸۷ تست / ۱۹۹ فایل سبز (۳ تست regression جدید).
 - build تمیز، lint سبز.
 - دیتابیس تولید: migration 22 اعمال شد، یکپارچگی سالم، هیچ ردیف داده‌ای تغییر نکرد.
+
+---
+
+## ۷. retest دوم روی HEAD `a729a97` — مورد نهایی Python نیز رفع شد
+
+retest دوم تمام باقیمانده‌ها را روی HEAD `a729a97` تأیید کرد: write/delete idempotency روی **دیتابیس زنده** (replay همان `backupId` را برگرداند)، `task_create` با key تکراری و payload متفاوت مستقیماً `idempotency_key_payload_conflict`، و migration 22 با schema صحیح. تنها مورد باز Python بود که این بار ریشه‌یابی شد.
+
+### Environment → FIX — `python`/`py` timeout به‌خاطر نبود `LOCALAPPDATA` در env فرزند
+
+هر دو فرمان از طریق `cmd /c` در ~۱۱۳ms جواب می‌دادند، پس interpreter سالم بود. بازتولید دقیق نحوهٔ spawn کردن HooshiX (Node `child_process` با `shell:false` و env allowlist) علّت را نشان داد:
+
+```
+[WARNING] Failed to read unmanaged installs: expected str, bytes or os.PathLike object, not NoneType
+Python install manager was successfully updated to 26.3.
+```
+
+در ویندوز `python`/`py` به **App Execution Alias** stubها در `%LOCALAPPDATA%\Microsoft\WindowsApps` resolve می‌شوند که به‌جای interpreter، **Windows Python Install Manager (pymanager)** را فعال می‌کنند. pymanager index نصب‌های خود را زیر `%LOCALAPPDATA%` می‌خواند؛ وقتی متغیر در env فرزند نبود، آن را `NoneType` می‌دید، تصمیم می‌گرفت خودش را آپدیت/نصب کند (پوشهٔ `Python/` که در هر تست ساخته می‌شد همین است) و برنمی‌گشت — پس `execute_command` timeout می‌گرفت.
+
+**اصلاح:** `LOCALAPPDATA` به `ALLOWED_CHILD_ENV_KEYS` در `src/infrastructure/config/app-config.ts` اضافه شد. این یک مسیر استاندارد کاربر در ویندوز است، نه یک secret — امن است که به کد دستوری نامطمئن داده شود. نتیجه: `python --version` و `py --version` هر دو در ~۱۱۳ms، اجرای اسکریپت واقعی و file I/O در workspace همگی سبز.
+
+**تست:** `tests/security/r4-child-env-excludes-secrets.test.ts` — یک assertion pure که allowlist حتماً `LOCALAPPDATA` را عبور می‌دهد (محافظ invariantی که شکست) و یک تست functional ویندوزی که `python --version` را از طریق همان choke point تک‌spawnی (`services/spawn.ts`) با timeout کوتاه اجرا می‌کند؛ اگر متغیر دوباره از allowlist حذف شود، این تست hang/timeout می‌شود.
+
+### تأییدهای نهایی
+
+- ۸۸۹ تست / ۱۹۹ فایل سبز (۲ تست regression جدید در این مرحله).
+- build تمیز، lint سبز.
+- سرور زنده restart شد (PID 12628، هر دو health endpoint ۲۰۰) و dist شامل اصلاح است.
+- همهٔ ایرادهای ممیزی E2E اکنون بسته هستند.
