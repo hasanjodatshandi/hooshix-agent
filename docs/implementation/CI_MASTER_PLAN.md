@@ -269,7 +269,7 @@ CI-1 (domain) ──► CI-2 (control DB + principal مجزا) ──► CI-3 (w
 |---|---|
 | CI-G0 | ✅ تصمیم سندبندی شده (`SERVER_SIDE_READY / HOST_VERIFICATION_PENDING`) |
 | CI-G1 | ✅ **تأیید شد** — CI-1.01 تا CI-1.04 کامل؛ ۹۳۴ تست / ۲۰۳ فایل سبز؛ G1 global + R7 secret policy PASS؛ build تمیز |
-| CI-G2 | 🔄 در حال اجرا — CI-2.01 کامل، بعدی CI-2.02 |
+| CI-G2 | 🔄 در حال اجرا — CI-2.01 و CI-2.02 کامل، بعدی CI-2.03 |
 | CI-G3..CI-G9 | ⬜ NOT_STARTED |
 
 ### CI-1 — انجام‌شده (commit نشده)
@@ -293,4 +293,13 @@ CI-1 (domain) ──► CI-2 (control DB + principal مجزا) ──► CI-3 (w
 - تست مسیر upgrade در `tests/core/r6-idempotency-responses-upgrade.test.ts` برای شبیه‌سازی head قبل از 22 به‌روز شد (اثر جانبی طبیعی اضافه‌شدن migration).
 - `tests/ci/ci-2-01-control-schema-migration.test.ts` — ۸ تست (fresh، upgrade، idempotent، PKها، FK، CHECK، UNIQUE).
 
-**leaf بعدی:** **CI-2.02** — صدور principal/connection مجزا per connection. این قلب رفع CI-G0 است: `issueCode`/`issueGrant` یک `connectionId` و `principalId` مجزا تولید و در `context_binding` ذخیره می‌کنند.
+### CI-2.02 — انجام‌شده (commit نشده)
+
+- **feature flag** `CTX_ISOLATION_MODE` با چهار حالت `OFF | SHADOW | PER_CONNECTION | HOST_ATTESTED` (طراحی فایل ۱۰ §2). پیش‌فرض `OFF`؛ مقدار نامعتبر **با خطای واضح** رد می‌شود تا یک typo نتواند حالت را خاموش/روشن کند.
+- **migration 24** (`ci-binding-principal-id`): ستون NOT NULL `context_binding.principal_id` — زیرا مسیر reuse نیاز دارد principal اصلی Connection را برگرداند.
+- **`establishConnection`** (`src/application/services/context-provisioning.ts`): قلب رفع CI-G0. برای هر connection یک `connectionId`، `principalId`، `Context` و `binding` **مجزا** می‌سازد. connection شناخته‌شده Context خود را حفظ می‌کند (دوران credential).
+- درخواست پروویژن کردن شامل `principalId` شد (نه principalId به‌عنوان credentialHash — اصلاح طراحی).
+- **backup rehearsal اجرا شد:** کپی DB تولید head 22→24، `principal_id` اضافه شد، `integrity_check=ok`، rerun no-op، ۱۱۲۵ task دست‌نخورد.
+- `tests/ci/ci-2-02-connection-issuance.test.ts` — ۱۱ تست: flag parsing، four-identity distinctness، credential hash، reuse، double-provision.
+
+**leaf بعدی:** **CI-2.03** — Legacy Context پین‌شده: تمام grantهای موجود با `principal="operator"` به یک Context LEGACY map شوند (نه invalidate خودکار)، و هیچ fallbackی برای connection جدید وجود نداشته باشد.

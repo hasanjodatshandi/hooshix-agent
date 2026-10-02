@@ -22,6 +22,8 @@ export interface ContextBinding {
   readonly ownerId: string;
   readonly contextId: ContextId;
   readonly connectionId: ConnectionId;
+  /** Server-issued principal for this connection (distinct per connection). */
+  readonly principalId: string;
   /** SHA-256 of the credential. The raw token is never stored. */
   readonly credentialHash: string;
   readonly credentialVersion: number;
@@ -32,10 +34,11 @@ export interface ContextBinding {
 
 export function createContextBinding(input: {
   id: string; ownerId: string; contextId: string; connectionId: string;
-  credentialHash: string; credentialVersion?: number; scopes: readonly string[];
-  now: string;
+  principalId: string; credentialHash: string; credentialVersion?: number;
+  scopes: readonly string[]; now: string;
 }): ContextBinding {
   if (!input.ownerId.trim()) throw new DomainError("MISSING_DEPENDENCY", "Binding requires an owner");
+  if (!input.principalId.trim()) throw new DomainError("MISSING_DEPENDENCY", "Binding requires a principal id");
   if (!input.credentialHash.trim()) throw new DomainError("MISSING_DEPENDENCY", "Binding requires a credential hash");
   if (!Number.isSafeInteger(input.credentialVersion ?? 1) || (input.credentialVersion ?? 1) < 1) {
     throw new DomainError("INVALID_ID", "credentialVersion must be a positive integer");
@@ -45,6 +48,7 @@ export function createContextBinding(input: {
     ownerId: input.ownerId,
     contextId: requireNonblankId<"ContextId">(input.contextId, "ContextId"),
     connectionId: requireNonblankId<"ConnectionId">(input.connectionId, "ConnectionId"),
+    principalId: input.principalId,
     credentialHash: input.credentialHash,
     credentialVersion: input.credentialVersion ?? 1,
     scopes: Object.freeze([...input.scopes]),

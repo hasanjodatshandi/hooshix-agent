@@ -79,3 +79,29 @@ export interface ControlPlaneAuditSink {
     readonly traceId: string;
   }): Promise<void>;
 }
+
+/**
+ * CI-2.02 — provisioning port: creates a Context and its first binding, or
+ * rebinds a connection whose credential rotated. Implemented by an in-memory
+ * fake for unit tests now and the SQLite adapter in CI-2.05.
+ */
+export interface ContextProvisioningRepository {
+  /** Persist a freshly minted Context plus its ACTIVE binding, atomically. */
+  provision(input: {
+    readonly contextId: string;
+    readonly ownerId: string;
+    readonly projectLabel: string;
+    readonly workspaceGrantId: string;
+    readonly storageLocator: string;
+    readonly canonicalRoot: string;
+    readonly bindingId: string;
+    readonly connectionId: string;
+    readonly principalId: string;
+    readonly credentialHash: string;
+    readonly scopes: readonly string[];
+    readonly now: string;
+  }): { readonly context: Context; readonly binding: ContextBinding };
+
+  /** Locate the binding a credential currently holds, if any (rotate path). */
+  findBindingByConnection(connectionId: string): ContextBinding | null;
+}

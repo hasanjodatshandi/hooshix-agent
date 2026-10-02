@@ -11,7 +11,7 @@ const SAFE_IDENTIFIER = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
  * CURRENT head instead of a hardcoded version that silently rots as new
  * migrations land. If you add a migration, bump this to match it.
  */
-export const LATEST_MIGRATION_VERSION = 23;
+export const LATEST_MIGRATION_VERSION = 24;
 
 export function ensureColumn(
   db: Database.Database,
@@ -520,6 +520,17 @@ export function runMigrations(db: Database.Database): void {
       CREATE INDEX IF NOT EXISTS idx_audit_context_time
         ON security_audit(context_id, occurred_at);
     `);
+  });
+
+  // CI-2.02 — a binding carries the server-issued principal for its connection
+  // (distinct per connection; this is what removes the shared "operator"
+  // identity). Added after 23 because the reuse path needs it on record: a
+  // connection re-authorizing must get its ORIGINAL principal back, not a new
+  // one. The table is empty on every deployment (23 creates it and nothing
+  // writes to it while the flag is OFF), so the NOT NULL default '' cannot
+  // collide with real data.
+  migrate(db,24,"ci-binding-principal-id",()=>{
+    ensureColumn(db,"context_binding","principal_id","TEXT NOT NULL DEFAULT ''");
   });
 
 }

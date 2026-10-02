@@ -52,6 +52,7 @@ function sampleBinding(overrides: Partial<Parameters<typeof createContextBinding
     ownerId: "owner-1",
     contextId: "ctx-aaaa",
     connectionId: "conn-1",
+    principalId: "principal-1",
     credentialHash: "sha256:" + "a".repeat(64),
     scopes: ["hooshix:read", "hooshix:execute"],
     now: NOW,
@@ -127,8 +128,9 @@ describe("CI-1.01 / ContextBinding", () => {
     expect(() => revokeContextBinding(expired)).toThrow(DomainError);
   });
 
-  it("requires an owner and a credential hash (raw tokens are never stored)", () => {
+  it("requires an owner, a principal and a credential hash (raw tokens are never stored)", () => {
     expect(() => sampleBinding({ ownerId: " " })).toThrow(DomainError);
+    expect(() => sampleBinding({ principalId: " " })).toThrow(DomainError);
     expect(() => sampleBinding({ credentialHash: "" })).toThrow(DomainError);
     expect(() => sampleBinding({ credentialVersion: 0 })).toThrow(DomainError);
   });

@@ -30,8 +30,23 @@ function tableInfo(db: import("better-sqlite3").Database, table: string) {
 }
 
 describe("CI-2.01 / control-plane schema migration 23", () => {
-  it("declares migration 23 as the migration head", () => {
-    expect(LATEST_MIGRATION_VERSION).toBe(23);
+  it("records migration 23 in the migration ledger", () => {
+    expect(LATEST_MIGRATION_VERSION).toBeGreaterThanOrEqual(23);
+    const fixture = createDisposableFixture("ci-2-01-head");
+    try {
+      const db = fixture.openDatabase();
+      try {
+        applyBaseSchemaMigration(db);
+        runMigrations(db);
+        expect(
+          (db.prepare("SELECT version FROM schema_migrations WHERE version = 23").get() as { version: number }).version,
+        ).toBe(23);
+      } finally {
+        db.close();
+      }
+    } finally {
+      fixture.cleanup();
+    }
   });
 
   it("creates all six control tables on a fresh database", () => {
@@ -66,7 +81,7 @@ describe("CI-2.01 / control-plane schema migration 23", () => {
         runMigrations(db);
         // Simulate a live deployment at head 22 that never had the CI tables.
         for (const table of CONTROL_TABLES) db.exec(`DROP TABLE IF EXISTS ${table}`);
-        db.prepare("DELETE FROM schema_migrations WHERE version = 23").run();
+        db.prepare("DELETE FROM schema_migrations WHERE version IN (23, 24)").run();
         expect(
           (db.prepare("SELECT MAX(version) AS v FROM schema_migrations").get() as { v: number }).v,
         ).toBe(22);

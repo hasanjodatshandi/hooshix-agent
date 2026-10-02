@@ -36,6 +36,7 @@ function fakeResolver(bindings: ReadonlyMap<string, { contextId: string; state: 
         binding: createContextBinding({
           id: principal.credentialBindingId as string, ownerId: principal.ownerId,
           contextId: entry.contextId, connectionId: principal.connectionId,
+          principalId: principal.principalId,
           credentialHash: "sha256:fake", scopes: principal.scopes, now: NOW,
         }),
         grant: createWorkspaceGrant({ id: "grant-1", contextId: entry.contextId, canonicalRoot: "D:\\p" }),
