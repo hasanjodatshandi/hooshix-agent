@@ -270,7 +270,8 @@ CI-1 (domain) ──► CI-2 (control DB + principal مجزا) ──► CI-3 (w
 | CI-G0 | ✅ تصمیم سندبندی شده (`SERVER_SIDE_READY / HOST_VERIFICATION_PENDING`) |
 | CI-G1 | ✅ **تأیید شد** — CI-1.01 تا CI-1.04 کامل؛ ۹۳۴ تست / ۲۰۳ فایل سبز؛ G1 global + R7 secret policy PASS؛ build تمیز |
 | CI-G2 | ✅ **تأیید شد** — CI-2.01 تا CI-2.05 کامل؛ ۹۷۸ تست / ۲۰۸ فایل سبز؛ G1 global + R7 secret policy PASS؛ build تمیز |
-| CI-G3..CI-G9 | ⬜ NOT_STARTED |
+| CI-G3 | ✅ **تأیید شد** — SHADOW mode به مسیر درخواست متصل شد؛ تست e2e روی سرور زنده |
+| CI-G4..CI-G9 | ⬜ NOT_STARTED |
 
 ### CI-1 — انجام‌شده (commit نشده)
 
@@ -315,4 +316,14 @@ CI-1 (domain) ──► CI-2 (control DB + principal مجزا) ──► CI-3 (w
 
 **گیت CI-G2 بسته شد.** همهٔ پایه‌های control plane (schema، صدور، legacy، lease، resolver) آماده‌اند و هنوز پشت پرچم خاموش هستند.
 
-**leaf بعدی:** شروع گیت **CI-G3** — اتصال resolver به مسیر درخواست واقعی (`oauth.ts`/`http-server.ts`) در حالت SHADOW: resolve را روی هر درخواست اجرا می‌کند، نتیجه را در `security_audit` ثبت می‌کند، اما روی رفتار تأثیری ندارد.
+### CI-G3 — انجام‌شده (commit نشده)
+
+- **SHADOW mode به مسیر درخواست متصل شد.** `OAuthProvider.tokenClaimsWithHash` از hash توکن کنار claims برمی‌گرداند؛ hook در `/mcp` بعد از احراز هویت موفق، observer را صدا می‌زند.
+- **observer به‌صورت hexagonal تزریق می‌شود** (`createRequestObserver({resolver, auditSink})`): application service فقط پورت‌های CI-1.02 را می‌بیند. SQLite adapters در transport وصل می‌شوند.
+- **architecture gate:** حالت پرچم و predicateها به `domain/context/ci-isolation-mode.ts` منتقل شدند تا application به infrastructure وابسته نباشد (G1 global).
+- **legacy pin تازه‌سازی در هر resolve:** grantهای minted-since-startup در همان transaction پین می‌شوند (incremental و idempotent).
+- **OFF = byte-for-byte رفتار فعلی:** observer در OFF کاملاً no-op است و هیچ ردیف auditی نمی‌نویسد — تست آن جداگانه سبز است.
+- **never throws:** شکست observation درخواست را خراب نمی‌کند؛ در `error` برگردانده می‌شود.
+- `tests/ci/ci-g3-shadow-mode.test.ts` — ۲ تست e2e روی سرور زنده: ALLOW برای legacy token + سرویس بدون تغییر؛ OFF هیچ auditی نمی‌نویسد.
+
+**leaf بعدی:** شروع گیت **CI-G4** — enforcement در `PER_CONNECTION` mode: بعد از SHADOW mode که فقط observation بود، حالا resolution های DENY باید واقعاً درخواست را رد کنند. اولین enforcement واقعی روی مسیر زنده.

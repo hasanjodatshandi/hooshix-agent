@@ -87,6 +87,19 @@ export class OAuthProvider{
     const claims=validateOAuthAccess(hash(token),resource,this.now());
     return claims?{...claims,kind:"issued"}:null;
   }
+  /**
+   * CI-G3: the same verification as tokenClaims, plus the SHA-256 of the
+   * presented token. The hash is the control plane's credential hash — the only
+   * selector for a Context binding — so the SHADOW-mode observer needs it.
+   * Returns null when the token does not verify.
+   */
+  tokenClaimsWithHash(authorization:string|undefined,resource:string):{claims:OAuthClaims,tokenHash:string}|null{
+    const token=bearer(authorization);
+    if(!token || !resource || safeEqual(token,this.bootstrapSecret))return null;
+    const tokenHash=hash(token);
+    const claims=validateOAuthAccess(tokenHash,resource,this.now());
+    return claims?{claims:{...claims,kind:"issued"},tokenHash}:null;
+  }
   verifyToken(authorization:string|undefined,resource:string):boolean{
     return this.tokenClaims(authorization,resource)!==null;
   }

@@ -31,12 +31,16 @@ export type ContextResolution =
 
 export interface ContextResolver {
   /**
-   * Resolve the Context for a verified principal. The credential hash is the
+   * Resolve the Context for a verified credential. The credential hash is the
    * only input that selects the binding — a `contextId` found in tool arguments
    * is never used here (threat T04).
+   *
+   * The hash is passed directly because the binding table keys on it; the
+   * optional principal is the richer identity once a binding exists.
    */
   resolve(input: {
-    readonly principal: VerifiedPrincipal;
+    readonly credentialHash?: string;
+    readonly principal?: VerifiedPrincipal;
     readonly requiredScopes?: readonly string[];
   }): Promise<ContextResolution>;
 }
@@ -71,7 +75,8 @@ export interface WorkspaceGrantRepository {
 /** Security audit sink for the control plane (never containing secrets). */
 export interface ControlPlaneAuditSink {
   record(input: {
-    readonly ownerId: string;
+    /** Owner of the binding; absent when the credential refused to resolve. */
+    readonly ownerId?: string;
     readonly contextId?: ContextId;
     readonly bindingId?: BindingId;
     readonly action: string;

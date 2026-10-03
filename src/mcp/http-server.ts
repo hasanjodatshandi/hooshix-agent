@@ -16,7 +16,12 @@ import { runWithTrustedInboundIdentity } from "../core/runtime/r2-trusted-inboun
 import type { PrincipalId, SessionId } from "../domain/shared/ids.js";
 import {OperatorWebSessions,HttpWindowLimiter,HttpPrincipalContexts} from "../infrastructure/server/http-security.js";
 import {installGracefulShutdown} from "../infrastructure/server/graceful-shutdown.js";
-import {isDatabaseReady,closeAgentDatabase} from "../core/memory/database/index.js";
+import {isDatabaseReady,closeAgentDatabase,openAgentDatabase,runMigrations} from "../core/memory/database/index.js";
+import {parseCiIsolationMode,isCiIsolationEnabled} from "../infrastructure/config/ci-isolation-config.js";
+import {createRequestObserver} from "../application/services/context-isolation-observer.js";
+import {resolveContextFromPort} from "../adapters/outbound/persistence/sqlite/repositories/context-resolver.adapter.js";
+import {recordControlPlaneAuditFromPort} from "../adapters/outbound/persistence/sqlite/repositories/context-audit.adapter.js";
+import {pinLegacyContext} from "../adapters/outbound/persistence/sqlite/repositories/context-legacy.adapter.js";
 import {createMcpHandler} from "@modelcontextprotocol/server";
 import {toNodeHandler} from "@modelcontextprotocol/node";
 // R7.01: the HTTP transport never reads environment variables directly; the
@@ -26,6 +31,15 @@ const APP_CONFIG=loadAppConfig(undefined,undefined,"http");
 const CONFIG=APP_CONFIG.http;
 const PORT=CONFIG.port;
 const PUBLIC_BASE_URL=CONFIG.publicBaseUrl;
+// CI-G3: the Chat Isolation flag, parsed once at startup like the rest of the
+// AppConfig boundary. OFF by default, so nothing below runs on a stock deploy.
+const CTX_ISOLATION_MODE=parseCiIsolationMode();
+// CI-G3: the SHADOW-mode observer, wired to its SQLite adapters. Hexagonal
+// discipline: the application service sees only the CI-1.02 ports.
+const observeRequestResolution=createRequestObserver({
+  resolver:{resolve:resolveContextFromPort},
+  auditSink:{record:recordControlPlaneAuditFromPort},
+});
 let oauthProviderRef:OAuthProvider|null=null;
 const TOKEN_FILE=APP_CONFIG.bootstrapTokenFile;
 /** Bootstrap is an operator-only credential. It is never accepted as MCP bearer. */
@@ -294,7 +308,8 @@ async function handleRequest(
     return;
   }
 
-  const grant=oauth.tokenClaims(req.headers.authorization,CONFIG.resource);
+  const grantWithHash=oauth.tokenClaimsWithHash(req.headers.authorization,CONFIG.resource);
+  const grant=grantWithHash?.claims ?? null;
   if(!grant){
     // R-N1: unauthenticated requests never reach the principal limiter, so
     // cap them by IP here. A token flood must not pin the DB shard with
@@ -304,6 +319,17 @@ async function handleRequest(
     const metadata=CONFIG.publicBaseUrl+"/.well-known/oauth-protected-resource";
     res.setHeader("WWW-Authenticate",`Bearer resource_metadata="${metadata}", scope="hooshix:read"`);
     sendJSON(res,401,{error:"invalid_token"});return;
+  }
+  // CI-G3 — SHADOW mode: resolve this credential's Context and record what the
+  // isolation policy WOULD have decided, without changing the request's
+  // behavior. A no-op while CTX_ISOLATION_MODE=OFF; never throws.
+  if(grantWithHash){
+    await observeRequestResolution({
+      credentialHash:grantWithHash.tokenHash,
+      action:"MCP_REQUEST",
+      traceId:(req.headers["x-trace-id"] as string | undefined) ?? remoteIp,
+      mode:CTX_ISOLATION_MODE,
+    });
   }
   const quota=principalLimiter.allow(grant.principalId+":"+grant.clientId);
   if(!quota.allowed){
@@ -720,6 +746,17 @@ async function handleRegisterPOST(
 export function startHttpServer():Promise<void>{
   const bootstrap=loadToken();
   const oauth=new OAuthProvider(bootstrap,{settings:APP_CONFIG.oauth});
+  // CI-G3: the moment isolation is switched on, pin the legacy Context so the
+  // grants already in the field (all principal "operator") keep resolving —
+  // ADR-CI-007 forbids invalidating live credentials. Idempotent, so it is safe
+  // on every startup. A no-op while CTX_ISOLATION_MODE=OFF.
+  if(isCiIsolationEnabled(CTX_ISOLATION_MODE)){
+    const db=openAgentDatabase();
+    // openAgentDatabase applies the base schema only; the control-plane tables
+    // (migration 23) must exist before the legacy Context can be pinned.
+    runMigrations(db);
+    pinLegacyContext(db,new Date().toISOString());
+  }
   return new Promise((resolve,reject)=>{
     const server=http.createServer(async(req,res)=>{
       try{await handleRequest(req,res,oauth);}

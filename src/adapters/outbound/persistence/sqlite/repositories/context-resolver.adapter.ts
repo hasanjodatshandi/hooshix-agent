@@ -1,5 +1,6 @@
 import type Database from "better-sqlite3";
 import { withAgentDatabase } from "../../../../../core/memory/database/index.js";
+import { pinLegacyContext } from "./context-legacy.adapter.js";
 import { createContextBinding, type ContextBinding } from "../../../../../domain/context/context-binding.js";
 import { createContext, type Context, type ContextState } from "../../../../../domain/context/context.js";
 import {
@@ -176,6 +177,29 @@ export function resolveContext(
   input: { readonly credentialHash: string; readonly requiredScopes?: readonly string[] },
 ): ContextResolution {
   return withAgentDatabase((db) => resolveContextWith(db, input));
+}
+
+/**
+ * Refresh the legacy pin, then resolve, in one shared connection. A grant
+ * minted since the last pin (or since startup) has no binding yet; every pre-CI
+ * grant carries principal "operator", so it belongs on the legacy Context.
+ * Incremental and idempotent — it only binds legacy tokens still unbound.
+ *
+ * This is the ContextResolver port implementation; async per the port contract.
+ */
+export async function resolveContextFromPort(input: {
+  readonly credentialHash?: string;
+  readonly principal?: { readonly credentialBindingId: string | null };
+  readonly requiredScopes?: readonly string[];
+}): Promise<ContextResolution> {
+  return withAgentDatabase((db) => {
+    if (!input.credentialHash) return { status: "UNBOUND", reason: "CONTEXT_NOT_BOUND" };
+    pinLegacyContext(db, new Date().toISOString());
+    return resolveContextWith(db, {
+      credentialHash: input.credentialHash,
+      requiredScopes: input.requiredScopes,
+    });
+  });
 }
 
 export function resolveContextAsync(input: {
