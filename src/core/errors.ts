@@ -174,6 +174,10 @@ export function classifyError(error: unknown): ErrorCode {
   if (/ENOENT|no such file|file not found/i.test(message)) return "FILE_NOT_FOUND";
   if (/unknown tool|unsupported task tool/i.test(message)) return "UNKNOWN_TOOL";
   if (/WORKSPACE_CONTEXT_INVALID|ROOT_NO_LONGER_ALLOWED|PATH_NO_LONGER_EXISTS|WORKSPACE_NOT_CONFIGURED/i.test(message)) return "WORKSPACE_CONTEXT_INVALID";
+  // CI-G5 — a missing or superseded ownership_lease is a fence failure, not an
+  // execution failure: the worker is stale and must never retry. Both messages
+  // are thrown as plain Errors by the lease adapter, so match them here.
+  if (/ownership_lease_missing|ownership_lease_fenced/i.test(message)) return "CONTEXT_EPOCH_STALE";
   if (/invalid|schema|argument/i.test(message)) return "INVALID_ARGUMENT";
   return "EXECUTION";
 }

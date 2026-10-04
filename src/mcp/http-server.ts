@@ -20,6 +20,7 @@ import {isDatabaseReady,closeAgentDatabase,openAgentDatabase,runMigrations} from
 import {parseCiIsolationMode,isCiIsolationEnabled} from "../infrastructure/config/ci-isolation-config.js";
 import {createRequestObserver} from "../application/services/context-isolation-observer.js";
 import {decideEnforcement} from "../application/services/context-isolation-enforcer.js";
+import type { ResolvedContext } from "../core/runtime/r2-trusted-inbound-identity.js";
 import {resolveContextFromPort} from "../adapters/outbound/persistence/sqlite/repositories/context-resolver.adapter.js";
 import {recordControlPlaneAuditFromPort} from "../adapters/outbound/persistence/sqlite/repositories/context-audit.adapter.js";
 import {pinLegacyContext} from "../adapters/outbound/persistence/sqlite/repositories/context-legacy.adapter.js";
@@ -327,6 +328,7 @@ async function handleRequest(
   // In SHADOW this only writes the audit row; in OFF it is a total no-op.
   // Fail-closed by design: a resolution that itself errored is treated as a
   // refusal, so the control plane being unavailable cannot disable isolation.
+  let resolvedContext:ResolvedContext|undefined;
   if(grantWithHash){
     const observation=await observeRequestResolution({
       credentialHash:grantWithHash.tokenHash,
@@ -341,6 +343,18 @@ async function handleRequest(
       // the operator sees enforcement actions alongside the shadow history.
       sendJSON(res,403,{error:"context_denied",reason:enforcement.reason});
       return;
+    }
+    // CI-G5: the resolution is the authority for everything downstream. Tasks
+    // created by this request bind to this Context, and every side effect
+    // rechecks its epoch. Only a RESOLVED outcome reaches here; a null
+    // resolution under an enforcement mode was already refused above.
+    if(observation.resolution&&observation.resolution.status==="RESOLVED"){
+      resolvedContext={
+        contextId:observation.resolution.context.id,
+        workspaceGrantId:observation.resolution.grant.id,
+        ownershipEpoch:observation.resolution.context.epoch,
+        createdByBindingId:observation.resolution.binding.id,
+      };
     }
   }
   const quota=principalLimiter.allow(grant.principalId+":"+grant.clientId);
@@ -359,6 +373,7 @@ async function handleRequest(
     return runWithTrustedInboundIdentity({
       principal:{id:verifiedGrant.principalId as PrincipalId,permission,origin:"http_oauth",scopes:grantedScopes},
       sessionId:sessionId as SessionId,
+      resolvedContext,
     },()=>runWithSessionWorkspace(entry.workspace,operation));
   }
   // Global bounded concurrency for expensive protected MCP requests.
@@ -399,6 +414,7 @@ async function handleRequest(
     await runWithTrustedInboundIdentity({
       principal:{id:verifiedGrant.principalId as PrincipalId,permission,origin:"http_oauth",scopes:grantedScopes},
       sessionId:principalBinding as SessionId,
+      resolvedContext,
     },()=>runWithSessionWorkspace(context,()=>modernHandler(req,res)));
     return;
   }

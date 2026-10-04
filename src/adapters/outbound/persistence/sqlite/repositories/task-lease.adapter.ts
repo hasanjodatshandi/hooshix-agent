@@ -24,16 +24,18 @@ export function acquireTaskLease(taskId:string,ownerId:string,ttlMs=30000):TaskL
     const leaseToken=randomUUID();
     const changed=db.prepare(`
       INSERT INTO task_leases(task_id,owner_id,lease_token,version,
-        acquired_at,heartbeat_at,expires_at,released_at)
-      VALUES(?,?,?,1,?,?,?,NULL)
+        acquired_at,heartbeat_at,expires_at,released_at,context_id)
+      VALUES(?,?,?,1,?,?,?,NULL,
+        (SELECT context_id FROM tasks WHERE id=?))
       ON CONFLICT(task_id) DO UPDATE SET
         owner_id=excluded.owner_id,lease_token=excluded.lease_token,
         version=task_leases.version+1,acquired_at=excluded.acquired_at,
         heartbeat_at=excluded.heartbeat_at,expires_at=excluded.expires_at,
-        released_at=NULL
+        released_at=NULL,
+        context_id=COALESCE(task_leases.context_id,excluded.context_id)
       WHERE task_leases.expires_at<=excluded.acquired_at OR
         task_leases.released_at IS NOT NULL
-    `).run(taskId,ownerId,leaseToken,started,started,expires);
+    `).run(taskId,ownerId,leaseToken,started,started,expires,taskId);
     if(changed.changes!==1)throw new Error("task_lease_conflict");
     const row=db.prepare("SELECT version FROM task_leases WHERE task_id=?")
       .get(taskId) as {version:number};

@@ -74,6 +74,14 @@ export class TaskRuntimeService {
       allowedRootsSnapshot: listWorkspaceRoots().map((r) => r.path),
       unrestricted: isUnrestrictedMode(),
       createdAt: new Date().toISOString(),
+      // CI-G5: bind the Task to the Context that authorized its creation. Only
+      // present when the request actually resolved one (enforcement modes);
+      // absent means unbound, and the epoch fence then no-ops for that Task —
+      // the same state every pre-CI Task is already in.
+      contextId: identity.resolvedContext?.contextId,
+      workspaceGrantId: identity.resolvedContext?.workspaceGrantId,
+      ownershipEpoch: identity.resolvedContext?.ownershipEpoch,
+      createdByBindingId: identity.resolvedContext?.createdByBindingId,
     };
     // The creation key binds the exact normalized payload and captured principal/session/scope.
     const key=input.idempotencyKey;

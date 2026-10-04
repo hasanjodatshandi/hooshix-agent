@@ -1,6 +1,6 @@
 # HooshiX Database Migrations
 
-Source of truth: `src/core/memory/database/migrations.ts` and `src/adapters/outbound/persistence/sqlite/base-schema.migration.ts`. `LATEST_MIGRATION_VERSION = 22`, pinned by `tests/core/r10-release-readiness.test.ts` so the constant cannot silently drift from the highest `migrate()` call.
+Source of truth: `src/core/memory/database/migrations.ts` and `src/adapters/outbound/persistence/sqlite/base-schema.migration.ts`. `LATEST_MIGRATION_VERSION = 25`, pinned by `tests/core/r10-release-readiness.test.ts` so the constant cannot silently drift from the highest `migrate()` call.
 
 ## How migrations work
 
@@ -37,6 +37,7 @@ Source of truth: `src/core/memory/database/migrations.ts` and `src/adapters/outb
 | 22 | file-idempotency-response-cache-table | backfills `idempotency_responses` on databases that predate it. The table existed only in the v0 base schema for newly created databases, so upgraded installs never received it and `write_file`/`delete_file` with an `idempotencyKey` failed with "no such table" → `tool_handler_failure`, while every fresh-database test passed. Idempotent (`CREATE TABLE IF NOT EXISTS`) |
 | 23 | ci-control-schema | Chat Isolation control plane: `context_registry`, `context_binding`, `workspace_grant`, `ownership_lease`, `handoff_intent`, `security_audit`. Created by the migration only — **not** in `base-schema.migration.ts` — so `runMigrations` produces the tables on both fresh and existing databases and there is no fresh-only gap (the migration-22 class of bug). Additive: nothing in the shipped path reads these tables while `CTX_ISOLATION_MODE=OFF`, so applying it to an existing deployment cannot change behavior. Idempotent (`CREATE TABLE IF NOT EXISTS`) |
 | 24 | ci-binding-principal-id | adds NOT NULL `context_binding.principal_id` — the server-issued principal for the connection, which is what removes the shared `operator` identity (CI-2.02). A connection re-authorizing must get its *original* principal back, so the value has to persist on the binding. Added as `ensureColumn` after 23 rather than folded into it because the reuse path surfaced the requirement; the table is empty on every deployment (23 creates it and nothing writes to it while the flag is OFF), so the `DEFAULT ''` cannot collide with real data |
+| 25 | ci-task-context-binding | Chat Isolation task fencing (CI-G5): nullable `tasks.context_id`, `tasks.workspace_grant_id`, `tasks.ownership_epoch`, `tasks.created_by_binding_id` and nullable `task_leases.context_id`. Binds each durable Task to the Context that authorized its creation and links the per-task lease (whose `version` is the R3.07 fencing counter) to the Context-level `ownership_lease`. Purely additive `ensureColumn` calls — all five columns stay NULL for every Task and lease created while `CTX_ISOLATION_MODE=OFF` (every deployment today), so the epoch fence no-ops and behaviour is unchanged until the flag is on. The fence is `tests/ci/ci-g5-task-fencing.test.ts` |
 
 ## Fresh-only tables
 

@@ -4,6 +4,8 @@ import { withAgentDatabase } from "../../../../../core/memory/database/index.js"
 import { canonicalProjectPath } from "../../../../../infrastructure/project-path-identity.js";
 import type Database from "better-sqlite3";
 import {assertTaskLeaseWrite} from "./task-lease.adapter.js";
+import {checkOwnershipFence} from "../../../../../domain/context/ownership-fence.js";
+import {ContextEpochStaleError} from "../../../../../core/errors.js";
 import type { ExecutionReceipt } from "../../../../../domain/task/execution-outcome.js";
 
 interface TaskRow {
@@ -22,6 +24,12 @@ interface TaskRow {
   created_at: string;
   updated_at: string;
   project_id?: string | null;
+  // CI-G5 — persisted Context binding (migration 25), authoritative for the
+  // epoch fence: the JSON blob alone is not trustworthy as a fence input.
+  context_id?: string | null;
+  workspace_grant_id?: string | null;
+  ownership_epoch?: number | null;
+  created_by_binding_id?: string | null;
 }
 
 interface StepRow {
@@ -96,8 +104,8 @@ export function saveTaskPlan(plan: TaskPlan, status: TaskState = plan.state ?? "
     return db.transaction(() => {
       assertTaskLeaseWrite(db,plan.id);
       db.prepare(`
-        INSERT INTO tasks(id, title, description, status, correlation_id, idempotency_key, request_hash, execution_context, max_recovery, retry_policy, total_run_count, task_revision, principal_id, project_id, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO tasks(id, title, description, status, correlation_id, idempotency_key, request_hash, execution_context, max_recovery, retry_policy, total_run_count, task_revision, principal_id, project_id, context_id, workspace_grant_id, ownership_epoch, created_by_binding_id, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(id) DO UPDATE SET title=excluded.title, description=excluded.description,
           status=excluded.status, correlation_id=COALESCE(excluded.correlation_id, tasks.correlation_id),
           idempotency_key=COALESCE(excluded.idempotency_key, tasks.idempotency_key),
@@ -107,6 +115,10 @@ export function saveTaskPlan(plan: TaskPlan, status: TaskState = plan.state ?? "
           retry_policy=COALESCE(excluded.retry_policy, tasks.retry_policy),
           total_run_count=excluded.total_run_count, task_revision=excluded.task_revision,
           project_id=COALESCE(excluded.project_id, tasks.project_id),
+          context_id=COALESCE(tasks.context_id, excluded.context_id),
+          workspace_grant_id=COALESCE(tasks.workspace_grant_id, excluded.workspace_grant_id),
+          ownership_epoch=COALESCE(tasks.ownership_epoch, excluded.ownership_epoch),
+          created_by_binding_id=COALESCE(tasks.created_by_binding_id, excluded.created_by_binding_id),
           updated_at=excluded.updated_at
        `).run(plan.id, plan.task, plan.description ?? plan.task, status, correlationId ?? null, plan.idempotencyKey ?? null, plan.requestHash ?? null,
         plan.executionContext ? JSON.stringify(plan.executionContext) : null,
@@ -119,6 +131,11 @@ export function saveTaskPlan(plan: TaskPlan, status: TaskState = plan.state ?? "
         // The project binding is likewise set at creation; a later save of the
         // same plan cannot rebind a task to a different project.
         plan.projectId ?? null,
+        // CI-G5: the Context binding is likewise immutable after creation.
+        plan.executionContext?.contextId ?? null,
+        plan.executionContext?.workspaceGrantId ?? null,
+        plan.executionContext?.ownershipEpoch ?? null,
+        plan.executionContext?.createdByBindingId ?? null,
         plan.createdAt ?? now, now);
 
       const statement = db.prepare(`
@@ -190,10 +207,60 @@ export function saveTaskStep(taskId:string,step:TaskStep,order:number):void {
 }
 
 /**
+ * CI-G5 — recheck a Task's Context ownership inside the caller's write
+ * transaction. Reads the persisted binding (the JSON blob is not a trustworthy
+ * fence input) and, when the Task carries one, reads the live ownership_lease
+ * row on the same connection and applies the epoch/binding/deadline fence. The
+ * fence decision itself lives in context-ownership-fence.ts so it is unit
+ * testable without a database. Unbound Tasks (created while
+ * CTX_ISOLATION_MODE=OFF) pass through untouched.
+ */
+function assertContextOwnershipForTask(db: Database.Database, taskId: string): void {
+  const task = db
+    .prepare("SELECT context_id, ownership_epoch, created_by_binding_id FROM tasks WHERE id=?")
+    .get(taskId) as { context_id: string | null; ownership_epoch: number | null; created_by_binding_id: string | null } | undefined;
+  if (!task || !task.context_id) return;
+  if (task.ownership_epoch === null || !task.created_by_binding_id) {
+    throw new Error("ownership_lease_missing");
+  }
+  const row = db
+    .prepare("SELECT context_epoch, owner_binding_id, lease_deadline_ms FROM ownership_lease WHERE context_id=?")
+    .get(task.context_id) as { context_epoch: number; owner_binding_id: string; lease_deadline_ms: number } | undefined;
+  const outcome = checkOwnershipFence({
+    held: {
+      contextId: task.context_id,
+      ownershipEpoch: task.ownership_epoch,
+      createdByBindingId: task.created_by_binding_id,
+    },
+    live: row
+      ? {
+          contextEpoch: row.context_epoch,
+          ownerBindingId: row.owner_binding_id,
+          leaseDeadlineMs: row.lease_deadline_ms,
+        }
+      : null,
+    nowMs: Date.now(),
+  });
+  if (outcome.kind === "fenced") {
+    // A typed ContextEpochStaleError carries the CI-1.03 sentinel the loop maps
+    // onto a terminal outcome_unknown; the missing-row case keeps the plain
+    // lease name so the two stay distinguishable in logs.
+    if (outcome.reason === "ownership_lease_missing") throw new Error("ownership_lease_missing");
+    throw new ContextEpochStaleError();
+  }
+}
+
+/**
  * Durable mutation intent: the Step's running state and unique receipt start
  * commit atomically before invoking the tool. No arguments/output/secret content
  * is written to receipt history. A crash can leave a STARTED receipt; that is
  * NOT proof of completion and is reconciled in the later R3.04-R3.06 leaf.
+ *
+ * CI-G5: for a Task bound to a Context, the ownership epoch is rechecked here,
+ * inside this same transaction, against the live ownership_lease — the epoch
+ * check and the effect claim commit atomically, so a worker whose Context moved
+ * can never even record the intent. The caller maps a fence failure onto a
+ * terminal outcome_unknown rather than a retryable failure.
  */
 export function beginStepExecutionReceipt(
   taskId:string,step:TaskStep,order:number,receipt:ExecutionReceipt,
@@ -206,6 +273,7 @@ export function beginStepExecutionReceipt(
     throw new Error("invalid_execution_receipt_start");
   withAgentDatabase(db=>db.transaction(()=>{
     assertTaskLeaseWrite(db,taskId);
+    assertContextOwnershipForTask(db,taskId);
     if(writeStepRow(db,taskId,step,order)!==1)throw new Error("receipt_task_step_not_found");
     db.prepare(`
       INSERT INTO execution_receipts(
@@ -271,7 +339,8 @@ function hydrateTaskById(db:Database.Database,taskId:string):TaskPlan|null {
   const task=db.prepare(`
     SELECT id,title,description,status,correlation_id,idempotency_key,request_hash,
       execution_context,max_recovery,retry_policy,total_run_count,
-      task_revision,project_id,created_at,updated_at
+      task_revision,project_id,context_id,workspace_grant_id,ownership_epoch,created_by_binding_id,
+      created_at,updated_at
     FROM tasks WHERE id=?
   `).get(taskId) as TaskRow|undefined;
   if(!task)return null;
@@ -306,7 +375,7 @@ function hydrateTaskById(db:Database.Database,taskId:string):TaskPlan|null {
     idempotencyKey:task.idempotency_key??undefined,
     requestHash:task.request_hash??undefined,
     state:task.status,
-    executionContext:parseJson(task.execution_context??null,undefined) as TaskExecutionContext|undefined,
+    executionContext:hydrateExecutionContext(task),
     maxRecovery:task.max_recovery??undefined,
     retryPolicy:parseJson(task.retry_policy??null,undefined) as TaskPlan["retryPolicy"],
     totalRunCount:task.total_run_count??undefined,
@@ -321,6 +390,25 @@ function hydrateTaskById(db:Database.Database,taskId:string):TaskPlan|null {
       if(receipt)step.lastReceipt=receipt;
       return step;
     }),
+  };
+}
+
+/**
+ * CI-G5 — the persisted Context binding is authoritative, so hydrate merges the
+ * JSON execution-context snapshot with the dedicated columns rather than
+ * trusting the blob alone. The columns are what the epoch fence reads, and
+ * they are written by the same INSERT that creates the Task, so a row's
+ * binding can never disagree with the fence's inputs.
+ */
+function hydrateExecutionContext(task:TaskRow):TaskExecutionContext|undefined {
+  const parsed=parseJson(task.execution_context??null,undefined) as TaskExecutionContext|undefined;
+  if(!parsed) return undefined;
+  return {
+    ...parsed,
+    contextId:task.context_id??parsed.contextId??undefined,
+    workspaceGrantId:task.workspace_grant_id??parsed.workspaceGrantId??undefined,
+    ownershipEpoch:task.ownership_epoch??parsed.ownershipEpoch??undefined,
+    createdByBindingId:task.created_by_binding_id??parsed.createdByBindingId??undefined,
   };
 }
 

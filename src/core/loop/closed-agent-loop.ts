@@ -473,6 +473,28 @@ export async function runClosedAgentLoop(
       // returned that failure. Timeout/cancellation exceptions from tools do
       // not prove the mutation did not commit. Leave unknown for reconciliation.
       const executionErrorCode=classifyError(error);
+      // CI-G5 — the ownership fence threw before the tool was ever invoked, so
+      // no side effect from THIS attempt exists to reconcile. But the epoch
+      // moving means another worker may already be running this Task or its
+      // Context was transferred; re-running would be the double execution the
+      // fence exists to prevent. Terminal outcome_unknown, never retry, and no
+      // receipt is finalized — beginStepExecutionReceipt rolled back, so the
+      // STARTED row this in-memory receipt claims never persisted.
+      if(executionErrorCode==="CONTEXT_EPOCH_STALE"){
+        step.status="outcome_unknown";
+        step.error="Context ownership moved before this side effect; another worker may hold it";
+        step.errorType="CONTEXT_EPOCH_STALE";
+        step.failedAttempts=(step.failedAttempts??0)+1;
+        step.attemptHistory=[...(step.attemptHistory??[]),{
+          attempt:step.attempts??1,status:"failed" as const,
+          error:step.error,timestamp:new Date().toISOString(),
+        }];
+        activeReceipt=undefined;
+        persistStep();
+        move(plan,"failed");
+        return {status:"failed",plan,completedSteps,correlationId:runtimeContext.correlationId,
+          reason:"outcome_unknown_requires_reconciliation"};
+      }
       if(activeReceipt?.status==="started"){
         const uncertain=executionErrorCode==="TIMEOUT";
         activeReceipt=finalizeMutationReceipt(activeReceipt,uncertain?"outcome_unknown":"failed_known");

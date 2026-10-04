@@ -189,12 +189,13 @@
 
 ## CI-5 — Plan/Task/Approval fencing و Durable Queue
 
-- `TaskExecutionContext` (دازو موجود در `src/application/dto/legacy-task-plan.ts:32`) ستون‌های `contextId`، `workspaceGrantId`، `ownershipEpoch`، `createdByBindingId` می‌گیرد.
-- `task_leases` موجود (با fencing version) به ownership_lease متصل می‌شود.
-- epoch recheck پیش از هر side effect؛ `OUTCOME_UNKNOWN` به‌جای re-run.
-- stress test: ۱۰۰ task هم‌زمان روی ۱۰ context.
+- ✅ `TaskExecutionContext` (دازو موجود در `src/application/dto/legacy-task-plan.ts:32`) ستون‌های `contextId`، `workspaceGrantId`، `ownershipEpoch`، `createdByBindingId` می‌گیرد — چهار فیلد اختیاری، همراه با migration 25 که ستون‌های متناظر را روی `tasks` اضافه می‌کند (`context_id`، `workspace_grant_id`، `ownership_epoch`، `created_by_binding_id`).
+- ✅ `task_leases` موجود (با fencing version) به ownership_lease متصل می‌شود — `task_leases.context_id` در همان INSERT که lease را acquire می‌کند، از `tasks.context_id` خوانده و نوشته می‌شود.
+- ✅ epoch recheck پیش از هر side effect؛ `OUTCOME_UNKNOWN` به‌جای re-run — fence داخل transaction همان receipt STARTED اجرا می‌شود (`assertContextOwnershipForTask`)، تصمیم pure در `domain/context/ownership-fence.ts`، و loop خطای fence را به یک step ترمینال `outcome_unknown` با reason `outcome_unknown_requires_reconciliation` تبدیل می‌کند (هرگز retry نمی‌شود).
+- ✅ stress test: ۱۰۰ task هم‌زمان روی ۱۰ context — `tests/ci/ci-g5-task-fencing.test.ts` (۱۹ تست): migration head، persistence ستون‌ها، اتصال task_leases، تصمیم pure fence، receipt تحتOwnership زنده، و پارتیشن‌بندی دقیق fence بر اساس context وقتی نیمی از contextها transfer می‌شوند.
+- **توجه:** fencing token عمداً روی Task ذخیره نمی‌شود — با epoch در lockstep می‌چرخد، پس تطابق (epoch, binding) اثبات می‌کند. ذخیره آن یک secret روی ردیفی بود که هر tool write آن را لمس می‌کرد، بدون تضمین اضافه.
 
-**گیت CI-G5:** non-interference پایدار، zero double execution.
+**گیت CI-G5:** non-interference پایدار، zero double execution. ✅ — fence پیاده‌سازی و تست شد؛ sections بعدی (durable queue) در CI-G6..G9.
 
 ---
 
@@ -272,7 +273,7 @@ CI-1 (domain) ──► CI-2 (control DB + principal مجزا) ──► CI-3 (w
 | CI-G2 | ✅ **تأیید شد** — CI-2.01 تا CI-2.05 کامل؛ ۹۷۸ تست / ۲۰۸ فایل سبز؛ G1 global + R7 secret policy PASS؛ build تمیز |
 | CI-G3 | ✅ **تأیید شد** — SHADOW mode به مسیر درخواست متصل شد؛ تست e2e روی سرور زنده |
 | CI-G4 | ✅ **تأیید شد** — PER_CONNECTION enforcement روی مسیر زنده: resolution غیرRESOLVED درخواست را با ۴۰۳ و sentinel ثابت رد می‌کند؛ fail-closed |
-| CI-G5..CI-G9 | ⬜ NOT_STARTED |
+| CI-G5 | ✅ **تأیید شد** — Task fencing کامل: migration 25 (ستون‌های `tasks` + `task_leases.context_id`)، اتصال resolution به identity و task creation، epoch fence در transaction receipt، terminal `outcome_unknown` بدون retry؛ ۱۹ تست جدید |
 
 ### CI-1 — انجام‌شده (commit نشده)
 
@@ -341,4 +342,16 @@ CI-1 (domain) ──► CI-2 (control DB + principal مجزا) ──► CI-3 (w
 
 **گیت CI-G4 بسته شد.** اولین بار است که isolation policy رفتار زنده را تغییر می‌دهد — و فقط وقتی اپراتور صریحاً پرچم را بچرخاند.
 
-**leaf بعدی:** شروع گیت **CI-G5** — fencing در `TaskExecutionContext`: epoch recheck پیش از هر side effect و `OUTCOME_UNKNOWN` به‌جای re-run (CI-5). enforcement مسیر زنده از CI-G4 به بعد همیشه فعال است.
+### CI-G5 — انجام‌شده (commit نشده)
+
+- **اتصال Context به Task در زمان ایجاد.** CI-G4 resolution را محاسبه کرد و سپس دور می‌ریخت. CI-G5 آن را در `ResolvedContext` روی `TrustedInboundIdentity` نگه می‌دارد، از طریق هر دو مسیر session/moderator در `http-server.ts` عبور می‌کند، و در `task-runtime-service.create()` به‌عنوان چهار فیلد immutable روی `TaskExecutionContext` ذخیره می‌شود. یک Task برای همیشه به Contextی که آن را تأیید کرده متصل است.
+- **Persistence authoritative.** migration 25 (`ci-task-context-binding`) چهار ستون nullable روی `tasks` اضافه می‌کند و `task_leases.context_id` را برای اتصال per-task lease به ownership_lease. `acquireTaskLease` context را در همان INSERT از `tasks` می‌خواند.Hydrate ستون‌ها را روی JSON merge می‌کند تا fence همیشه از ستون‌ها بخواند نه از blob.
+- **epoch recheck پیش از هر side effect.** تصمیم pure در `domain/context/ownership-fence.ts` (`checkOwnershipFence`) داخل transaction همان receipt STARTED در `assertContextOwnershipForTask` اجرا می‌شود — epoch check و effect claim atomically commit می‌شوند، پس workerی که Contextش جابجا شده حتی intent هم نمی‌تواند ثبت کند.
+- **`OUTCOME_UNKNOWN` به‌جای re-run.** loop خطای fence را قبل از dispatch می‌گیرد (چون داخل receipt شلیک شده)، step را ترمینال `outcome_unknown` می‌کند، plan را failed می‌کند و `outcome_unknown_requires_reconciliation` برمی‌گرداند — هرگز retry نمی‌شود. این خودِ "zero double execution" است.
+- **fail-closed اما opt-in.** Task با Context ضبط‌شده که lease row ندارد fenced می‌شود (یا قبل از اولین acquisition است یا بعد از release صریح، هیچ‌کدام side effect را مجاز نمی‌کند). Task بدون Context (هر pre-CI task، و هر taskی که با flag OFF ساخته شده) بدون سرو untouched عبور می‌کند.
+- fencing token عمداً ذخیره نمی‌شود — با epoch در lockstep می‌چرخد (acquire/advance آن را regenerate می‌کنند، renewal نگه می‌دارند)، پس تطابق (epoch, binding) اثبات می‌کند. ذخیره آن یک secret روی ردیفی بود که هر tool write لمس می‌کرد.
+- `tests/ci/ci-g5-task-fencing.test.ts` — ۱۹ تست: migration head 25، persistence چهار ستون، اتصال task_leases، تصمیم pure fence (epoch/binding/deadline/missing)، receipt تحت ownership زنده (allow / epoch-stale / lease-released / unbound-no-op)، و **stress: ۱۰۰ task روی ۱۰ context** که نیمی transfer می‌شوند و fence دقیقاً بر اساس context پارتیشن می‌شود (۵۰ fenced / ۵۰ allowed).
+
+**گیت CI-G5 بسته شد.** non-interference در سطح Task تثبیت شد: یک worker stale هرگز side effect جدیدی commit نمی‌کند و هرگز دوباره اجرا نمی‌شود.
+
+**leaf بعدی:** شروع گیت **CI-G6** — Owner Console و انتقال کنترل (CI-6): APIهای `/admin/*` با session جدا/CSRF/reauth/one-time ticket، transfer دوفازی prepare → approve → freeze+epoch → drain → atomic rebind → audit، و fork snapshot sanitized.

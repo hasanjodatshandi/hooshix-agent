@@ -40,6 +40,24 @@ export interface TaskExecutionContext {
   roots: string[];
   unrestricted: boolean;
   createdAt?: string;
+  /**
+   * CI-G5 — the Context this Task was created under. Captured at creation from
+   * the resolved binding and never rebound: a Task's side effects belong to the
+   * Context that authorized them. Absent for every Task created while
+   * CTX_ISOLATION_MODE=OFF (all of them today), which is why the fencing check
+   * treats "no Context" as "no fencing applicable" rather than refusing.
+   */
+  contextId?: string;
+  /** The Context's workspace grant, so scope cannot drift after creation. */
+  workspaceGrantId?: string;
+  /**
+   * The ownership epoch observed at creation. Rechecked before every side
+   * effect against the live ownership_lease; a mismatch means another worker
+   * moved the Context, so this Task must not commit (threat T08).
+   */
+  ownershipEpoch?: number;
+  /** The binding that authorized creation — the lease's expected owner. */
+  createdByBindingId?: string;
 }
 export interface RetryPolicy {
   maxTotalAttempts?: number;
