@@ -11,12 +11,19 @@ import { isCiIsolationEnabled, type CiIsolationMode } from "../../domain/context
  * the new policy WOULD have decided on real traffic. That is the evidence
  * needed before enforcement is turned on (design 10 §2).
  *
+ * CI-G4 consumes the same `resolution` for enforcement, so this observer is now
+ * the single resolution point on the request path: audit and decision both
+ * derive from one lookup, which means the audit row always matches the decision
+ * that was actually applied.
+ *
  * Hexagonal discipline: this service depends only on the CI-1.02 ports and the
  * domain. The SQLite resolver/audit adapters are injected by the transport; the
  * flag comes from config, which reads the environment at the edge.
  *
  * The observer never throws: an audit failure must not break a request. Errors
- * are swallowed and reported through the return value instead.
+ * are swallowed and reported through the return value instead. CI-G4 reads that
+ * failure as a refusal — the observer's resilience contract is unchanged, but
+ * its callers now act on a null resolution.
  */
 
 export interface ObservationInput {
@@ -29,7 +36,11 @@ export interface ObservationInput {
 }
 
 export interface ObservationResult {
-  /** The resolution, or null when isolation is OFF or resolution failed. */
+  /**
+   * The resolution, or null when isolation is OFF or resolution failed. CI-G4
+   * treats null as a REFUSAL under enforcement modes: a control plane that
+   * cannot answer must not be read as "no Context needed" (I-06 fail-closed).
+   */
   readonly resolution: ContextResolution | null;
   /** True when the audit row was written. */
   readonly audited: boolean;

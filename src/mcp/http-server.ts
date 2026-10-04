@@ -19,6 +19,7 @@ import {installGracefulShutdown} from "../infrastructure/server/graceful-shutdow
 import {isDatabaseReady,closeAgentDatabase,openAgentDatabase,runMigrations} from "../core/memory/database/index.js";
 import {parseCiIsolationMode,isCiIsolationEnabled} from "../infrastructure/config/ci-isolation-config.js";
 import {createRequestObserver} from "../application/services/context-isolation-observer.js";
+import {decideEnforcement} from "../application/services/context-isolation-enforcer.js";
 import {resolveContextFromPort} from "../adapters/outbound/persistence/sqlite/repositories/context-resolver.adapter.js";
 import {recordControlPlaneAuditFromPort} from "../adapters/outbound/persistence/sqlite/repositories/context-audit.adapter.js";
 import {pinLegacyContext} from "../adapters/outbound/persistence/sqlite/repositories/context-legacy.adapter.js";
@@ -320,16 +321,27 @@ async function handleRequest(
     res.setHeader("WWW-Authenticate",`Bearer resource_metadata="${metadata}", scope="hooshix:read"`);
     sendJSON(res,401,{error:"invalid_token"});return;
   }
-  // CI-G3 — SHADOW mode: resolve this credential's Context and record what the
-  // isolation policy WOULD have decided, without changing the request's
-  // behavior. A no-op while CTX_ISOLATION_MODE=OFF; never throws.
+  // CI-G3 + CI-G4 — resolve this credential's Context exactly once, audit the
+  // outcome, and — when the flag is in an enforcement mode (PER_CONNECTION or
+  // HOST_ATTESTED) — actually refuse the request on a non-RESOLVED outcome.
+  // In SHADOW this only writes the audit row; in OFF it is a total no-op.
+  // Fail-closed by design: a resolution that itself errored is treated as a
+  // refusal, so the control plane being unavailable cannot disable isolation.
   if(grantWithHash){
-    await observeRequestResolution({
+    const observation=await observeRequestResolution({
       credentialHash:grantWithHash.tokenHash,
       action:"MCP_REQUEST",
       traceId:(req.headers["x-trace-id"] as string | undefined) ?? remoteIp,
       mode:CTX_ISOLATION_MODE,
     });
+    const enforcement=decideEnforcement({mode:CTX_ISOLATION_MODE,resolution:observation.resolution});
+    if(!enforcement.allowed){
+      // Refuse before any session, concurrency or tool work happens. The audit
+      // row above already records this as a DENY with no Context attached, so
+      // the operator sees enforcement actions alongside the shadow history.
+      sendJSON(res,403,{error:"context_denied",reason:enforcement.reason});
+      return;
+    }
   }
   const quota=principalLimiter.allow(grant.principalId+":"+grant.clientId);
   if(!quota.allowed){

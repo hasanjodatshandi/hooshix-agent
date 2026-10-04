@@ -271,7 +271,8 @@ CI-1 (domain) ──► CI-2 (control DB + principal مجزا) ──► CI-3 (w
 | CI-G1 | ✅ **تأیید شد** — CI-1.01 تا CI-1.04 کامل؛ ۹۳۴ تست / ۲۰۳ فایل سبز؛ G1 global + R7 secret policy PASS؛ build تمیز |
 | CI-G2 | ✅ **تأیید شد** — CI-2.01 تا CI-2.05 کامل؛ ۹۷۸ تست / ۲۰۸ فایل سبز؛ G1 global + R7 secret policy PASS؛ build تمیز |
 | CI-G3 | ✅ **تأیید شد** — SHADOW mode به مسیر درخواست متصل شد؛ تست e2e روی سرور زنده |
-| CI-G4..CI-G9 | ⬜ NOT_STARTED |
+| CI-G4 | ✅ **تأیید شد** — PER_CONNECTION enforcement روی مسیر زنده: resolution غیرRESOLVED درخواست را با ۴۰۳ و sentinel ثابت رد می‌کند؛ fail-closed |
+| CI-G5..CI-G9 | ⬜ NOT_STARTED |
 
 ### CI-1 — انجام‌شده (commit نشده)
 
@@ -326,4 +327,18 @@ CI-1 (domain) ──► CI-2 (control DB + principal مجزا) ──► CI-3 (w
 - **never throws:** شکست observation درخواست را خراب نمی‌کند؛ در `error` برگردانده می‌شود.
 - `tests/ci/ci-g3-shadow-mode.test.ts` — ۲ تست e2e روی سرور زنده: ALLOW برای legacy token + سرویس بدون تغییر؛ OFF هیچ auditی نمی‌نویسد.
 
-**leaf بعدی:** شروع گیت **CI-G4** — enforcement در `PER_CONNECTION` mode: بعد از SHADOW mode که فقط observation بود، حالا resolution های DENY باید واقعاً درخواست را رد کنند. اولین enforcement واقعی روی مسیر زنده.
+### CI-G4 — انجام‌شده (commit نشده)
+
+- **اولین enforcement واقعی روی مسیر زنده.** تا CI-G3 resolution فقط observe و audit می‌شد؛ از CI-G4 به بعد، وقتی پرچم در یک enforcement mode باشد (`PER_CONNECTION` یا `HOST_ATTESTED`)، هر resolution غیر از `RESOLVED` درخواست را واقعاً رد می‌کند.
+- **یک نقطهٔ resolution، یک audit.** observer همان resolution را برمی‌گرداند که enforcement از آن تصمیم می‌گیرد (`context-isolation-enforcer.ts`)، پس ردیف audit همیشه با تصمیم واقعی تطابق دارد. تکرار مجدد resolver حذف شد.
+- **fail-closed (I-06):** اگر خود resolution شکست بخورد (observer `error`، کنترل‌پلین در دسترس نیست)، enforcement آن را به‌عنوان `context_not_bound` رد می‌کند — قطع شدن control plane هرگز به‌معنای «اجازه داده شد» خوانده نمی‌شود.
+- **تضاد της ضد-enumeration (T07):** بدنهٔ ۴۰۳ `{error:"context_denied", reason:<sentinel>}` با sentinelهای ثابت و بستهٔ CI-1.03 است (`context_not_bound` / `context_inactive` / `scope_insufficient`)؛ هیچ Context id، binding id یا مسیری در پاسز نشت نمی‌کند.
+- **OFF و SHADOW رفتار تغییر نمی‌کنند:** `decideEnforcement` در این دو حالت همیشه `{allowed:true}` برمی‌گرداند (SHADOW فقط audit می‌نویسد).
+- **رد در لبه:** درخواست قبل از هر session، concurrency، limiter یا tool work می‌میرد — complete mediation بدون هیچ side effect.
+- `src/application/services/context-isolation-enforcer.ts` — تابع تصمیم pure، فقط به domain + ports وابسته.
+- `tests/ci/ci-g4-enforcement.test.ts` — ۹ تست واحد: جدول تصمیم کامل (OFF/SHADOW/PER_CONNECTION/HOST_ATTESTED × RESOLVED/UNBOUND/INACTIVE/INSUFFICIENT_SCOPE/null) + عدم نشت id.
+- `tests/ci/ci-g4-live-enforcement.test.ts` — ۳ تست e2e روی سرور زنده: legacy token همچنان ALLOW می‌ماند (ADR-CI-007)؛ credential غیرقابل resolve با ۴۰۳ + sentinel رد می‌شود و DENY audit با Context خالی ثبت می‌شود؛ همان credential در SHADOW همچنان serve می‌شود (یعنی رد کردن از enforcement است نه resolution).
+
+**گیت CI-G4 بسته شد.** اولین بار است که isolation policy رفتار زنده را تغییر می‌دهد — و فقط وقتی اپراتور صریحاً پرچم را بچرخاند.
+
+**leaf بعدی:** شروع گیت **CI-G5** — fencing در `TaskExecutionContext`: epoch recheck پیش از هر side effect و `OUTCOME_UNKNOWN` به‌جای re-run (CI-5). enforcement مسیر زنده از CI-G4 به بعد همیشه فعال است.
