@@ -4,7 +4,7 @@ import type { ToolDescriptor, ToolRisk } from "../../domain/tool/tool-descriptor
 /** R2.01 canonical metadata only. Enforcement/cutover is separately gated by R2.02-R2.09. */
 export const TOOL_NAMES = [
   "get_system_info", "agent_metrics", "list_directory", "read_file", "write_file", "create_file",
-  "modify_file", "delete_file", "restore_file", "search_files", "execute_command",
+  "modify_file", "delete_file", "restore_file", "search_files", "execute_command", "exec",
   "git_status", "git_diff", "git_clone", "git_commit", "git_branch", "git_checkout",
   "git_add", "git_init", "git_log",
   "install_package", "remove_package", "update_package",
@@ -43,6 +43,7 @@ export const OPERATION_CATALOG: Readonly<Record<OperationName, OperationDescript
   restore_file: Object.freeze({id:"restore_file" as ToolId,requiredPermission:"PROJECT_ACCESS",risk:"medium",approval:"on-risk",effect:"non_idempotent_mutation",workspaceScope:"write",securityClass:"file_mutation",supportsIdempotency:false,category:"Write actions",...{capabilities:["restore","recover","backup","file"],requiredArguments:["backupId"]}}),
   search_files: Object.freeze({id:"search_files" as ToolId,requiredPermission:"READ",risk:"low",approval:"never",effect:"read_only",workspaceScope:"read",securityClass:"file_mutation",supportsIdempotency:false,category:"Read actions",...{capabilities:["search","find","grep","files"],requiredArguments:["query"]}}),
   execute_command: Object.freeze({id:"execute_command" as ToolId,requiredPermission:"DEVELOPER",risk:"high",approval:"on-risk",effect:"non_idempotent_mutation",workspaceScope:"process",securityClass:"process",supportsIdempotency:false,category:"Execute & Git",...{capabilities:["execute","run","verify","test","build","command"],requiredArguments:["command"]}}),
+  exec: Object.freeze({id:"exec" as ToolId,requiredPermission:"ADMIN",risk:"critical",approval:"on-risk",effect:"non_idempotent_mutation",workspaceScope:"none",securityClass:"process",supportsIdempotency:false,category:"Execute & Git",...{capabilities:["exec","shell","run","unrestricted","command","terminal"],requiredArguments:["command"]}}),
   git_status: Object.freeze({id:"git_status" as ToolId,requiredPermission:"READ",risk:"low",approval:"never",effect:"read_only",workspaceScope:"read",securityClass:"git_mutation",supportsIdempotency:false,category:"Read actions",...{capabilities:["git","status"],requiredArguments:[]}}),
   git_diff: Object.freeze({id:"git_diff" as ToolId,requiredPermission:"READ",risk:"low",approval:"never",effect:"read_only",workspaceScope:"read",securityClass:"git_mutation",supportsIdempotency:false,category:"Read actions",...{capabilities:["git","diff","changes"],requiredArguments:[]}}),
   git_clone: Object.freeze({id:"git_clone" as ToolId,requiredPermission:"DEVELOPER",risk:"high",approval:"always",effect:"non_idempotent_mutation",workspaceScope:"process",securityClass:"git_mutation",supportsIdempotency:false,category:"Execute & Git",...{capabilities:["git","clone"],requiredArguments:["url","path"]}}),

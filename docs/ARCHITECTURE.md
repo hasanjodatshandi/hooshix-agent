@@ -48,7 +48,7 @@ All tool effects, whether from a direct MCP call or a task step, meet at exactly
 
 ## OperationCatalog
 
-`src/application/services/operation-catalog.ts` is the one registry: 53 descriptors (`TOOL_NAMES` 30 + `CONTROL_TOOL_NAMES` 23), frozen, one per externally registered operation including the control plane. It fails closed on unknown and prototype-looking names (`__proto__`, `toString`, `constructor`). See `docs/TOOLS.md`.
+`src/application/services/operation-catalog.ts` is the one registry: 54 descriptors (`TOOL_NAMES` 30 + `CONTROL_TOOL_NAMES` 23), frozen, one per externally registered operation including the control plane. It fails closed on unknown and prototype-looking names (`__proto__`, `toString`, `constructor`). See `docs/TOOLS.md`.
 
 ## Composition root
 

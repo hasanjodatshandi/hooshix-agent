@@ -2,8 +2,9 @@ import { z } from "zod";
 import type { ToolHandler, ToolHandlerContext } from "./tool-handler.js";
 import type { ToolName } from "../../../application/services/legacy-tool-orchestrator.js";
 import { executeShellCommand } from "../../../services/shell/shell-service.js";
+import { executeUnrestrictedCommand, EXEC_MAX_TIMEOUT } from "../../../services/shell/exec-service.js";
 
-const SHELL_TOOLS: ReadonlySet<ToolName> = new Set(["execute_command"]);
+const SHELL_TOOLS: ReadonlySet<ToolName> = new Set(["execute_command", "exec"]);
 
 const object = z.record(z.string(), z.unknown());
 
@@ -12,7 +13,17 @@ export class ShellToolHandler implements ToolHandler {
     return SHELL_TOOLS.has(tool);
   }
 
-  async handle({ input, correlationId, executionContext, signal }: ToolHandlerContext): Promise<unknown> {
+  async handle({ tool, input, correlationId, executionContext, signal }: ToolHandlerContext): Promise<unknown> {
+    if (tool === "exec") return this.handleExec(input, correlationId, signal);
+    return this.handleExecuteCommand(input, correlationId, executionContext, signal);
+  }
+
+  private async handleExecuteCommand(
+    input: Record<string, unknown>,
+    correlationId: string,
+    executionContext: ToolHandlerContext["executionContext"],
+    signal?: AbortSignal,
+  ): Promise<unknown> {
     const data = object.parse(input);
     const value = z.object({
       command: z.string(),
@@ -41,5 +52,24 @@ export class ShellToolHandler implements ToolHandler {
     // still throw from executeShellCommand itself, which is correct: those are
     // cases where there is no process result to report.
     return executeShellCommand(value.command, value.args, cwd, value.timeout, correlationId, signal);
+  }
+
+  private async handleExec(
+    input: Record<string, unknown>,
+    correlationId: string,
+    signal?: AbortSignal,
+  ): Promise<unknown> {
+    const data = object.parse(input);
+    const value = z.object({
+      command: z.string().min(1),
+      cwd: z.string().optional(),
+      timeout: z.number().int().min(100).max(EXEC_MAX_TIMEOUT).default(60000),
+      shell: z.string().optional(),
+    }).parse(data);
+    // Unrestricted by design: the exec service enforces only its access gate
+    // (ADMIN_MODE + HOOSHIX_EXEC_ENABLED=1) and audits the call. Any cwd —
+    // including one outside every workspace — is accepted, as are commands the
+    // execute_command policy would refuse.
+    return executeUnrestrictedCommand(value.command, { cwd: value.cwd, timeout: value.timeout, shell: value.shell }, correlationId, signal);
   }
 }

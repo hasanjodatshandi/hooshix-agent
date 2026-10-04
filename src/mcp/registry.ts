@@ -17,6 +17,7 @@ import {
   registerRestoreFileTool
 } from "../tools/filesystem/index.js";
 import { registerExecuteCommandTool } from "../tools/shell/execute-command.js";
+import { registerExecTool } from "../tools/shell/exec.js";
 import { registerGitTools } from "../tools/git/index.js";
 import { registerPackageTools } from "../tools/package/index.js";
 import { registerTaskTools } from "../tools/task/index.js";
@@ -89,6 +90,7 @@ export function registerTools(server: McpServer){
   registerRestoreFileTool(server);
 
   registerExecuteCommandTool(server);
+  registerExecTool(server);
   registerGitTools(server);
   registerPackageTools(server);
   registerTaskTools(server);

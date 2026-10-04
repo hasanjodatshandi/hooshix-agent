@@ -6,7 +6,7 @@ import {TOOL_NAMES} from "../../src/application/services/operation-catalog.js";
 const root=path.resolve("src/tools");
 const schemaOnly=[
   ...["read-file","write-file","list-directory","modify-file","search-files","create-file","delete-file","restore-file"].map(n=>"filesystem/"+n+".ts"),
-  "git/index.ts","package/index.ts","shell/execute-command.ts",
+  "git/index.ts","package/index.ts","shell/execute-command.ts","shell/exec.ts",
   "system/workspace.ts","system/system-info.ts","system/agent-metrics.ts",
 ];
 describe("R2.09 inbound execution path retirement",()=>{
@@ -16,8 +16,8 @@ describe("R2.09 inbound execution path retirement",()=>{
     expect(registry).toContain("executeAuthorizedDirectTool");
     expect(registry).toContain("TOOL_NAMES");
     expect(registry).toContain("return callback(validated,...extra)");
-    expect(TOOL_NAMES).toHaveLength(29);
-    expect(new Set(TOOL_NAMES).size).toBe(29);
+    expect(TOOL_NAMES).toHaveLength(30);
+    expect(new Set(TOOL_NAMES).size).toBe(30);
   });
   it("keeps all executable inbound registration modules schema-only",()=>{
     for(const relative of schemaOnly) {

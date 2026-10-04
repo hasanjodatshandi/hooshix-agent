@@ -34,13 +34,16 @@ pnpm run dev
 
 - System: `get_system_info`, `agent_metrics`, `set_workspace`, `get_workspace`
 - Files: `list_directory`, `read_file`, `search_files`, `create_file`, `write_file`, `modify_file`, `delete_file`, `restore_file`
-- Shell: `execute_command`
+- Shell: `execute_command`, `exec`
 - Git: `git_status`, `git_diff`, `git_clone`, `git_commit`, `git_branch`, `git_checkout`, `git_add`, `git_init`, `git_log`
 - Packages: `install_package`, `remove_package`, `update_package`
 - Tasks: `task_create`, `task_get`, `task_list`, `task_run`, `task_approve`, `task_resume`, `task_report`, `task_replay`, `task_cancel`, `task_append_steps`, `task_link`, `task_links`, `task_step_risks`, `task_snapshot`, `task_rollback`, `task_reconcile`
 - Context: `project_save`, `project_get`, `project_list`, `project_archive`, `project_delete`, `memory_add`, `memory_get`, `memory_list`, `memory_update`, `memory_delete`
 
 **فرمان‌های مجاز `execute_command`:** `node`, `npm`, `pnpm`, `git`, `python`, `py`, `gh`. دستورهای فقط-خواندنی (مثل `git status`، `gh pr list`، `node --version`) مستقیم اجرا می‌شوند؛ اجرای کد (اسکریپت node/python، `npm run/test`، git mutating، gh mutating) نیازمند step تاییدشده است.
+
+
+**ابزار `exec` (unrestricted):** برخلاف `execute_command`، هیچ allowlistی ندارد، الگوی خطرناکی را مسدود نمی‌کند و cwd را به workspace محدود نمی‌کند — یک خط کامل shell (pipe، redirect، builtin، chaining) دقیقاً مثل ترمینال تعاملی اجرا می‌کند. تنها مرز آن دسترسی است: نیازمند `HOOSHIX_PERMISSION_LEVEL=ADMIN_MODE` **و** پرچم صریح `HOOSHIX_EXEC_ENABLED=1` است (پیش‌فرض خاموش). هر فراخوانی، حتی رد‌شده‌ها، در `logs/command-actions.log` لاگ می‌شود. متغیرهای محیطی سرور (HOOSHIX_*) هرگز به فرزند منتقل نمی‌شوند.
 
 `task_create` باید plan صریح ChatGPT را بگیرد؛ هر step شامل `action`, `tool`, `arguments` و در صورت نیاز `dependsOn` است. نمونهٔ ورودی:
 

@@ -58,7 +58,7 @@ const result = {
   publicProductionApproval: "NOT_EVALUATED",
   source: { branch, head, aheadOfUpstream: ahead, dirtyFileCount: dirtyPaths.length, dirtyPaths },
   runtime: { node: process.versions.node, pnpm: pnpmVersion, pinnedPnpm },
-  expectedToolInventory: 53, // validated by the complete MCP registry test, not by this read-only preflight
+  expectedToolInventory: 54, // validated by the complete MCP registry test, not by this read-only preflight
   // The SDK package was renamed for the MCP-2026 migration (spec 31): the
   // transport is now @modelcontextprotocol/node + @modelcontextprotocol/server.
   sdk: pkg.dependencies?.["@modelcontextprotocol/node"] ?? pkg.dependencies?.["@modelcontextprotocol/sdk"] ?? null,

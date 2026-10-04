@@ -143,7 +143,7 @@
 
 ### CI-3.02 — تمام ابزارها از envelope عبور می‌کنند
 
-۵۳ ابزار موجود (۲۹ step-executable + ۲۴ control). فهرست کامل: `docs/TOOLS.md`. هر handler باید envelope بگیرد و context را re-check کند:
+۵۴ ابزار موجود (۳۰ step-executable + ۲۴ control). فهرست کامل: `docs/TOOLS.md`. هر handler باید envelope بگیرد و context را re-check کند:
 - File tools (`read_file`، `write_file`، `create_file`، `modify_file`، `delete_file`، `restore_file`، `search_files`، `list_directory`) — از `filesystem-service.ts` که canonical root را از grant می‌خواند.
 - Git tools (`git_status`...`git_init`) — repo از Context resolve.
 - `execute_command` — cwd از grant.

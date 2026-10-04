@@ -236,6 +236,15 @@ export function parseDirectApprovalBypass(env: Readonly<Record<string, string | 
   return env.HOOSHIX_DIRECT_AUTO_APPROVE === "1";
 }
 
+/**
+ * The unrestricted `exec` tool is OFF by default. It runs an arbitrary shell
+ * line with none of the command-policy guards, so enabling it is a deliberate
+ * operator decision; ADMIN_MODE permission is still required on top of this flag.
+ */
+export function parseExecEnabled(env: Readonly<Record<string, string | undefined>> = process.env): boolean {
+  return env.HOOSHIX_EXEC_ENABLED === "1";
+}
+
 /** Raw retention parse kept lenient for the compatibility reader; the typed contract validates. */
 export function parseRetentionDaysRaw(env: Readonly<Record<string, string | undefined>> = process.env): number {
   return Number(env.HOOSHIX_RETENTION_DAYS ?? 90);
