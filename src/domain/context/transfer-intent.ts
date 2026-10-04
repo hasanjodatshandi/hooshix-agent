@@ -109,3 +109,41 @@ export function isIntentTerminal(intent: TransferIntent): boolean {
 export function isIntentVisibleToSource(intent: TransferIntent): boolean {
   return !isIntentTerminal(intent) || intent.state === "COMMITTED";
 }
+
+/**
+ * Rebuild a persisted intent row exactly as stored. Mirrors the rehydration of
+ * a Context: creation always starts PREPARED, but a row that advanced to
+ * APPROVED must rehydrate there or the approve CAS (state='PREPARED') could
+ * never see the state it is supposed to guard. Bypasses the transition table
+ * by design; the row's own CHECK constraint already bounds the value to the
+ * seven legal states.
+ */
+export function rehydrateTransferIntent(input: {
+  id: string; sourceContextId: string; sourceBindingId: string;
+  targetConnectionId: string; targetContextId: string | null;
+  kind: HandoffKind; state: IntentState; sourceEpoch: number;
+  ticketHash: string; expiresAt: string;
+  approvedByOwnerId: string | null; approvedAt: string | null; committedAt: string | null;
+  createdAt: string;
+}): TransferIntent {
+  if (!ALLOWED_KINDS.has(input.kind)) throw new DomainError("INVALID_ID", `Unknown handoff kind: ${input.kind}`);
+  const targetContextId = input.targetContextId
+    ? requireNonblankId<"ContextId">(input.targetContextId, "ContextId")
+    : null;
+  return Object.freeze({
+    id: requireNonblankId<"IntentId">(input.id, "IntentId"),
+    sourceContextId: requireNonblankId<"ContextId">(input.sourceContextId, "ContextId"),
+    sourceBindingId: requireNonblankId<"BindingId">(input.sourceBindingId, "BindingId"),
+    targetConnectionId: input.targetConnectionId,
+    targetContextId,
+    kind: input.kind,
+    state: input.state,
+    sourceEpoch: input.sourceEpoch,
+    ticketHash: input.ticketHash,
+    expiresAt: input.expiresAt,
+    approvedByOwnerId: input.approvedByOwnerId,
+    approvedAt: input.approvedAt,
+    committedAt: input.committedAt,
+    createdAt: input.createdAt,
+  });
+}

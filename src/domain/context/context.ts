@@ -86,3 +86,35 @@ export function transitionContextState(context: Context, next: ContextState, now
 export function isContextExecutable(context: Context): boolean {
   return context.state === "ACTIVE";
 }
+
+/**
+ * Rebuild a persisted Context row exactly as stored. This is the read side of
+ * `createContext`: creation always starts ACTIVE (I-03), but a row that was
+ * moved to TRANSFERRING by a transfer must rehydrate in that state or the
+ * state machine would see an illegal "resurrection" on every read.
+ *
+ * Bypasses the transition table on purpose — validating a stored row against
+ * the transition rules would make every legitimate read of a mid-transfer
+ * Context throw. The row's own CHECK constraint (migration 23) already bounds
+ * the value to the four legal states.
+ */
+export function rehydrateContext(input: {
+  id: string; ownerId: string; projectLabel: string;
+  state: ContextState; workspaceGrantId: string; storageLocator: string;
+  epoch: number; createdAt: string; updatedAt: string;
+}): Context {
+  if (!VALID_STATES.has(input.state)) {
+    throw new DomainError("INVALID_TASK", `Unknown ContextState: ${input.state}`);
+  }
+  return Object.freeze({
+    id: requireContextId(input.id),
+    ownerId: input.ownerId,
+    projectLabel: input.projectLabel,
+    state: input.state,
+    workspaceGrantId: requireNonblankId<"GrantId">(input.workspaceGrantId, "GrantId"),
+    storageLocator: input.storageLocator,
+    epoch: requireContextEpoch(input.epoch),
+    createdAt: input.createdAt,
+    updatedAt: input.updatedAt,
+  });
+}

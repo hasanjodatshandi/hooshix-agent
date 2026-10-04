@@ -17,7 +17,6 @@ import { withAgentDatabase } from "../../../../../core/memory/database/index.js"
  * asserted inside the same transaction.
  */
 
-const iso = (time: number) => new Date(time).toISOString();
 const MIN_TTL_MS = 1_000;
 const MAX_TTL_MS = 24 * 60 * 60_000;
 
@@ -28,6 +27,7 @@ export interface OwnershipLeaseRecord {
   /** Absolute deadline in epoch milliseconds. */
   readonly leaseDeadlineMs: number;
   readonly fencingToken: string;
+  readonly updatedAt: string;
 }
 
 function validateTtl(ttlMs: number): void {
@@ -41,6 +41,7 @@ interface LeaseRow {
   context_epoch: number;
   lease_deadline_ms: number;
   fencing_token: string;
+  updated_at: string;
 }
 
 function toRecord(row: LeaseRow): OwnershipLeaseRecord {
@@ -50,11 +51,29 @@ function toRecord(row: LeaseRow): OwnershipLeaseRecord {
     contextEpoch: row.context_epoch,
     leaseDeadlineMs: row.lease_deadline_ms,
     fencingToken: row.fencing_token,
+    updatedAt: row.updated_at,
   };
 }
 
+/** Alias used by the transfer adapter, which reads through the same mapping. */
+export const toLeaseRecord = toRecord;
+
+const iso = (time: number) => new Date(time).toISOString();
+export {iso as isoTimestamp};
+
 /** Read the current lease for a Context, or null if it has never been leased. */
 export function getOwnershipLease(contextId: string): OwnershipLeaseRecord | null {
+  if (!contextId) return null;
+  return withAgentDatabase((db) => {
+    const row = db
+      .prepare("SELECT * FROM ownership_lease WHERE context_id=?")
+      .get(contextId) as LeaseRow | undefined;
+    return row ? toRecord(row) : null;
+  });
+}
+
+/** Same read, on a connection the caller already holds (transfer transaction). */
+export function getOwnershipLeaseRow(contextId: string): OwnershipLeaseRecord | null {
   if (!contextId) return null;
   return withAgentDatabase((db) => {
     const row = db
@@ -133,6 +152,73 @@ export function advanceOwnershipEpoch(input: {
         .run(
           input.newDeadlineMs,
           input.fencingToken,
+          iso(now),
+          input.contextId,
+          input.expectedEpoch,
+          input.expectedBindingId,
+        );
+      return changed;
+    })();
+    if (outcome.changes !== 1) throw new Error("ownership_lease_stale_epoch");
+    return readLeaseOrThrow(db, input.contextId);
+  });
+}
+
+/**
+ * CI-G6 — the atomic rebind at the heart of an owner-approved transfer.
+ *
+ * Unlike `advanceOwnershipEpoch` (renewal under the SAME binding, design 04
+ * §6), this changes WHO owns the Context: the lease row moves to a new binding
+ * and bumps the epoch in one CAS. The epoch bump is what fences the old chat
+ * out — every Task it created recorded the old epoch, so the CI-G5 fence
+ * refuses its next side effect without a re-run (threat T08/T09).
+ *
+ * The CAS requires the caller to present the lease it expects to move: the
+ * recorded (epoch, binding) pair. A concurrent transfer that already moved the
+ * Context changes one of them and this update touches zero rows, so the whole
+ * calling transaction rolls back rather than double-rebinding (threat T10).
+ *
+ * Returns the new lease so the caller can hand the destination its fencing
+ * token without a second read.
+ */
+export function transferContextOwnership(input: {
+  readonly contextId: string;
+  readonly expectedEpoch: number;
+  readonly expectedBindingId: string;
+  readonly newBindingId: string;
+  readonly newDeadlineMs: number;
+}): OwnershipLeaseRecord {
+  if (!input.contextId || !input.expectedBindingId || !input.newBindingId) {
+    throw new Error("invalid_ownership_lease_identity");
+  }
+  if (input.expectedBindingId === input.newBindingId) {
+    throw new Error("invalid_ownership_transfer_self");
+  }
+  if (!Number.isSafeInteger(input.expectedEpoch) || input.expectedEpoch < 1) {
+    throw new Error("invalid_ownership_epoch");
+  }
+  if (!Number.isSafeInteger(input.newDeadlineMs) || input.newDeadlineMs <= 0) {
+    throw new Error("invalid_ownership_deadline");
+  }
+  return withAgentDatabase((db) => {
+    const now = Date.now();
+    const outcome = db.transaction(() => {
+      const changed = db
+        .prepare(
+          `UPDATE ownership_lease SET
+             owner_binding_id=?,
+             context_epoch=context_epoch+1,
+             lease_deadline_ms=?,
+             fencing_token=?,
+             updated_at=?
+           WHERE context_id=?
+             AND context_epoch=?
+             AND owner_binding_id=?`,
+        )
+        .run(
+          input.newBindingId,
+          input.newDeadlineMs,
+          randomUUID(),
           iso(now),
           input.contextId,
           input.expectedEpoch,

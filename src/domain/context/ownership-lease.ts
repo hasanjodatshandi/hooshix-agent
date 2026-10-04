@@ -41,6 +41,26 @@ export function createOwnershipLease(input: {
 }
 
 /**
+ * Rebuild a persisted lease row exactly as stored. The domain constructor is
+ * the branding authority, and the transfer path reads a lease inside its own
+ * transaction to decide whether a CAS will succeed — a plain string row must
+ * become a domain value before that decision is made.
+ */
+export function rehydrateOwnershipLease(input: {
+  contextId: string; ownerBindingId: string; contextEpoch: number;
+  leaseDeadlineMs: number; fencingToken: string; updatedAt: string;
+}): OwnershipLease {
+  return Object.freeze({
+    contextId: requireNonblankId<"ContextId">(input.contextId, "ContextId"),
+    ownerBindingId: requireNonblankId<"BindingId">(input.ownerBindingId, "BindingId"),
+    contextEpoch: requireContextEpoch(input.contextEpoch),
+    leaseDeadlineMs: input.leaseDeadlineMs,
+    fencingToken: requireNonblankId<"FencingToken">(input.fencingToken, "FencingToken"),
+    updatedAt: input.updatedAt,
+  });
+}
+
+/**
  * The CAS precondition used by the ownership repository (design 04 §6): the
  * epoch is advanced only when the row still carries the epoch and binding the
  * caller expects, asserted as exactly one changed row inside the same

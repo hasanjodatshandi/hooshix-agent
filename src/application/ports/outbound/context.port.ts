@@ -1,6 +1,7 @@
 import type { ContextBinding } from "../../../domain/context/context-binding.js";
 import type { Context, ContextState } from "../../../domain/context/context.js";
 import type { OwnershipLease } from "../../../domain/context/ownership-lease.js";
+import type { TransferIntent } from "../../../domain/context/transfer-intent.js";
 import type { VerifiedPrincipal } from "../../../domain/context/verified-principal.js";
 import type { WorkspaceGrant } from "../../../domain/context/workspace-grant.js";
 import type { BindingId, ContextEpoch, ContextId, GrantId } from "../../../domain/shared/ids.js";
@@ -109,4 +110,66 @@ export interface ContextProvisioningRepository {
 
   /** Locate the binding a credential currently holds, if any (rotate path). */
   findBindingByConnection(connectionId: string): ContextBinding | null;
+}
+
+/**
+ * CI-G6 — the two-phase ownership transfer port.
+ *
+ * The whole protocol needs four persisted moves — prepare the intent, approve
+ * it with the one-time ticket, rebind the lease while bumping the epoch, mark
+ * the intent committed — and the middle two must be atomic against concurrent
+ * transfers. The port is therefore deliberately coarser than the underlying
+ * lease/intent tables: `commitTransfer` is the atomic rebind, and the SQLite
+ * adapter runs it in one transaction so a Context is never left TRANSFERRING.
+ *
+ * Nothing here takes a raw ticket. `prepare` mints the ticket internally and
+ * returns it once; `approve` takes only the hash. The plaintext therefore
+ * never crosses this boundary (design 03 §4).
+ */
+export interface TransferRepository {
+  /** Mint a one-time ticket and its SHA-256. The plaintext leaves exactly once. */
+  mintTicket(): { readonly ticket: string; readonly ticketHash: string };
+  /** Hash a presented ticket for comparison against a stored hash. */
+  hashTicket(ticket: string): string;
+  /** Is this exact hash already recorded? Used to refuse double-issuance. */
+  isTicketHashTaken(ticketHash: string): boolean;
+  /** Persist a freshly prepared intent (state PREPARED, stamps null). */
+  insertIntent(intent: TransferIntent): void;
+  /** Read an intent by id, or null. */
+  getIntent(intentId: string): TransferIntent | null;
+  /** Read the live ownership lease for a Context, or null when never leased. */
+  getLease(contextId: ContextId): OwnershipLease | null;
+  /** Is there already an open (PREPARED/APPROVED/DRAINING) intent for a Context? */
+  hasOpenIntent(contextId: ContextId): boolean;
+  /**
+   * Redeem the ticket: move the intent to APPROVED and record the approver, in
+   * one CAS on (id, PREPARED, ticketHash). Returns the updated intent, or null
+   * when the guard fails (unknown id, wrong state, ticket mismatch, expired).
+   */
+  approveIntent(input: {
+    readonly intentId: string;
+    readonly ownerId: string;
+    readonly ticketHash: string;
+    readonly now: string;
+  }): TransferIntent | null;
+  /**
+   * The atomic rebind. Runs in one transaction: Context ACTIVE → TRANSFERRING,
+   * lease moves to the new binding with a bumped epoch and a fresh fencing
+   * token, Context TRANSFERRING → ACTIVE, intent APPROVED → COMMITTED. Every
+   * step is a CAS, so a concurrent transfer rolls the whole thing back instead
+   * of double-rebinding.
+   *
+   * Returns the COMMITTED intent, or throws when the prerequisites no longer
+   * hold (missing intent/lease, intent not APPROVED, lease epoch moved since
+   * prepare).
+   */
+  commitTransfer(input: {
+    readonly intentId: string;
+    readonly newBindingId: BindingId;
+    readonly now: string;
+  }): TransferIntent;
+  /** Move a non-terminal intent to CANCELLED / EXPIRED / FAILED. */
+  terminateIntent(intentId: string, next: "CANCELLED" | "EXPIRED" | "FAILED"): void;
+  /** Every intent still in flight for a Context, oldest first. */
+  listOpenIntents(contextId: ContextId): readonly TransferIntent[];
 }

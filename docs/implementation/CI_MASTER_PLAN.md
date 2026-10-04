@@ -355,3 +355,21 @@ CI-1 (domain) ──► CI-2 (control DB + principal مجزا) ──► CI-3 (w
 **گیت CI-G5 بسته شد.** non-interference در سطح Task تثبیت شد: یک worker stale هرگز side effect جدیدی commit نمی‌کند و هرگز دوباره اجرا نمی‌شود.
 
 **leaf بعدی:** شروع گیت **CI-G6** — Owner Console و انتقال کنترل (CI-6): APIهای `/admin/*` با session جدا/CSRF/reauth/one-time ticket، transfer دوفازی prepare → approve → freeze+epoch → drain → atomic rebind → audit، و fork snapshot sanitized.
+
+---
+
+### CI-G6a — انجام‌شده (commit نشده)
+
+**هدف:** زیرساخت انتقال کنترل — repository intent، صدور بلیط یک‌بارمصرف، و commit اتمیک دوفازی. بدون HTTP endpoints (آنها CI-G6b هستند).
+
+- **Port `TransferRepository`** در `application/ports/outbound/context.port.ts` — قرارداد hexagonal شامل: `mintTicket`/`hashTicket` (بلیط هرگز از مرز عبور نمی‌کند)، `insertIntent`/`getIntent`، `getLease`، `hasOpenIntent`، `approveIntent` (CAS روی `id, PREPARED, ticketHash`)، `commitTransfer` (rebind اتمیک)، `terminateIntent`، `listOpenIntents`.
+- **آداپتور SQLite** در `adapters/.../handoff-intent.adapter.ts` — پیاده‌سازی port به‌عنوان یک object literal. CHECK constraint های migration 23 خود دامنه را اجرا می‌کنند: ماشین هفت‌حالته، `kind` CHECK، `ticket_hash` UNIQUE (replay تصادف می‌کند نه اینکه بی‌صدا مصرف شود).
+- **سرویس application** در `application/services/context-transfer.ts` — `prepareHandoff` (PREPARED + بلیط یک‌بارمصرف)، `approveHandoff` (APPROVED + ثبت approver)، `commitHandoff` (rebind اتمیک)، `cancelHandoff`، `describeHandoff`. `randomId` inject می‌شود تا تست‌ها deterministic باشند (همان الگوی `establishConnection`).
+- **`transferContextOwnership`** در `context-lease.adapter.ts` — primitive اتمیک rebind: برخلاف `advanceOwnershipEpoch` (renewal زیر همان binding)، binding مالک را عوض می‌کند و epoch را در یک CAS bump می‌کند. epoch bump همان چیزی است که chat قدیمی را در CI-G5 fence می‌کند.
+- **pre-flight بیرون از transaction** — stale intent (lease بین prepare و commit حرکت کرده) در transaction خودش FAILED می‌شود، نه داخل transaction اصلی. اگر داخل آن بود، rollback کل transaction اثر FAILED را هم برگشت می‌کرد و intent برای همیشه در APPROVED گیر می‌کرد.
+- **domain additions** — `rehydrateContext` (context.ts)، `rehydrateTransferIntent` (transfer-intent.ts)، `rehydrateOwnershipLease` (ownership-lease.ts): reconstruction سطر persist شده که از transition table عبور نمی‌کند (هرگز نباید یک سطر TRANSFERRING/APPROVED را illegal بنامد). `context-errors.ts` سه کلاس خطای CI را به domain منتقل کرد چون G1 `application/` را از import `core/` منع می‌کند.
+- **تست‌ها** — `tests/ci/ci-g6a-context-transfer.test.ts`، ۱۸ تست: migration head، CHECK constraint هفت‌حالته، prepare (موفق / بدون lease / target همسان / intent دوم)، approve (موفق / بلیط اشتباه / replay / منقضی)، commit (rebind اتمیک + epoch bump / بدون approve / commit مجدد / stale → FAILED / Context در ACTIVE باقی می‌ماند)، cancel (باز / committed)، و concurrency.
+
+**گیت CI-G6a بسته شد.** انتقال کنترل حالا یک capability است که فقط owner می‌تواند بازیدم کند، و commit آن یک Context را در یک transaction جابجا می‌کند.
+
+**leaf بعدی:** **CI-G6b** — مسیرهای `/admin/*` HTTP با session جدا، CSRF، reauth، one-time ticket endpoint، و تست live gate (چت سقف‌خورده → transfer → چت قدیمی deny).
