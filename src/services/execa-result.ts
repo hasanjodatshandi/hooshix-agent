@@ -10,6 +10,8 @@ export interface ExecaResultLike {
   stderr?: string;
   timedOut?: boolean;
   isCanceled?: boolean;
+  /** execa kills the subprocess once a stream crosses `maxBuffer`. */
+  isMaxBuffer?: boolean;
   shortMessage?: string;
   originalMessage?: string;
 }

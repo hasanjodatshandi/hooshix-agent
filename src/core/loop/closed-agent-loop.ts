@@ -6,6 +6,7 @@ import { UnifiedRecoveryService, type RecoveryProvider } from "../trace/unified-
 import { getExecutionTrace } from "../memory/execution-trace.js";
 import { saveDecisionWithContext as persistDecisionEvent, saveExecutionWithContext as persistExecutionEvent, saveTaskWithContext as persistTaskEvent } from "../memory/context-memory.js";
 import { checkStepGovernance } from "../governance/step-governance.js";
+import { effectiveStepTimeout } from "./step-timeout.js";
 import { createApprovalRequest } from "../governance/approval-memory.js";
 import { checkpointStep as persistCheckpoint } from "./checkpoint-integration.js";
 import { PersistentRecoveryObservability } from "../trace/persistent-recovery-observability.js";
@@ -116,6 +117,28 @@ function boundedResult(value: unknown): unknown {
   } catch {
     return { unserializable: true, preview: String(value).slice(0, 1000) };
   }
+}
+
+/**
+ * Detect a tool that ran a process to completion where the PROCESS reported
+ * failure — a non-zero exit from a validation command (Gradle spotlessCheck /
+ * test / spotbugsMain / bootJar, a linter, a test runner).
+ *
+ * The tool invocation itself succeeded: it captured the real
+ * exitCode/stdout/stderr, which is exactly the evidence the caller needs. But
+ * the STEP must still be marked failed — a validation that exits 1 is a failed
+ * validation, and runWhen=failure steps must see it fail. The description is
+ * built from the numeric exit code only, so no subprocess output (which may
+ * carry paths or caller-controlled text) is interpolated into a control-plane
+ * message; the full output stays on `step.output`.
+ */
+function toolReportedFailure(result: unknown): string | undefined {
+  if (result === null || typeof result !== "object") return undefined;
+  const r = result as { exitCode?: unknown };
+  if (typeof r.exitCode === "number" && r.exitCode !== 0) {
+    return `Command exited with code ${r.exitCode}`;
+  }
+  return undefined;
 }
 
 export interface ClosedLoopResult {
@@ -348,7 +371,12 @@ export async function runClosedAgentLoop(
       const execute = () => approvedRequestId !== undefined && step.id === approvedStepId
         ? runWithTrustedTaskApproval(approvedRequestId, () => executeToolStep(step, executor, signal))
         : executeToolStep(step, executor, signal);
-      const timeout = step.timeout ?? 30_000;
+      // Step timeout: an explicitly declared `step.timeout` wins. Otherwise fall
+      // back to the timeout the tool itself was asked to honour (see
+      // effectiveStepTimeout): execute_command accepts up to 120000ms, but this
+      // deadline used to default to 30000ms regardless — so a 55s build the
+      // caller asked 120s for was killed at 30s and recorded as outcome_unknown.
+      const timeout = effectiveStepTimeout(step);
       const grace=terminationGraceMs(); // config validation before effect dispatch
       // Service compatibility context is installed only inside the R2 handler
       // after the shared gateway has verified and claimed the exact Task approval.
@@ -389,11 +417,41 @@ export async function runClosedAgentLoop(
       }
       // Unwrap { tool, result } from executeToolStep so template resolver
       // can access flat fields like {{step1.output.path}} directly
-      const result = boundedResult(
-        raw && typeof raw === "object" && "tool" in raw && "result" in raw
-          ? (raw as { tool: string; result: unknown }).result
-          : raw
-      );
+      // Read the exit code from the UNBOUNDED result: boundedResult wraps large
+      // output in {truncated, preview}, which would hide the exit code and let a
+      // failed command look completed. The bounded copy is what gets persisted.
+      const unbounded = raw && typeof raw === "object" && "tool" in raw && "result" in raw
+        ? (raw as { tool: string; result: unknown }).result
+        : raw;
+      const result = boundedResult(unbounded);
+      // A tool may have run its process to completion while the process itself
+      // reported failure (non-zero exit). The invocation succeeded and the
+      // result holds the real exitCode/stdout/stderr — keep it on the step —
+      // but the step is failed. Before this, the shell handler threw on non-zero
+      // exit and classifyHandlerFailure collapsed the output into an opaque
+      // tool_handler_failure, so the caller saw neither the exit code nor the
+      // build output it needed to diagnose a failing validation.
+      const reportedFailure = toolReportedFailure(unbounded);
+      if (reportedFailure) {
+        if (activeReceipt) {
+          activeReceipt = finalizeMutationReceipt(activeReceipt, "failed_known");
+          finishStepExecutionReceipt(plan.id, activeReceipt);
+          step.lastReceipt = activeReceipt;
+        }
+        step.status = "failed";
+        step.output = result;
+        step.error = reportedFailure;
+        step.errorType = "COMMAND_FAILED";
+        step.failedAttempts = (step.failedAttempts ?? 0) + 1;
+        step.attemptHistory = [...(step.attemptHistory ?? []), { attempt: step.attempts ?? 1, status: "failed" as const, error: reportedFailure, timestamp: new Date().toISOString() }];
+        persistStep();
+        updateTaskHeartbeat(plan.id);
+        checkpointStep({ taskId: plan.id, stepId: step.id, stepIndex: index, status: "failed", context: runtimeContext });
+        saveExecutionWithContext({ taskId: plan.id, stepId: step.id, action: step.action, result, status: "failed", context: runtimeContext });
+        failedAt = failedAt === -1 ? index : failedAt;
+        index++;
+        continue; // Continue loop for runWhen=failure steps
+      }
       if(activeReceipt){
         activeReceipt=finalizeMutationReceipt(activeReceipt,"succeeded",result);
         finishStepExecutionReceipt(plan.id,activeReceipt);

@@ -41,16 +41,38 @@ export async function executeShellCommand(
       timeout,
       shell: false,
       reject: false,
-      maxBuffer: 1024 * 1024,
+      // Build tooling is verbose: a real Gradle/SpotBugs/Jacoco run emits far
+      // more than 1MB, and execa KILLS the subprocess once a stream crosses
+      // maxBuffer — turning a healthy long build into an unexplained failure
+      // with truncated output. 16MB covers realistic build output; the result
+      // flags `outputTruncated` if a stream is ever cut short.
+      maxBuffer: 16 * 1024 * 1024,
     };
     if (signal) spawnOpts.cancelSignal = signal;
     // The child receives only the allowlisted environment — no HOOSHIX_*
     // secrets. services/spawn.ts is the sole spawn path in this process.
     const result = await spawn(command, args, spawnOpts);
-    const status = result.timedOut ? "timeout" : result.exitCode === 0 ? "success" : "failed";
     if (result.timedOut) throw Object.assign(new Error("Command execution timed out"), { timedOut: true });
+    // A process killed by a signal or canceled by the step's AbortController
+    // never produced an exit code — there is no command outcome to report, only
+    // an interrupted run. Fail as an infrastructure error so the caller
+    // reconciles, instead of returning a result the gateway would treat as a
+    // successful invocation with an undefined exit code.
+    if (result.isCanceled || result.exitCode === undefined) {
+      throw Object.assign(new Error("Command execution was canceled before it could exit"), { canceled: true });
+    }
+    const status = result.exitCode === 0 ? "success" : "failed";
     await logCommandAction({ command, args, cwd: safeCwd, exitCode: result.exitCode, status, correlationId: traceId });
-    return { exitCode: result.exitCode, stdout: result.stdout, stderr: result.stderr, correlationId: traceId };
+    // A non-zero exit is the COMMAND's outcome, not a tool failure: return it so
+    // the caller sees the real exit code and output (the shell handler relies on
+    // this; the task loop marks the step failed via the reported exit code).
+    return {
+      exitCode: result.exitCode,
+      stdout: result.stdout,
+      stderr: result.stderr,
+      outputTruncated: result.isMaxBuffer === true,
+      correlationId: traceId,
+    };
   } catch (error) {
     const timedOut = Boolean((error as { timedOut?: boolean }).timedOut);
     const blocked = error instanceof Error && /blocked|approval required|not allowed|outside workspace|access denied/i.test(error.message);

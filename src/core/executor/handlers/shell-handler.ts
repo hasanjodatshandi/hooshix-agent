@@ -2,7 +2,6 @@ import { z } from "zod";
 import type { ToolHandler, ToolHandlerContext } from "./tool-handler.js";
 import type { ToolName } from "../../../application/services/legacy-tool-orchestrator.js";
 import { executeShellCommand } from "../../../services/shell/shell-service.js";
-import { describeExecaFailure } from "../../../services/execa-result.js";
 
 const SHELL_TOOLS: ReadonlySet<ToolName> = new Set(["execute_command"]);
 
@@ -26,8 +25,21 @@ export class ShellToolHandler implements ToolHandler {
     // then executeShellCommand's validation denies every cwd (no active
     // workspace), which is the fail-closed contract.
     const cwd = !value.cwd || value.cwd === "." ? (executionContext?.workspace ?? ".") : value.cwd;
-    const result = await executeShellCommand(value.command, value.args, cwd, value.timeout, correlationId, signal);
-    if (result.exitCode !== 0) throw new Error(result.stderr || describeExecaFailure(value.command, result));
-    return result;
+    // A process that ran to completion — including one that exited non-zero —
+    // is a *successful tool invocation*: the tool's job was to run the command
+    // and report its outcome, and it did. Returning the result here hands the
+    // caller the real exitCode/stdout/stderr.
+    //
+    // Previously this threw `new Error(result.stderr || ...)` on exitCode !== 0,
+    // which execute-tool.usecase collapsed through classifyHandlerFailure into
+    // an opaque `tool_handler_failure` (or a misleading `invalid_argument` when
+    // the stderr happened to contain the word "argument"). The caller then saw
+    // neither the exit code nor the output — e.g. a Gradle validation
+    // (spotlessCheck/test) that legitimately exits 1 looked like an internal
+    // fault. Infrastructure failures the tool could not satisfy (no active
+    // workspace, permission denied, blocked command, spawn failure, timeout)
+    // still throw from executeShellCommand itself, which is correct: those are
+    // cases where there is no process result to report.
+    return executeShellCommand(value.command, value.args, cwd, value.timeout, correlationId, signal);
   }
 }
