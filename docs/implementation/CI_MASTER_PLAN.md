@@ -244,6 +244,19 @@
 
 **گیت CI-G8:** rollback اجرا و تأییدشده.
 
+### CI-G8a — rollback rehearsal (✅ انجام‌شده)
+
+این گیت عملیاتی است، نه کدی: زیرساخت SHADOW از CI-G3 موجود بود و flag چهار حالت دارد. چیزی که گیت demand می‌کرد **اثبات** بود که یک rollout مرحله‌ای قابل برگشت است. این اثبات به‌صورت خودکار اجرا شد:
+
+- **اصل کلیدی:** mode یک process env var است، نه تنظیم persisted. پس rollback = restart با مقدار قبلی، بدون هیچ undo روی داده. هیچ migrationای وابسته به mode نیست (همه additive-only). credentialهای صادر شده در هر modeی در هر modeی معتبر می‌مانند.
+- **چرخهٔ تمرین** روی یک project غیرحساس، یک دیتابیس: OFF → SHADOW (مشاهده + audit) → PER_CONNECTION (enforcement، credential غیرمتصل ۴۰۳ می‌خورد) → **OFF (rollback)** → SHADOW (re-enroll).
+- **تأییدها:** credential زنده در سراسر چرخه کار کرد؛ credential غیرمتصل زیر SHADOW/OFF جریان داشت و زیر PER_CONNECTION رد می‌شد؛ audit history پس از rollback یکپارچه و خوانا ماند؛ mode نامعتور (`SHADWO`) با خطای واضح رد شد تا typo نتواند isolation را خاموش/روشن کند.
+- **تست:** `tests/ci/ci-g8-rollback-rehearsal.test.ts` — ۲ تست.
+
+### CI-G8b — runbook rollout (✅ انجام‌شده)
+
+`docs/implementation/CIG8_ROLLOUT_RUNBOOK.md`: مراحل ۰-۴ rollout (backup سه‌لایه، SHADOW ۲۴ ساعت با کوئری diagnostic سهم DENY، PER_CONNECTION، rollback rehearsal، re-enroll)، rollback اضطراری (یک restart، بدون undo)، و قیدهای ADR-CI-007 (credential زنده هرگز باطل نمی‌شود).
+
 ---
 
 ## CI-9 — تحویل نهایی
@@ -291,6 +304,7 @@ CI-1 (domain) ──► CI-2 (control DB + principal مجزا) ──► CI-3 (w
 | CI-G5 | ✅ **تأیید شد** — Task fencing کامل: migration 25 (ستون‌های `tasks` + `task_leases.context_id`)، اتصال resolution به identity و task creation، epoch fence در transaction receipt، terminal `outcome_unknown` بدون retry؛ ۱۹ تست جدید |
 | CI-G6 | ✅ **تأیید شد** — Owner Console و انتقال کنترل: CI-G6a (port + adapter + سرویس دو فازی + rebind اتمیک، ۱۸ تست) و CI-G6b (مسیرهای `/admin/*` با session/CSRF/reauth جدا، ۸ تست live) |
 | CI-G7 | 🟡 **سمت سرور کامل / میزبان معوق** — ابزار `chat_isolation_probe` (read-only، pseudonym-only) روی سرور زنده: دو connection مستقل → دو Context مستقل، ۱۰۰٪ request-context match، NO-LEAK تأیید شده (۵ تست، ۱۰۶۴ تست / ۲۱۹ فایل). تست میزبان واقعی ChatGPT (دو چت) به‌ناوب مالک است — outcome register در `docs/implementation/CIG7_HOST_OUTCOME.md`. |
+| CI-G8 | ✅ **تأیید شد** — rollback rehearsal روی یک project غیرحساس: چرخهٔ کامل OFF→SHADOW→PER_CONNECTION→OFF→SHADOW روی یک دیتابیس، credential زنده در سراسر چرخه کار کرد، audit history پس از rollback یکپارچه ماند، mode نامعتور بلند رد شد (۲ تست). runbook rollout در `docs/implementation/CIG8_ROLLOUT_RUNBOOK.md`. |
 
 ### CI-1 — انجام‌شده (commit نشده)
 
@@ -408,4 +422,6 @@ CI-1 (domain) ──► CI-2 (control DB + principal مجزا) ──► CI-3 (w
 
 **گیت CI-G6 بسته شد.** انتقال کنترل حالا یک پروتکل owner-approved است که روی سرور زنده از طریق یک سطح جدا اجرا می‌شود، و epoch bump داخل commit چت قدیمی را برای CI-G5 fence می‌کند.
 
-**leaf بعدی:** شروع گیت **CI-G8** — SHADOW rollout و rollout محدود (`CTX_ISOLATION_MODE=OFF|SHADOW|PER_CONNECTION|HOST_ATTESTED`) روی یک project غیرحساس، با rollback rehearsal پیش از cutover. (CI-G7b، تست میزبان ChatGPT، موازی و به‌ناوب مالک باقی می‌ماند — مسیر بحرانی را مسدود نمی‌کند چون سؤال سمت سرور آن پاسخ داده شد.)
+**گیت CI-G7 سمت سرور و CI-G8 بسته شدند.** سؤال اصلی فایل ۰۱ پاسخ داده شد (دو connection مستقل → دو Context مستقل، ۱۰۰٪ request-context match) و rollout قابل برگشت اثبات شد.
+
+**leaf بعدی:** گیت **CI-G9** — تحویل نهایی: full suite روی ۲ OS هدف، benchmark قبل/بعد، مستندات نهایی (API/schema/runbook/migration ledger)، و امضای مالک برای فعال‌سازی سطح A. CI-G7b (تست میزبان ChatGPT واقعی) همچنان به‌ناوب مالک است و می‌تواند موازی پیش برود — ثبت سطح نهایی A/B/C در `docs/implementation/CIG7_HOST_OUTCOME.md` پیش از امضای CI-G9 لازم است.
