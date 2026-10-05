@@ -32,7 +32,7 @@ pnpm run dev
 
 مرجع کامل با schemaها و توضیحات هر ابزار در `docs/TOOLS.md` است (تولیدشده توسط `scripts/generate-tools-doc.mjs` از operation catalog). فهرست زیر کدкомнатهٔ کامل ابزارهای ثبت‌شده است:
 
-- System: `get_system_info`, `agent_metrics`, `set_workspace`, `get_workspace`
+- System: `get_system_info`, `agent_metrics`, `chat_isolation_probe`, `set_workspace`, `get_workspace`
 - Files: `list_directory`, `read_file`, `search_files`, `create_file`, `write_file`, `modify_file`, `delete_file`, `restore_file`
 - Shell: `execute_command`, `exec`
 - Git: `git_status`, `git_diff`, `git_clone`, `git_commit`, `git_branch`, `git_checkout`, `git_add`, `git_init`, `git_log`

@@ -22,6 +22,7 @@ import { registerGitTools } from "../tools/git/index.js";
 import { registerPackageTools } from "../tools/package/index.js";
 import { registerTaskTools } from "../tools/task/index.js";
 import { registerAgentMetricsTool } from "../tools/system/agent-metrics.js";
+import { registerChatIsolationProbeTool } from "../tools/system/chat-isolation-probe.js";
 import { registerWorkspaceTools } from "../tools/system/workspace.js";
 
 /**
@@ -78,6 +79,12 @@ export function registerTools(server: McpServer){
   withR2Gateway(server);
   registerSystemInfoTool(server);
   registerAgentMetricsTool(server);
+  // CI-G7: the read-only isolation probe. It is always advertised because its
+  // output is honest in every mode — UNBOUND simply means the credential has no
+  // Context binding, which is exactly what an operator needs to see when the
+  // flag is OFF. It discloses only pseudonyms of the caller's OWN identity, so
+  // there is nothing to gate behind the flag.
+  registerChatIsolationProbeTool(server);
   registerWorkspaceTools(server);
 
   registerReadFileTool(server);

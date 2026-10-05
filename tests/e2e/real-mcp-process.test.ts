@@ -8,7 +8,7 @@ describe("real mcp process integration", () => {
     try {
       const tools = await client.listTools();
       expect(tools.tools.map((tool) => tool.name).sort()).toEqual([
-        "add_workspace_roots", "agent_metrics", "create_file", "delete_file", "exec", "execute_command", "get_system_info", "get_workspace",
+        "add_workspace_roots", "agent_metrics", "chat_isolation_probe", "create_file", "delete_file", "exec", "execute_command", "get_system_info", "get_workspace",
         "git_add", "git_branch", "git_checkout", "git_clone", "git_commit", "git_diff", "git_init", "git_log", "git_status",
         "install_package", "list_directory", "memory_add", "memory_delete", "memory_get", "memory_list", "memory_update", "modify_file",
         "project_archive", "project_delete", "project_get", "project_list", "project_save",        "read_file", "remove_package", "remove_workspace_root", "restore_file", "search_files",

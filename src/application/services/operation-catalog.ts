@@ -3,7 +3,7 @@ import type { ToolDescriptor, ToolRisk } from "../../domain/tool/tool-descriptor
 
 /** R2.01 canonical metadata only. Enforcement/cutover is separately gated by R2.02-R2.09. */
 export const TOOL_NAMES = [
-  "get_system_info", "agent_metrics", "list_directory", "read_file", "write_file", "create_file",
+  "get_system_info", "agent_metrics", "chat_isolation_probe", "list_directory", "read_file", "write_file", "create_file",
   "modify_file", "delete_file", "restore_file", "search_files", "execute_command", "exec",
   "git_status", "git_diff", "git_clone", "git_commit", "git_branch", "git_checkout",
   "git_add", "git_init", "git_log",
@@ -34,6 +34,7 @@ export interface ToolCapability {
 export const OPERATION_CATALOG: Readonly<Record<OperationName, OperationDescriptor>> = Object.freeze({
   get_system_info: Object.freeze({id:"get_system_info" as ToolId,requiredPermission:"READ",risk:"low",approval:"never",effect:"read_only",workspaceScope:"none",securityClass:"read",supportsIdempotency:false,category:"Read actions",...{capabilities:["system","information","inspect"],requiredArguments:[]}}),
   agent_metrics: Object.freeze({id:"agent_metrics" as ToolId,requiredPermission:"READ",risk:"low",approval:"never",effect:"read_only",workspaceScope:"none",securityClass:"monitoring",supportsIdempotency:false,category:"Read actions",...{capabilities:["metrics","observability","dashboard","performance"],requiredArguments:[]}}),
+  chat_isolation_probe: Object.freeze({id:"chat_isolation_probe" as ToolId,requiredPermission:"READ",risk:"low",approval:"never",effect:"read_only",workspaceScope:"none",securityClass:"read",supportsIdempotency:true,category:"Read actions",...{capabilities:["chat","isolation","probe","connection","context","identity"],requiredArguments:[]}}),
   list_directory: Object.freeze({id:"list_directory" as ToolId,requiredPermission:"READ",risk:"low",approval:"never",effect:"read_only",workspaceScope:"read",securityClass:"file_mutation",supportsIdempotency:false,category:"Read actions",...{capabilities:["list","directory","files","inspect"],requiredArguments:[]}}),
   read_file: Object.freeze({id:"read_file" as ToolId,requiredPermission:"READ",risk:"low",approval:"never",effect:"read_only",workspaceScope:"read",securityClass:"file_mutation",supportsIdempotency:false,category:"Read actions",...{capabilities:["read","inspect","file","project","source"],requiredArguments:["path"]}}),
   write_file: Object.freeze({id:"write_file" as ToolId,requiredPermission:"PROJECT_ACCESS",risk:"medium",approval:"on-risk",effect:"non_idempotent_mutation",workspaceScope:"write",securityClass:"file_mutation",supportsIdempotency:false,category:"Write actions",...{capabilities:["implement","write","replace","file","changes"],requiredArguments:["path","content"]}}),

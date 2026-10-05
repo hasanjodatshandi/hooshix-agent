@@ -219,6 +219,21 @@
 
 **گیت CI-G7:** دو چت واقعی، ۲ connection معتبر، ۱۰۰٪ request context match.
 
+### CI-G7a — ابزار سمت سرور (✅ انجام‌شده)
+
+سؤال اصلی فقط به محصول میزبان وابسته نیست — بخش قابل‌اتوماسیون آن سمت سرور است و انجام شد:
+
+- **ابزار `chat_isolation_probe`** (CIG0 §5 checklist): ابزار echo فقط-خواندنی که شناسهٔ context را برمی‌گرداند. همهٔ خروجی‌ها **pseudonym** هستند (۱۲ hex اول SHA-256): `bound_connection_pseudonym`، `server_context_pseudonym`، `bind_state` (`RESOLVED`/`UNBOUND`)، `ownership_epoch`، `trace_id`. هرگز bearer، secret، متن گفت‌وگو یا id خام برنمی‌گرداند (threat T07).
+- **پاسخ سؤال سمت سرور:** وقتی دو connection مجزا (دو principal مجزا، هر کدام با token، Context، binding و grant خود) سؤال می‌پرسند، سرور **دو Context مجزا** می‌بیند — pseudonymهای context متفاوت‌اند و resolution برای هر درخواست فقط به token خودش match می‌شود (۱۰۰٪ request-context match). این دقیقاً همان چیزی است که CI-2 ممکنش کرد.
+- **NO-LEAK:** خروجی probe هیچ id خامی را نشت نمی‌دهد — تست با snake_case fixture آن را پین می‌کند.
+- **حالت OFF صادقانه:** probe همیشه در catalog است؛ زیر OFF صادقانه `UNBOUND` گزارش می‌دهد، نه اینکه ناپدید شود (resolution یک no-op کامل است).
+- **فایل‌ها:** `src/tools/system/chat-isolation-probe.ts` (ثبت schema-only)، `src/core/executor/handlers/chat-isolation-probe-handler.ts` (اجرای read-only از طریق trusted identity)، ورودی در operation catalog + dispatcher.
+- **تست:** `tests/ci/ci-g7-chat-isolation-probe.test.ts` — ۵ تست روی سرور زنده (دو connection مستقل، stability Same-context، UNBOUND، NO-LEAK، حالت OFF).
+
+### CI-G7b — تست میزبان واقعی (⬜ به‌ناوب مالک)
+
+قسمتی که اتوماسیون ممکن نیست: آیا محصول ChatGPT اجازه می‌دهد دو connection/grant مستقل selectable به یک حساب داده شود؟ این سؤال فقط با باز کردن دو چت واقعی روی endpoint آزمایشی مجزا پاسخ می‌شود. outcome register و چک‌لیست در **`docs/implementation/CIG7_HOST_OUTCOME.md`**. تا زمانی که آن سند پر نشود، ادای عمومی فقط per-connection isolation است — **هیچ ادعای محرمانگی per-chat مجاز نیست**.
+
 ---
 
 ## CI-8 — Shadow rollout و rollout محدود
@@ -275,6 +290,7 @@ CI-1 (domain) ──► CI-2 (control DB + principal مجزا) ──► CI-3 (w
 | CI-G4 | ✅ **تأیید شد** — PER_CONNECTION enforcement روی مسیر زنده: resolution غیرRESOLVED درخواست را با ۴۰۳ و sentinel ثابت رد می‌کند؛ fail-closed |
 | CI-G5 | ✅ **تأیید شد** — Task fencing کامل: migration 25 (ستون‌های `tasks` + `task_leases.context_id`)، اتصال resolution به identity و task creation، epoch fence در transaction receipt، terminal `outcome_unknown` بدون retry؛ ۱۹ تست جدید |
 | CI-G6 | ✅ **تأیید شد** — Owner Console و انتقال کنترل: CI-G6a (port + adapter + سرویس دو فازی + rebind اتمیک، ۱۸ تست) و CI-G6b (مسیرهای `/admin/*` با session/CSRF/reauth جدا، ۸ تست live) |
+| CI-G7 | 🟡 **سمت سرور کامل / میزبان معوق** — ابزار `chat_isolation_probe` (read-only، pseudonym-only) روی سرور زنده: دو connection مستقل → دو Context مستقل، ۱۰۰٪ request-context match، NO-LEAK تأیید شده (۵ تست، ۱۰۶۴ تست / ۲۱۹ فایل). تست میزبان واقعی ChatGPT (دو چت) به‌ناوب مالک است — outcome register در `docs/implementation/CIG7_HOST_OUTCOME.md`. |
 
 ### CI-1 — انجام‌شده (commit نشده)
 
@@ -392,4 +408,4 @@ CI-1 (domain) ──► CI-2 (control DB + principal مجزا) ──► CI-3 (w
 
 **گیت CI-G6 بسته شد.** انتقال کنترل حالا یک پروتکل owner-approved است که روی سرور زنده از طریق یک سطح جدا اجرا می‌شود، و epoch bump داخل commit چت قدیمی را برای CI-G5 fence می‌کند.
 
-**leaf بعدی:** شروع گیت **CI-G7** — ChatGPT اتصال واقعی (CI-7): دو connection مستقل واقعی (مدل C) یا host attestation (مدل H)، فقط پس از CI-2، روی endpoint آزمایشی مجزا، و ثبت سطح نهایی A/B/C.
+**leaf بعدی:** شروع گیت **CI-G8** — SHADOW rollout و rollout محدود (`CTX_ISOLATION_MODE=OFF|SHADOW|PER_CONNECTION|HOST_ATTESTED`) روی یک project غیرحساس، با rollback rehearsal پیش از cutover. (CI-G7b، تست میزبان ChatGPT، موازی و به‌ناوب مالک باقی می‌ماند — مسیر بحرانی را مسدود نمی‌کند چون سؤال سمت سرور آن پاسخ داده شد.)

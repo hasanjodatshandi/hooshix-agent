@@ -4,6 +4,7 @@ import { PackageToolHandler } from "../../core/executor/handlers/package-handler
 import { ShellToolHandler } from "../../core/executor/handlers/shell-handler.js";
 import { SystemToolHandler } from "../../core/executor/handlers/system-handler.js";
 import { TaskSnapshotToolHandler } from "../../core/executor/handlers/task-snapshot-handler.js";
+import { ChatIsolationProbeHandler } from "../../core/executor/handlers/chat-isolation-probe-handler.js";
 import { createHandlerDispatcher } from "../../core/executor/handlers/dispatcher-factory.js";
 
 /**
@@ -18,4 +19,5 @@ export const dispatchToHandler = createHandlerDispatcher([
   new PackageToolHandler(),
   new ShellToolHandler(),
   new TaskSnapshotToolHandler(),
+  new ChatIsolationProbeHandler(),
 ]);
