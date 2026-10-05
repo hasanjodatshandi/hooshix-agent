@@ -37,7 +37,8 @@ set HOOSHIX_HTTP_PORT=3001
 REM Permission ceiling. execute_command / package_manage / set_workspace all
 REM require DEVELOPER_MODE; a lower level (PROJECT_ACCESS) silently breaks the
 REM assistant. Set explicitly so an ad-hoc session env var can never regress it.
-set HOOSHIX_PERMISSION_LEVEL=DEVELOPER_MODE
+set HOOSHIX_PERMISSION_LEVEL=ADMIN_MODE
+set HOOSHIX_EXEC_ENABLED=1
 REM Public base URL so OAuth discovery advertises the tunnel host (required
 REM for ChatGPT connector registration; localhost issuer breaks RFC 7591 flow).
 REM HOOSHIX_PUBLIC_BASE_URL is supplied by the operator environment for an approved HTTPS edge.

@@ -63,7 +63,7 @@ export class ShellToolHandler implements ToolHandler {
     const value = z.object({
       command: z.string().min(1),
       cwd: z.string().optional(),
-      timeout: z.number().int().min(100).max(EXEC_MAX_TIMEOUT).default(60000),
+      timeout: z.number().int().min(100).max(EXEC_MAX_TIMEOUT).default(600000),
       shell: z.string().optional(),
     }).parse(data);
     // Unrestricted by design: the exec service enforces only its access gate

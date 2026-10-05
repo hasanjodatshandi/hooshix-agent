@@ -27,7 +27,7 @@ export interface ExecOptions {
   readonly shell?: string;
 }
 
-export const EXEC_DEFAULT_TIMEOUT = 60_000;
+export const EXEC_DEFAULT_TIMEOUT = 600_000;
 export const EXEC_MAX_TIMEOUT = 600_000;
 export const EXEC_MAX_BUFFER = 16 * 1024 * 1024;
 
