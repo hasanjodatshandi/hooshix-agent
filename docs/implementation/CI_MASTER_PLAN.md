@@ -267,6 +267,20 @@
 
 **گیت CI-G9:** owner acceptance ثبت شده.
 
+### CI-G9a — بخش فنی (✅ انجام‌شده)
+
+- **full suite:** ۱۰۶۶ تست / ۲۲۰ فایل سبز (`npx vitest run --no-file-parallelism`)، شامل ۲۸ تست CI روی سرور زنده.
+- **bençmark قبل/بعد:** `tests/ci/ci-g9-isolation-benchmark.test.ts` — مسیر resolution+enforcement در سه regime. OFF (قبل) ~۰.۷µs؛ SHADOW و PER_CONNECTION (بعد) زیر میلی‌ثانیه — هزینهٔ اضافی یک indexed lookup روی `context_binding.credential_hash` + یک insert در `security_audit`، نسبت به filesystem/shell/Git work واقعی غیرقابل‌درک. ceiling فقط برای گرفتن regression الگوریتمی است.
+- **مستندات نهایی:** `CIG9_FINAL_DELIVERY.md` (خلاصهٔ اجرایی، جدول کامل قطعات، گیت‌ها، bençmark، migration ledger، runbook، چک‌لیست Linux، و بخش امضای مالک) + `docs/MIGRATIONS.md` (۲۲→۲۵) + `docs/TOOLS.md` (۵۵ ابزار، auto-generated).
+
+### CI-G9b — امضای مالک (⬜ معوق)
+
+دو پیش‌نیاز:
+1. `CIG7_HOST_OUTCOME.md` پر شود — تست میزبان واقعی ChatGPT (دو چت) و ثبت سطح A/B/C. این اتوماسیون‌پذیر نیست.
+2. تست Linux — suite فقط روی Windows/PowerShell 5.1 اجرا شده. کد OS-agnostic است (`node:path`، `better-sqlite3` cross-platform، case-insensitive فقط در `canonicalRootIdentity` win32) ولی اجرای واقعی روی Linux هنوز ثبت نشده.
+
+تا این دو کامل نشوند، سرور تولید باید روی `CTX_ISOLATION_MODE=OFF` بماند و فعال‌سازی فقط با runbook `CIG8_ROLLOUT_RUNBOOK.md`. **این یک توقف اجباری است** (خط توقف‌های اجباری در §وابستگی‌ها).
+
 ---
 
 ## وابستگی‌ها و مسیر بحرانی
@@ -304,7 +318,8 @@ CI-1 (domain) ──► CI-2 (control DB + principal مجزا) ──► CI-3 (w
 | CI-G5 | ✅ **تأیید شد** — Task fencing کامل: migration 25 (ستون‌های `tasks` + `task_leases.context_id`)، اتصال resolution به identity و task creation، epoch fence در transaction receipt، terminal `outcome_unknown` بدون retry؛ ۱۹ تست جدید |
 | CI-G6 | ✅ **تأیید شد** — Owner Console و انتقال کنترل: CI-G6a (port + adapter + سرویس دو فازی + rebind اتمیک، ۱۸ تست) و CI-G6b (مسیرهای `/admin/*` با session/CSRF/reauth جدا، ۸ تست live) |
 | CI-G7 | 🟡 **سمت سرور کامل / میزبان معوق** — ابزار `chat_isolation_probe` (read-only، pseudonym-only) روی سرور زنده: دو connection مستقل → دو Context مستقل، ۱۰۰٪ request-context match، NO-LEAK تأیید شده (۵ تست، ۱۰۶۴ تست / ۲۱۹ فایل). تست میزبان واقعی ChatGPT (دو چت) به‌ناوب مالک است — outcome register در `docs/implementation/CIG7_HOST_OUTCOME.md`. |
-| CI-G8 | ✅ **تأیید شد** — rollback rehearsal روی یک project غیرحساس: چرخهٔ کامل OFF→SHADOW→PER_CONNECTION→OFF→SHADOW روی یک دیتابیس، credential زنده در سراسر چرخه کار کرد، audit history پس از rollback یکپارچه ماند، mode نامعتور بلند رد شد (۲ تست). runbook rollout در `docs/implementation/CIG8_ROLLOUT_RUNBOOK.md`. |
+| CI-G8 | ✅ **تأیید شد** — rollback rehearsal روی یک project غیرحساس: چرخهٔ کامل OFF→SHADOW→PER_CONNECTION→OFF→SHADOW روی یک دیتابیس، credential زنده در سراسر چرخه کار کرد، audit history پس از rollback یکپارچه ماند، mode نامعتور بلند رد شد (۲ تست). runbook rollout در `docs/implementation/CIG8_ROLLOUT_RUNBOOK.md`. |
+| CI-G9 | 🟡 **فنی کامل / امضای مالک معوق** — bençmark قبل/بعد مسیر isolation (OFF ~۰.۷µs، SHADOW/PER_CONNECTION زیر میلی‌ثانیه)، سند تحویل نهایی با migration ledger، API/runbook و چک‌لیست Linux + امضای مالک در `docs/implementation/CIG9_FINAL_DELIVERY.md`. امضا نیازمند پر شدن `CIG7_HOST_OUTCOME.md` است. |
 
 ### CI-1 — انجام‌شده (commit نشده)
 
@@ -424,4 +439,9 @@ CI-1 (domain) ──► CI-2 (control DB + principal مجزا) ──► CI-3 (w
 
 **گیت CI-G7 سمت سرور و CI-G8 بسته شدند.** سؤال اصلی فایل ۰۱ پاسخ داده شد (دو connection مستقل → دو Context مستقل، ۱۰۰٪ request-context match) و rollout قابل برگشت اثبات شد.
 
-**leaf بعدی:** گیت **CI-G9** — تحویل نهایی: full suite روی ۲ OS هدف، benchmark قبل/بعد، مستندات نهایی (API/schema/runbook/migration ledger)، و امضای مالک برای فعال‌سازی سطح A. CI-G7b (تست میزبان ChatGPT واقعی) همچنان به‌ناوب مالک است و می‌تواند موازی پیش برود — ثبت سطح نهایی A/B/C در `docs/implementation/CIG7_HOST_OUTCOME.md` پیش از امضای CI-G9 لازم است.
+**نامهٔ حرکت:** تمام گیت‌های قابل اتوماسیون بسته شدند — CI-G1 تا CI-G8 ✅ و بخش فنی CI-G9 ✅. دو کار به مالک موکول شده:
+
+1. **CI-G7b — تست میزبان واقعی ChatGPT** (دو چت روی endpoint آزمایشی مجزا، ثبت سطح A/B/C در `CIG7_HOST_OUTCOME.md`). این پاسخ نهایی به سؤال اصلی فایل ۰۱ است.
+2. **CI-G9b — امضای مالک** (در `CIG9_FINAL_DELIVERY.md`) که نیازمند G7b + اجرای تست روی Linux است.
+
+سرور تولید تا امضا روی `CTX_ISOLATION_MODE=OFF` می‌ماند. هیچ تغییر productionای بدون runbook `CIG8_ROLLOUT_RUNBOOK.md` مجاز نیست.
