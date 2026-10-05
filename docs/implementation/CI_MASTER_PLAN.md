@@ -274,6 +274,7 @@ CI-1 (domain) ──► CI-2 (control DB + principal مجزا) ──► CI-3 (w
 | CI-G3 | ✅ **تأیید شد** — SHADOW mode به مسیر درخواست متصل شد؛ تست e2e روی سرور زنده |
 | CI-G4 | ✅ **تأیید شد** — PER_CONNECTION enforcement روی مسیر زنده: resolution غیرRESOLVED درخواست را با ۴۰۳ و sentinel ثابت رد می‌کند؛ fail-closed |
 | CI-G5 | ✅ **تأیید شد** — Task fencing کامل: migration 25 (ستون‌های `tasks` + `task_leases.context_id`)، اتصال resolution به identity و task creation، epoch fence در transaction receipt، terminal `outcome_unknown` بدون retry؛ ۱۹ تست جدید |
+| CI-G6 | ✅ **تأیید شد** — Owner Console و انتقال کنترل: CI-G6a (port + adapter + سرویس دو فازی + rebind اتمیک، ۱۸ تست) و CI-G6b (مسیرهای `/admin/*` با session/CSRF/reauth جدا، ۸ تست live) |
 
 ### CI-1 — انجام‌شده (commit نشده)
 
@@ -373,3 +374,22 @@ CI-1 (domain) ──► CI-2 (control DB + principal مجزا) ──► CI-3 (w
 **گیت CI-G6a بسته شد.** انتقال کنترل حالا یک capability است که فقط owner می‌تواند بازیدم کند، و commit آن یک Context را در یک transaction جابجا می‌کند.
 
 **leaf بعدی:** **CI-G6b** — مسیرهای `/admin/*` HTTP با session جدا، CSRF، reauth، one-time ticket endpoint، و تست live gate (چت سقف‌خورده → transfer → چت قدیمی deny).
+
+---
+
+### CI-G6b — انجام‌شده (commit نشده)
+
+**هدف:** Owner Console روی سرور زنده — مسیرهای `/admin/*` با session جدا، CSRF، reauth، و تست live gate.
+
+- **مسیرها در `handleAdminRequest`** (`src/mcp/http-server.ts`) — هرگز به‌عنوان MCP tool منتشر نمی‌شوند؛ dispatch کامل جدا از `/mcp`، قبل از fallthrough ۴۰۴. چهار کنترل لایه‌ای روی هر mutation:
+  1. **Reauth** — `/admin/login` فقط با bootstrap secret از طریق `oauth.verifyBootstrapSecret` (timing-safe).
+  2. **Session جدا** — `hx_admin` cookie با store دوم `OperatorWebSessions` (cap جدا `HOOSHIX_ADMIN_SESSION_LIMIT`، default ۸). کوکی operator به این سطح نمی‌رسد (تست pin شده).
+  3. **CSRF** — فیلد فرم `csrf` باید با server-stored secret مطابق باشد؛ SameSite=Strict + چک Origin تو در تو.
+  4. **Origin strict** — هر mutation باید origin برابر با public base URL داشته باشد.
+- **سه فاز transfer روی HTTP** — `POST /admin/transfer/prepare` (ticket یک‌بارمصرف در response)، `/approve` (redeem)، `/commit` (rebind اتمیک)، `/cancel`، و `GET /admin/transfer/:id` فقط با cookie (بدون CSRF، مثل `/metrics`). خطاها با `ContextError.code` روی status map می‌شوند (۴۰۴/۴۰۹/۴۰۳) — بدنه فقط sentinel، هرگز Context/binding detail (T07).
+- **Ticket هرگز persist نمی‌شود** — `prepare` plaintext را یک‌بار برمی‌گرداند؛ `approve` فقط hash مقایسه می‌کند. تایید در تست live: `ticket_hash` ردیف شامل plaintext ticket نیست.
+- **تست‌ها** — `tests/ci/ci-g6b-owner-console.test.ts`، ۸ تست live server (PER_CONNECTION): login موفق/ناموفق، mutation بدون session (۴۰۱)، cross-origin (۴۰۳ `origin_not_allowed`)، transfer کامل prepare→approve→commit (lease به binding جدید + epoch ۲، Context در ACTIVE)، ticket replay (۴۰۹ `CONTEXT_INACTIVE`)، CSRF اشتباه (۴۰۳ + هیچ intent ساخته نشد)، inspection فقط-cookies (بدون echo ticket hash)، و رد کوکی operator به سطح admin.
+
+**گیت CI-G6 بسته شد.** انتقال کنترل حالا یک پروتکل owner-approved است که روی سرور زنده از طریق یک سطح جدا اجرا می‌شود، و epoch bump داخل commit چت قدیمی را برای CI-G5 fence می‌کند.
+
+**leaf بعدی:** شروع گیت **CI-G7** — ChatGPT اتصال واقعی (CI-7): دو connection مستقل واقعی (مدل C) یا host attestation (مدل H)، فقط پس از CI-2، روی endpoint آزمایشی مجزا، و ثبت سطح نهایی A/B/C.

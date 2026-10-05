@@ -41,7 +41,7 @@ describe("R7.01 unified immutable config — defaults", () => {
     });
     expect(cfg.session).toEqual({
       idleMs: 30 * 60_000, absoluteMs: 8 * 60 * 60_000, graceMs: 5 * 60_000,
-      maxMcpSessions: 64, operatorCap: 64, contextCap: 64, cleanupIntervalMs: 60_000,
+      maxMcpSessions: 64, operatorCap: 64, adminCap: 8, contextCap: 64, cleanupIntervalMs: 60_000,
     });
     expect(cfg.lease).toEqual({ ttlMs: 30_000, heartbeatMs: 5_000, minTtlMs: 100, maxTtlMs: 120_000 });
     expect(cfg.search).toEqual({

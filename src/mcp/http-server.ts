@@ -24,6 +24,20 @@ import type { ResolvedContext } from "../core/runtime/r2-trusted-inbound-identit
 import {resolveContextFromPort} from "../adapters/outbound/persistence/sqlite/repositories/context-resolver.adapter.js";
 import {recordControlPlaneAuditFromPort} from "../adapters/outbound/persistence/sqlite/repositories/context-audit.adapter.js";
 import {pinLegacyContext} from "../adapters/outbound/persistence/sqlite/repositories/context-legacy.adapter.js";
+import {sqliteTransferRepository} from "../adapters/outbound/persistence/sqlite/repositories/handoff-intent.adapter.js";
+import {
+  prepareHandoff,
+  approveHandoff,
+  commitHandoff,
+  cancelHandoff,
+  describeHandoff,
+} from "../application/services/context-transfer.js";
+import {
+  ContextError,
+  ContextNotBoundError,
+  ContextInactiveError,
+  TransferInProgressError,
+} from "../domain/context/context-errors.js";
 import {createMcpHandler} from "@modelcontextprotocol/server";
 import {toNodeHandler} from "@modelcontextprotocol/node";
 // R7.01: the HTTP transport never reads environment variables directly; the
@@ -74,11 +88,18 @@ const SESSION_ABSOLUTE_MS = APP_CONFIG.session.absoluteMs;
 const MAX_MCP_SESSIONS = APP_CONFIG.session.maxMcpSessions;
 const operatorSessions=new OperatorWebSessions(undefined,
   APP_CONFIG.session.idleMs,APP_CONFIG.session.absoluteMs,APP_CONFIG.session.operatorCap);
+// CI-G6 — the Owner Console gets its OWN session store and cookie name, so a
+// compromised operator cookie cannot reach the transfer endpoints and the two
+// privilege levels never share a session id space.
+const adminSessions=new OperatorWebSessions(undefined,
+  APP_CONFIG.session.idleMs,APP_CONFIG.session.absoluteMs,APP_CONFIG.session.adminCap);
 const publicLimiter=new HttpWindowLimiter(APP_CONFIG.rateLimit.publicRequestsPerWindow,
   APP_CONFIG.rateLimit.windowMs,undefined,APP_CONFIG.rateLimit.maxLimiterKeys);
 const principalLimiter=new HttpWindowLimiter(APP_CONFIG.rateLimit.principalRequestsPerWindow,
   APP_CONFIG.rateLimit.windowMs,undefined,APP_CONFIG.rateLimit.maxLimiterKeys);
 const operatorLoginLimiter=new HttpWindowLimiter(APP_CONFIG.rateLimit.operatorLoginAttemptsPerWindow,
+  APP_CONFIG.rateLimit.windowMs,undefined,APP_CONFIG.rateLimit.maxLimiterKeys);
+const adminLoginLimiter=new HttpWindowLimiter(APP_CONFIG.rateLimit.operatorLoginAttemptsPerWindow,
   APP_CONFIG.rateLimit.windowMs,undefined,APP_CONFIG.rateLimit.maxLimiterKeys);
 const MAX_CONCURRENT_REQUESTS_PER_PRINCIPAL = APP_CONFIG.rateLimit.maxConcurrentRequestsPerPrincipal;
 // The legacy POST path caps bodies via readBody(); the modern /mcp handler lets
@@ -120,6 +141,7 @@ function cleanupStaleSessions():void{
     }
   }
   operatorSessions.prune();
+  adminSessions.prune();
 }
 setInterval(cleanupStaleSessions,APP_CONFIG.session.cleanupIntervalMs).unref?.();
 
@@ -164,7 +186,7 @@ async function handleRequest(
     res.writeHead(204);res.end();return;
   }
   const remoteIp=req.socket.remoteAddress??"unknown";
-  if(path.startsWith("/oauth/")||path.startsWith("/.well-known/")||path.startsWith("/operator/")){
+  if(path.startsWith("/oauth/")||path.startsWith("/.well-known/")||path.startsWith("/operator/")||path.startsWith("/admin/")){
     const limit=publicLimiter.allow(remoteIp);
     if(!limit.allowed){res.setHeader("Retry-After",String(limit.retryAfter));sendJSON(res,429,{error:"rate_limited"});return;}
   }
@@ -204,6 +226,16 @@ async function handleRequest(
     operatorSessions.close(token);
     res.setHeader("Set-Cookie","hx_operator=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0");
     res.writeHead(204);res.end();return;
+  }
+
+  // --- CI-G6: Owner Console (/admin/*) -------------------------------------
+  // Never published as MCP tools. Every mutating route requires (a) the admin
+  // cookie session, (b) a same-site CSRF secret from that session, and (c) a
+  // strict Origin match. The transfer ticket is the capability; the bootstrap
+  // secret is the reauth. See docs/implementation/CI_MASTER_PLAN.md.
+  if(path.startsWith("/admin/")){
+    await handleAdminRequest(req,res,oauth,path,method,origin,remoteIp);
+    return;
   }
 
   // Metrics endpoint — supports ?taskId=uuid&tool=X&status=X&from=X&to=X&limit=N&offset=N
@@ -582,10 +614,165 @@ function readBody(req: http.IncomingMessage, maxBytes = 1_000_000): Promise<Buff
   });
 }
 
+/**
+ * CI-G6 — the Owner Console request handler.
+ *
+ * Every route under `/admin/` is a privileged, human-operated surface that is
+ * NEVER published as an MCP tool (design 03 §4: the model must not be able to
+ * transfer ownership itself). Three controls layered on every mutating call:
+ *
+ *   1. A separate admin session cookie (`hx_admin`), backed by its own session
+ *      store so an operator cookie cannot reach these endpoints.
+ *   2. A same-site CSRF secret: a form field that must equal the server-stored
+ *      per-session value. SameSite=Strict plus the global Origin check in
+ *      handleRequest is the outer layer; this is the inner one.
+ *   3. The Origin must equal the public base URL exactly.
+ *
+ * The transfer ticket is a fourth, orthogonal capability: it authorises one
+ * specific intent, exactly once, and only its hash is ever persisted.
+ */
+async function handleAdminRequest(
+  req:http.IncomingMessage,
+  res:http.ServerResponse,
+  oauth:OAuthProvider,
+  path:string,
+  method:string,
+  origin:string|undefined,
+  remoteIp:string,
+):Promise<void>{
+  void oauth;
+  // Reauth gate: the bootstrap secret is the only operator credential in the
+  // system, and re-entering it is what "reauth" means here. The login route is
+  // deliberately the only admin route that does NOT require a session.
+  if(path==="/admin/login"&&method==="GET"){
+    sendHTML(res,200,`<!doctype html><html><head><meta charset="utf-8"></head><body><form method="post" action="/admin/login"><label>Owner secret<input type="password" autocomplete="off" name="secret" required></label><button type="submit">Authorize console</button></form></body></html>`);
+    return;
+  }
+  if(path==="/admin/login"&&method==="POST"){
+    const loginRate=adminLoginLimiter.allow(remoteIp);
+    if(!loginRate.allowed){res.setHeader("Retry-After",String(loginRate.retryAfter));sendJSON(res,429,{error:"login_rate_limited"});return;}
+    if(origin&&origin!==CONFIG.publicBaseUrl){sendJSON(res,403,{error:"origin_not_allowed"});return;}
+    const supplied=new URLSearchParams((await readBody(req,4096)).toString("utf8")).get("secret")??"";
+    if(!oauth.verifyBootstrapSecret(supplied)){sendJSON(res,403,{error:"invalid_operator_secret"});return;}
+    try{
+      const session=adminSessions.issue();
+      res.setHeader("Set-Cookie",`hx_admin=${session.id}; Path=/admin/; HttpOnly; SameSite=Strict; Max-Age=1800${CONFIG.publicBaseUrl.startsWith("https:")?"; Secure":""}`);
+      sendJSON(res,200,{csrf:session.csrf});
+    }catch{sendJSON(res,429,{error:"admin_session_limit"});}
+    return;
+  }
+
+  // Everything below requires the admin session.
+  const cookieId=adminCookie(req);
+  const session=adminSessions.get(cookieId);
+  if(!session){sendJSON(res,401,{error:"invalid_admin_session"});return;}
+
+  if(path==="/admin/logout"&&method==="POST"){
+    if(origin&&origin!==CONFIG.publicBaseUrl){sendJSON(res,403,{error:"origin_not_allowed"});return;}
+    const form=new URLSearchParams((await readBody(req,4096)).toString("utf8"));
+    if(form.get("csrf")!==session.csrf){sendJSON(res,403,{error:"invalid_csrf"});return;}
+    adminSessions.close(cookieId);
+    res.setHeader("Set-Cookie","hx_admin=; Path=/admin/; HttpOnly; SameSite=Strict; Max-Age=0");
+    res.writeHead(204);res.end();return;
+  }
+
+  // Read-only intent inspection: cookie-only is enough for GET, exactly like
+  // authorizeMonitoringRequest. The CSRF secret is only required on mutations.
+  if(path.startsWith("/admin/transfer/")&&method==="GET"){
+    const intentId=path.slice("/admin/transfer/".length);
+    if(!intentId){sendJSON(res,404,{error:"not_found"});return;}
+    const intent=describeHandoff(sqliteTransferRepository,intentId);
+    if(!intent){sendJSON(res,404,{error:"not_found"});return;}
+    // Never echo the ticket hash to a browser surface; state, epochs and ids are
+    // what the console needs to render a transfer.
+    sendJSON(res,200,{intent:{
+      id:intent.id,state:intent.state,kind:intent.kind,
+      sourceContextId:intent.sourceContextId,targetConnectionId:intent.targetConnectionId,
+      sourceEpoch:intent.sourceEpoch,expiresAt:intent.expiresAt,
+      approvedByOwnerId:intent.approvedByOwnerId,committedAt:intent.committedAt,
+    }});
+    return;
+  }
+
+  // Every remaining route is a mutation: session + CSRF + strict Origin.
+  if(origin&&origin!==CONFIG.publicBaseUrl){sendJSON(res,403,{error:"origin_not_allowed"});return;}
+  const form=new URLSearchParams((await readBody(req,16384)).toString("utf8"));
+  if(form.get("csrf")!==session.csrf){sendJSON(res,403,{error:"invalid_csrf"});return;}
+
+  try{
+    if(path==="/admin/transfer/prepare"&&method==="POST"){
+      const sourceContextId=form.get("sourceContextId")??"";
+      const sourceBindingId=form.get("sourceBindingId")??"";
+      const targetConnectionId=form.get("targetConnectionId")??"";
+      const kind=form.get("kind")==="FORK"?"FORK":"TRANSFER";
+      if(!sourceContextId||!sourceBindingId||!targetConnectionId){
+        sendJSON(res,400,{error:"invalid_request"});return;
+      }
+      const prepared=prepareHandoff(sqliteTransferRepository,{
+        sourceContextId,sourceBindingId,targetConnectionId,kind,
+        randomId:crypto.randomUUID,
+      });
+      // The one-time ticket leaves the server exactly once, on this response.
+      // It is never persisted, never logged, and never re-derivable.
+      sendJSON(res,200,{
+        intentId:prepared.intentId,ticket:prepared.ticket,kind:prepared.kind,
+        sourceContextId:prepared.sourceContextId,targetConnectionId:prepared.targetConnectionId,
+        expiresAt:prepared.expiresAt,
+      });
+      return;
+    }
+    if(path==="/admin/transfer/approve"&&method==="POST"){
+      const intentId=form.get("intentId")??"";
+      const ticket=form.get("ticket")??"";
+      const ownerId=form.get("ownerId")??"";
+      if(!intentId||!ticket||!ownerId){sendJSON(res,400,{error:"invalid_request"});return;}
+      const approved=approveHandoff(sqliteTransferRepository,{intentId,ownerId,ticket});
+      sendJSON(res,200,{intentId:approved.id,state:approved.state});
+      return;
+    }
+    if(path==="/admin/transfer/commit"&&method==="POST"){
+      const intentId=form.get("intentId")??"";
+      const newBindingId=form.get("newBindingId")??"";
+      if(!intentId||!newBindingId){sendJSON(res,400,{error:"invalid_request"});return;}
+      const committed=commitHandoff(sqliteTransferRepository,{intentId,newBindingId});
+      sendJSON(res,200,{intentId:committed.id,state:committed.state});
+      return;
+    }
+    if(path==="/admin/transfer/cancel"&&method==="POST"){
+      const intentId=form.get("intentId")??"";
+      if(!intentId){sendJSON(res,400,{error:"invalid_request"});return;}
+      cancelHandoff(sqliteTransferRepository,intentId);
+      sendJSON(res,200,{intentId,state:"CANCELLED"});
+      return;
+    }
+    sendJSON(res,404,{error:"not_found"});
+  }catch(error){
+    // The CI-1.03 errors are stable sentinels; map them by code so the console
+    // shows the operator one deterministic label per outcome. Unknown errors
+    // fall through to the 500 trap in handleRequest's caller.
+    if(error instanceof ContextError){
+      const status=
+        error instanceof ContextNotBoundError?404:
+        error instanceof ContextInactiveError?409:
+        error instanceof TransferInProgressError?409:403;
+      sendJSON(res,status,{error:error.code});
+      return;
+    }
+    throw error;
+  }
+}
+
 function operatorCookie(req:http.IncomingMessage):string|undefined{
   const raw=req.headers.cookie??"";
   const value=raw.split(";").map(x=>x.trim()).find(x=>x.startsWith("hx_operator="));
   return value?.slice("hx_operator=".length);
+}
+/** CI-G6 — the Owner Console cookie. Separate name from hx_operator so the two
+ *  session stores never overlap and one cookie cannot reach the other surface. */
+function adminCookie(req:http.IncomingMessage):string|undefined{
+  const raw=req.headers.cookie??"";
+  const value=raw.split(";").map(x=>x.trim()).find(x=>x.startsWith("hx_admin="));
+  return value?.slice("hx_admin=".length);
 }
 /**
  * Shared filter parsing for /metrics and /dashboard. Mirrors the canonical

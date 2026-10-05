@@ -55,6 +55,13 @@ export interface SessionSettings {
   readonly operatorCap: number;
   readonly contextCap: number;
   readonly cleanupIntervalMs: number;
+  /**
+   * CI-G6 — concurrent Owner Console sessions. Separate from `operatorCap`
+   * because the Owner Console is the privileged surface that can transfer
+   * Context ownership; a burst of operator logins must not exhaust the slots
+   * an operator-on-call needs to relieve a stuck chat.
+   */
+  readonly adminCap: number;
 }
 
 export interface LeaseSettings {
@@ -310,6 +317,7 @@ export function parseSessionSettings(env: Readonly<Record<string, string | undef
   const graceMs = positiveInt(env, "HOOSHIX_SESSION_GRACE_MS", 5 * 60_000, 1000);
   const maxMcpSessions = positiveInt(env, "HOOSHIX_MAX_MCP_SESSIONS", 64);
   const operatorCap = positiveInt(env, "HOOSHIX_OPERATOR_SESSION_LIMIT", 64);
+  const adminCap = positiveInt(env, "HOOSHIX_ADMIN_SESSION_LIMIT", 8);
   const contextCap = positiveInt(env, "HOOSHIX_MODERN_CONTEXT_LIMIT", 64);
   const cleanupIntervalMs = positiveInt(env, "HOOSHIX_SESSION_CLEANUP_INTERVAL_MS", 60_000, 1000);
   if (idleMs >= absoluteMs)
@@ -317,7 +325,7 @@ export function parseSessionSettings(env: Readonly<Record<string, string | undef
   if (graceMs >= idleMs)
     throw new Error("HOOSHIX_SESSION_GRACE_MS must be shorter than HOOSHIX_SESSION_IDLE_MS");
   return Object.freeze({
-    idleMs, absoluteMs, graceMs, maxMcpSessions, operatorCap, contextCap, cleanupIntervalMs,
+    idleMs, absoluteMs, graceMs, maxMcpSessions, operatorCap, adminCap, contextCap, cleanupIntervalMs,
   });
 }
 
