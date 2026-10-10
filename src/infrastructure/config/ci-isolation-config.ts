@@ -28,3 +28,17 @@ export function parseCiIsolationMode(
   }
   return raw;
 }
+
+/**
+ * The owner identity that owns Contexts minted by per-connection provisioning.
+ * A single-operator deployment has one owner who may later transfer/hand off any
+ * connection's Context, so this defaults to the same stable id the legacy
+ * Context used ("operator"). Each connection still gets its OWN Context; the
+ * owner merely labels who can administer them. Read only here, at the config
+ * boundary.
+ */
+export function parseCiOwnerId(
+  env: Readonly<Record<string, string | undefined>> = process.env,
+): string {
+  return (env.HOOSHIX_CI_OWNER_ID ?? "operator").trim() || "operator";
+}

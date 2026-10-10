@@ -148,6 +148,39 @@ function issueUnboundToken(sqlitePath: string, resource: string): string {
   return raw;
 }
 
+/**
+ * Seed a PRE-CI legacy credential: a real, verifying token whose principal is
+ * exactly "operator" and which has no Context binding yet — the shape of every
+ * token minted before the CI flag existed. `pinLegacyContext` binds these to the
+ * shared legacy Context, so they must keep serving under enforcement
+ * (ADR-CI-007). This is distinct from a NEW connection, which now provisions its
+ * own Context at issuance.
+ */
+function issueLegacyOperatorToken(sqlitePath: string, resource: string): string {
+  const raw = "hx_" + crypto.randomBytes(32).toString("base64url");
+  const tokenHash = crypto.createHash("sha256").update(raw).digest("hex");
+  const db = new Database(sqlitePath);
+  try {
+    db.prepare(
+      "INSERT INTO oauth_access_tokens" +
+        " (token_hash,principal_id,client_id,resource,scopes_json,family_id,issued_at,expires_at)" +
+        " VALUES(?,?,?,?,?,?,?,?)",
+    ).run(
+      tokenHash,
+      "operator",
+      "client-legacy",
+      resource,
+      JSON.stringify(["hooshix:read"]),
+      "family-legacy-" + crypto.randomBytes(8).toString("hex"),
+      Date.now(),
+      Date.now() + 3_600_000,
+    );
+  } finally {
+    db.close();
+  }
+  return raw;
+}
+
 async function mcpInitialize(base: string, resource: string, accessToken: string): Promise<void> {
   const client = new Client({ name: "ci-g4-enforcement", version: "1" }, { versionNegotiation: { mode: { pin: "2026-07-28" } } });
   const transport = new StreamableHTTPClientTransport(new URL(resource), {
@@ -161,15 +194,16 @@ async function mcpInitialize(base: string, resource: string, accessToken: string
 }
 
 describe("CI-G4 / PER_CONNECTION enforcement on the live path", () => {
-  it("still serves a credential that resolves to the legacy Context", async () => {
+  it("still serves a PRE-EXISTING legacy operator credential via the pinned legacy Context (ADR-CI-007)", async () => {
     await withIsolationServer("PER_CONNECTION", async (base, sqlitePath, bootstrap) => {
+      void bootstrap;
       const resource = base + "/mcp";
-      const accessToken = await obtainToken(base, resource, bootstrap);
-      expect(accessToken).toBeTruthy();
+      // A pre-CI token: principal "operator", no Context binding. pinLegacyContext
+      // must attach it to the shared legacy Context so flipping the flag on does
+      // not invalidate live credentials.
+      const legacyToken = issueLegacyOperatorToken(sqlitePath, resource);
 
-      // Legacy operator tokens are pinned to the legacy Context, so flipping the
-      // flag to enforcement must not break live credentials (ADR-CI-007).
-      await expect(mcpInitialize(base, resource, accessToken)).resolves.toBeUndefined();
+      await expect(mcpInitialize(base, resource, legacyToken)).resolves.toBeUndefined();
 
       const db = new Database(sqlitePath, { readonly: true });
       try {
@@ -180,6 +214,36 @@ describe("CI-G4 / PER_CONNECTION enforcement on the live path", () => {
         expect(requestAudit, JSON.stringify(audits)).toBeDefined();
         expect(requestAudit!.decision).toBe("ALLOW");
         expect(requestAudit!.context_id).toBe("ctx-legacy-shared-operator");
+      } finally {
+        db.close();
+      }
+    });
+  }, 30_000);
+
+  it("mints a distinct, non-legacy Context for each NEW OAuth connection under PER_CONNECTION (CI-G7b)", async () => {
+    await withIsolationServer("PER_CONNECTION", async (base, sqlitePath, bootstrap) => {
+      const resource = base + "/mcp";
+      // Two connectors authorize through the live OAuth path. Each must now
+      // provision its OWN Context — not collapse onto the legacy one — which is
+      // exactly the per-connection issuance that the CI-G7b host test found missing.
+      const tok1 = await obtainToken(base, resource, bootstrap);
+      const tok2 = await obtainToken(base, resource, bootstrap);
+      await expect(mcpInitialize(base, resource, tok1)).resolves.toBeUndefined();
+      await expect(mcpInitialize(base, resource, tok2)).resolves.toBeUndefined();
+
+      const hash = (t: string) => crypto.createHash("sha256").update(t).digest("hex");
+      const db = new Database(sqlitePath, { readonly: true });
+      try {
+        const getCtx = (tokenHash: string) =>
+          db
+            .prepare("SELECT context_id FROM context_binding WHERE credential_hash=?")
+            .get(tokenHash) as { context_id: string } | undefined;
+        const c1 = getCtx(hash(tok1));
+        const c2 = getCtx(hash(tok2));
+        expect(c1, "connection 1 has no provisioned Context").toBeDefined();
+        expect(c2, "connection 2 has no provisioned Context").toBeDefined();
+        expect(c1!.context_id).not.toBe("ctx-legacy-shared-operator");
+        expect(c1!.context_id).not.toBe(c2!.context_id);
       } finally {
         db.close();
       }

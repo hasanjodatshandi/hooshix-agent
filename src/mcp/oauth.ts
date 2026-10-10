@@ -39,6 +39,17 @@ function validateRequestedScopes(requested:readonly string[]):readonly string[]{
     throw new Error("oauth_invalid_scope");
   return [...set];
 }
+export interface ConnectionProvisionInput {
+  readonly clientId: string;
+  /** SHA-256 of the access token being minted; the Context binding's selector. */
+  readonly credentialHash: string;
+  readonly scopes: readonly string[];
+  readonly now: string;
+}
+/** Mints a distinct per-connection principal (and its Context binding), or returns
+ *  null to keep the request's principal. Injected only under an enforcement mode. */
+export type ConnectionProvisioner = (input: ConnectionProvisionInput) => string | null;
+
 export class OAuthProvider{
   private readonly bootstrapSecret:string;
   private readonly pending=new Map<string,CodeRecord>();
@@ -49,7 +60,8 @@ export class OAuthProvider{
   private readonly codeTtlMs:number;
   private readonly maxPendingCodes:number;
   private readonly maxRedirectUris:number;
-  constructor(bootstrapSecret:string,options:{now?:()=>number;settings?:Partial<OAuthSettings>}={}){
+  private readonly connectionProvisioner?:ConnectionProvisioner;
+  constructor(bootstrapSecret:string,options:{now?:()=>number;settings?:Partial<OAuthSettings>;connectionProvisioner?:ConnectionProvisioner}={}){
     if(!bootstrapSecret)throw new Error("bootstrap_secret_required");
     this.bootstrapSecret=bootstrapSecret;
     this.now=options.now??Date.now;
@@ -59,6 +71,7 @@ export class OAuthProvider{
     this.codeTtlMs=s.codeTtlMs??DEFAULT_CODE_TTL_MS;
     this.maxPendingCodes=s.maxPendingCodes??DEFAULT_MAX_PENDING_CODES;
     this.maxRedirectUris=s.maxRedirectUris??8;
+    this.connectionProvisioner=options.connectionProvisioner;
     this.cleanupInterval=setInterval(()=>this.cleanup(),s.cleanupIntervalMs??DEFAULT_CLEANUP_INTERVAL_MS);
     this.cleanupInterval.unref?.();
   }
@@ -146,8 +159,17 @@ export class OAuthProvider{
     const rawAccess="hx_"+crypto.randomBytes(32).toString("base64url");
     const rawRefresh="hxr_"+crypto.randomBytes(32).toString("base64url");
     const time=this.now();
-    const grant:OAuthGrantRecord={tokenHash:hash(rawAccess),familyId:issueOAuthFamilyId(),
-      generation:0,principalId:request.principalId,clientId:request.clientId,
+    const tokenHash=hash(rawAccess);
+    // CI-2.02/CI-G7b: under an enforcement mode, mint a distinct per-connection
+    // principal and persist its Context binding now — before the token exists —
+    // so this credential resolves to its OWN Context, never the legacy one. The
+    // binding keys on this same tokenHash (the credential hash).
+    const provisioned=this.connectionProvisioner?.({
+      clientId:request.clientId,credentialHash:tokenHash,
+      scopes:request.scopes,now:new Date(time).toISOString(),
+    });
+    const grant:OAuthGrantRecord={tokenHash,familyId:issueOAuthFamilyId(),
+      generation:0,principalId:provisioned??request.principalId,clientId:request.clientId,
       resource:request.resource,scopes:request.scopes,issuedAt:time,
       accessExpiresAt:time+this.accessTtlMs,refreshExpiresAt:time+this.refreshTtlMs};
     persistOAuthGrant(grant,hash(rawRefresh));

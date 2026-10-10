@@ -17,9 +17,12 @@ import type { PrincipalId, SessionId } from "../domain/shared/ids.js";
 import {OperatorWebSessions,HttpWindowLimiter,HttpPrincipalContexts} from "../infrastructure/server/http-security.js";
 import {installGracefulShutdown} from "../infrastructure/server/graceful-shutdown.js";
 import {isDatabaseReady,closeAgentDatabase,openAgentDatabase,runMigrations} from "../core/memory/database/index.js";
-import {parseCiIsolationMode,isCiIsolationEnabled} from "../infrastructure/config/ci-isolation-config.js";
+import {parseCiIsolationMode,isCiIsolationEnabled,isCiEnforcementMode,parseCiOwnerId} from "../infrastructure/config/ci-isolation-config.js";
 import {createRequestObserver} from "../application/services/context-isolation-observer.js";
 import {decideEnforcement} from "../application/services/context-isolation-enforcer.js";
+import {establishConnection} from "../application/services/context-provisioning.js";
+import type { ConnectionProvisioner } from "./oauth.js";
+import {SqliteContextProvisioningRepository} from "../adapters/outbound/persistence/sqlite/repositories/context-provisioning.adapter.js";
 import type { ResolvedContext } from "../core/runtime/r2-trusted-inbound-identity.js";
 import {resolveContextFromPort} from "../adapters/outbound/persistence/sqlite/repositories/context-resolver.adapter.js";
 import {recordControlPlaneAuditFromPort} from "../adapters/outbound/persistence/sqlite/repositories/context-audit.adapter.js";
@@ -960,7 +963,19 @@ async function handleRegisterPOST(
 
 export function startHttpServer():Promise<void>{
   const bootstrap=loadToken();
-  const oauth=new OAuthProvider(bootstrap,{settings:APP_CONFIG.oauth});
+  // CI-2.02 / CI-G7b: in an enforcement mode, every OAuth grant mints its OWN
+  // connection id, principal and Context (model C) at token-issuance time, so
+  // two ChatGPT connectors resolve to two distinct Contexts instead of collapsing
+  // onto the pinned legacy Context. Outside enforcement modes the provisioner is
+  // undefined, so issueGrant keeps the shipped "operator" behavior byte-for-byte.
+  const connectionProvisioner:ConnectionProvisioner|undefined=isCiEnforcementMode(CTX_ISOLATION_MODE)
+    ?({clientId,credentialHash,scopes,now})=>establishConnection(
+        new SqliteContextProvisioningRepository(openAgentDatabase()),
+        {ownerId:parseCiOwnerId(),clientId,credentialHash,scopes,now,
+          randomId:()=>crypto.randomUUID()},
+      ).principalId
+    :undefined;
+  const oauth=new OAuthProvider(bootstrap,{settings:APP_CONFIG.oauth,connectionProvisioner});
   // CI-G3: the moment isolation is switched on, pin the legacy Context so the
   // grants already in the field (all principal "operator") keep resolving —
   // ADR-CI-007 forbids invalidating live credentials. Idempotent, so it is safe
