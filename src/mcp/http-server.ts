@@ -128,6 +128,9 @@ const modernContexts=new HttpPrincipalContexts<SessionWorkspaceContext>(undefine
   APP_CONFIG.session.idleMs,APP_CONFIG.session.absoluteMs,APP_CONFIG.session.contextCap);
 const modernHandler=toNodeHandler(createMcpHandler(()=>createServer(),{legacy:"reject"}));
 
+fs.mkdirSync("logs", { recursive: true });
+const MCP_DIAG_LOG = "logs/mcp-requests.jsonl";
+
 
 /**
  * Clean up sessions that have been closed for longer than the grace period.
@@ -344,6 +347,31 @@ async function handleRequest(
     sendJSON(res, 404, { error: "not found" });
     return;
   }
+
+  // Diagnostic (chatgpt-discovery incident 2026-10-11): the 401 path below is
+  // otherwise invisible — no audit row, no access log — so we cannot tell
+  // whether ChatGPT's tools/list arrives without a bearer or never arrives.
+  // Record one line per /mcp request: routing headers + outcome only, never
+  // token material.
+  const mcpLogStart = Date.now();
+  res.once("finish", () => {
+    try {
+      fs.appendFileSync(MCP_DIAG_LOG, JSON.stringify({
+        ts: new Date().toISOString(),
+        method,
+        status: res.statusCode,
+        ms: Date.now() - mcpLogStart,
+        hasAuth: req.headers.authorization !== undefined,
+        protocolHeader: req.headers["mcp-protocol-version"] ?? null,
+        methodHeader: req.headers["mcp-method"] ?? null,
+        sessionHeader: typeof req.headers["mcp-session-id"] === "string"
+          ? req.headers["mcp-session-id"].slice(0, 8) : null,
+        contentType: req.headers["content-type"] ?? null,
+        userAgent: req.headers["user-agent"] ?? null,
+        remoteIp,
+      }) + "\n");
+    } catch { /* diagnostics must never break the request path */ }
+  });
 
   const grantWithHash=oauth.tokenClaimsWithHash(req.headers.authorization,CONFIG.resource);
   const grant=grantWithHash?.claims ?? null;
