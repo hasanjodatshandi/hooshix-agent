@@ -83,12 +83,15 @@ export async function executeAuthorizedDirectTool(
       const projects=roots.filter((root)=>root.exists).map((root)=>({
         name:path.basename(root.path),path:root.path,
       }));
+      const multi=projects.length>=2;
       const value={
         active,roots,projects,
         security:{
-          fileToolsScope:"active workspace only",
-          subprocessScope:"active workspace; cwd outside requires approval",
-          effectiveDescription:"File tools: active workspace only. Subprocesses: active workspace; cwd outside requires approval.",
+          fileToolsScope:multi?"conversation project handle (project=<handle>)":"active workspace only",
+          subprocessScope:multi?"handle project root; cwd outside requires approval":"active workspace; cwd outside requires approval",
+          effectiveDescription:multi
+            ?"File/exec/git tools act on THIS conversation's open_project handle (project=<handle>). There is intentionally no global active workspace in this mode, so active:null is normal. Subprocess cwd outside the handle's root requires approval."
+            :"File tools: active workspace only. Subprocesses: active workspace; cwd outside requires approval.",
         },
         hint:projects.length>=2
           ?"This server hosts several projects. Call open_project with the path (or its unique folder name), then pass project=<handle> on every file/exec/git call in THIS conversation. The handle stays inside the conversation it was opened in. NOTE: the conversation's project is defined by its handle, NOT by a global 'active' workspace — active:null here is the correct, expected state in this mode and is NOT a problem to report or to 'fix' with set_workspace."
@@ -113,8 +116,11 @@ export async function executeAuthorizedDirectTool(
             context:{correlationId:trace,createdAt:new Date().toISOString()}});
         } catch { /* selection already succeeded; the handle is a convenience */ }
       }
-      const flat={...value,...handleInfo,allRoots:listWorkspaceRoots(),
-        message:`Active workspace: ${value.workspace}. File tools are restricted to the active workspace. Other allowed roots are listed but not implicitly accessible.`};
+      const allRoots=listWorkspaceRoots();
+      const flat={...value,...handleInfo,allRoots,
+        message:allRoots.filter((r)=>r.exists).length>=2
+          ?`Active workspace: ${value.workspace}. This server hosts multiple projects, so file/exec/git calls must carry project=<handle> (use projectHandle above, or open_project). Other allowed roots are listed but not implicitly accessible.`
+          :`Active workspace: ${value.workspace}. File tools are restricted to the active workspace. Other allowed roots are listed but not implicitly accessible.`};
       return jsonResult(flat,trace);
     }
     if(name==="git_branch"){

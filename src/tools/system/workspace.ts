@@ -17,7 +17,7 @@ export function registerWorkspaceTools(server: McpServer): void {
     "set_workspace",
     {
       title: "Set Workspace",
-      description: "📂 WORKSPACE — Select the ACTIVE workspace from the allowed roots pool. Does NOT add or remove roots — the path must already be allowed (add it with add_workspace_roots first). File tools operate in the active workspace only — this tool cannot and will never expand that scope.\n\nExample: { \"path\": \"D:/Projects/my-app\" }",
+      description: "📂 WORKSPACE — Select the ACTIVE workspace from the allowed roots pool. Does NOT add or remove roots — the path must already be allowed (add it with add_workspace_roots first). On a single-project server this sets the file-tool scope to the active workspace. On a multi-project server (2+ allowed roots) an active workspace alone does NOT authorize file/exec/git calls — those must carry project=<handle> from open_project (this tool also returns a handle you can use). A workspace root can never be widened by set_workspace.\n\nExample: { \"path\": \"D:/Projects/my-app\" }",
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
       inputSchema: z.strictObject({
         path: z.string().min(1),

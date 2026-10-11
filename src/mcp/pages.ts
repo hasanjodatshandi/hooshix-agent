@@ -137,7 +137,7 @@ function getToolDescription(tool: ToolName): string {
   const descriptions: Record<string, string> = {
     get_system_info: "Local machine info: platform, CPU model, and total memory.",
     agent_metrics: "View recovery, tool reliability, and performance dashboard.",
-    list_directory: "List files and directories inside the active workspace.",
+    list_directory: "List files and directories in the active workspace (or, on a multi-project server, the conversation's open project via project=<handle>).",
     read_file: "Read a file (relative or absolute path). Returns text content.",
     write_file: "Write content to a file. Overwrites if exists. Returns backupId for undo.",
     create_file: "Create a new file. Fails if already exists. Returns backupId.",
@@ -160,7 +160,7 @@ function getToolDescription(tool: ToolName): string {
     update_package: "Update a package via npm, pnpm, pip, winget, or choco.",
     task_snapshot: "Capture a git snapshot of a workspace before a task runs.",
     task_rollback: "Reset a workspace to its pre-task git snapshot (destructive).",
-    set_workspace: "Select the active workspace from the allowed roots pool (pure selector — cannot expand file-tool scope).",
+    set_workspace: "Select the active workspace from the allowed roots pool (cannot expand file-tool scope; on a multi-project server file/exec/git calls still need project=<handle>).",
     get_workspace: "View the active workspace and the allowed roots pool.",
     remove_workspace_root: "📂 WORKSPACE — Remove one directory from the allowed workspace roots pool.",
     add_workspace_roots: "📂 WORKSPACE — Add one or more directories to the allowed workspace roots pool (idempotent).",
