@@ -91,7 +91,7 @@ export async function executeAuthorizedDirectTool(
           effectiveDescription:"File tools: active workspace only. Subprocesses: active workspace; cwd outside requires approval.",
         },
         hint:projects.length>=2
-          ?"This server hosts several projects. Call open_project with the path (or its unique folder name), then pass project=<handle> on every file/exec/git call in THIS conversation. The handle stays inside the conversation it was opened in."
+          ?"This server hosts several projects. Call open_project with the path (or its unique folder name), then pass project=<handle> on every file/exec/git call in THIS conversation. The handle stays inside the conversation it was opened in. NOTE: the conversation's project is defined by its handle, NOT by a global 'active' workspace — active:null here is the correct, expected state in this mode and is NOT a problem to report or to 'fix' with set_workspace."
           :active===null
             ?"No active workspace — file tools are DENIED until you select a persisted root with set_workspace. Allowed roots survive service restarts."
             :"File tools touch the ACTIVE workspace only. Use add_workspace_roots to extend the persistent pool, set_workspace to select the active root, remove_workspace_root to drop one. For per-conversation project selection use open_project.",
