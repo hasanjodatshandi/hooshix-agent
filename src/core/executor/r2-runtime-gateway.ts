@@ -11,6 +11,7 @@ import { getConfiguredPermissionLevel } from "../../infrastructure/config/permis
 import { readLegacyWorkspaceBootstrapSettings } from "../../infrastructure/config/legacy-workspace-bootstrap.js";
 import { getTrustedInboundIdentity } from "../runtime/r2-trusted-inbound-identity.js";
 import { getActiveWorkspace, isUnrestrictedMode, listWorkspaceRoots, sameRootIdentity } from "../../security/workspace-guard.js";
+import { parseCiIsolationMode, isCiEnforcementMode } from "../../infrastructure/config/ci-isolation-config.js";
 import { policyDecisionPoint } from "../../core/governance/policy-decision-point.js";
 import { getApprovalRequest, claimApprovedTaskEffect } from "../../core/governance/approval-memory.js";
 import { getTaskPlan } from "../../core/memory/task-repository.js";
@@ -27,14 +28,55 @@ function isAllowedRoot(p:string, roots:readonly string[]): boolean {
   const canonical=process.platform==="win32"?p.toLowerCase():p;
   return roots.some(r => (process.platform==="win32"?r.toLowerCase():r)===canonical);
 }
+
+const CTX_ISOLATION_MODE=parseCiIsolationMode();
+
+/**
+ * CI-G5 — the per-Context file jail. Under an enforcement mode, the request's
+ * effective workspace root is the Context's own grant canonicalRoot, not the
+ * shared active workspace. Every file tool already resolves paths against
+ * getEffectiveWorkspace(), which returns this value inside the dispatch scope,
+ * so confining it here jails reads/writes to the one directory this connection
+ * owns: another Context's files are outside the root, and `..`/absolute escapes
+ * are rejected by the existing workspace validation (fail-closed).
+ *
+ * Returns null in OFF/SHADOW (behavior unchanged) and when no Context root was
+ * attached. A legacy operator token resolves to the shared workspace root, so
+ * its jail is the workspace itself — live credentials keep working (ADR-CI-007).
+ */
+function contextJailRoot(): string | null {
+  if (!isCiEnforcementMode(CTX_ISOLATION_MODE)) return null;
+  const workspaceRoot=getTrustedInboundIdentity().resolvedContext?.workspaceRoot;
+  // The legacy operator Context is pinned to the real workspace, but when the
+  // workspace was unknown at pin time its grant carries this sentinel. It is not
+  // a path — jailing to it would trap the operator in a bogus directory, so fall
+  // through to the shared active workspace instead (ADR-CI-007).
+  if (!workspaceRoot || workspaceRoot === "<unrestricted-pool>") return null;
+  const abs=path.resolve(workspaceRoot);
+  try { fs.mkdirSync(abs,{recursive:true}); }
+  catch { return null; } // cannot materialize the sandbox → refuse to widen scope
+  return abs;
+}
+
+/**
+ * CI-G6 — the active Context jail root, for the inbound edge. The MCP registry
+ * uses it to reconcile a conversation project handle against the jail: the
+ * handle may confirm the Context's root but never widen it.
+ */
+export function enforcementJailRoot(): string | null {
+  return contextJailRoot();
+}
+
 function currentScope(principal:Principal, sessionId:SessionId):WorkspaceScope {
-  const root=getActiveWorkspace();
+  const jailRoot=contextJailRoot();
+  const root=jailRoot ?? getActiveWorkspace();
   // Effective active root is the ONLY file-access scope; the persisted pool is
   // an explicit selection option and is never implicit read/write authority.
+  // A Context jail also strips any unrestricted widening for this request.
   return captureWorkspaceScope({
     principalId:principal.id,sessionId,root,
     allowedRoots:root?[root]:[],
-    unrestricted:isUnrestrictedMode(),capturedAt:new Date().toISOString(),
+    unrestricted:jailRoot?false:isUnrestrictedMode(),capturedAt:new Date().toISOString(),
   });
 }
 
@@ -111,9 +153,15 @@ export function createR2RuntimeGateway(handler:ToolHandlerPort) {
         catch { return "blocked"; }
       }
       if(scope.unrestricted)return "approval_required";
-      if(!executionDescriptor.id.startsWith("task_") &&
-          !executionDescriptor.id.startsWith("project_") &&
-          !executionDescriptor.id.startsWith("memory_")) {
+      // Control-plane families (task_/project_/memory_ plus the CI-G6 project
+      // handle pair) run their own lifecycle behind this authorization
+      // boundary; command/file policy does not apply to their names.
+      const isControlFamily=executionDescriptor.id.startsWith("task_") ||
+          executionDescriptor.id.startsWith("project_") ||
+          executionDescriptor.id.startsWith("memory_") ||
+          executionDescriptor.id==="open_project" ||
+          executionDescriptor.id==="close_project";
+      if(!isControlFamily) {
         const decision=policyDecisionPoint.evaluate({tool:descriptor.id,arguments:data});
         if(!decision.allowed) return "blocked";
         if(decision.requiresApproval) return "approval_required";

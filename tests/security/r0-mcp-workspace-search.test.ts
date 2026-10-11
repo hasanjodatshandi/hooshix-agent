@@ -65,7 +65,8 @@ describe("R0 real MCP and Task workspace/security contracts", () => {
     setActiveWorkspace(fixture.root);
     const mcp = await connectInProcessMcp();
     try {
-      const response = await mcp.client.callTool({ name: "search_files", arguments: { path: ".", query: key } });
+      const handle = (json(await mcp.client.callTool({ name: "open_project", arguments: { path: fixture.root } })) as { handle: string }).handle;
+      const response = await mcp.client.callTool({ name: "search_files", arguments: { path: ".", query: key, project: handle } });
       expect(response.isError).not.toBe(true);
       const result = json(response) as { matches: Array<{ path: string; text: string }> };
       expect(result.matches.map((x) => x.path.replace(/\\/g, "/"))).toEqual(["normal.txt"]);

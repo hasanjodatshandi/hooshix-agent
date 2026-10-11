@@ -183,6 +183,8 @@ function getToolDescription(tool: ToolName): string {
     project_delete: "📁 CONTEXT — Permanently delete a project record by id.",
     project_archive: "📁 CONTEXT — Soft-archive a project (status → 'archived').",
     project_list: "📁 CONTEXT (read) — List project records, paginated; filter by status.",
+    open_project: "🔑 PROJECT — Open a workspace project for THIS conversation; returns a conversation-local ph_... handle to pass as project=<handle> on every file/exec/git call.",
+    close_project: "🔑 PROJECT — Revoke a conversation-local project handle so it can no longer be used.",
     memory_add: "🧠 MEMORY — Store a categorized note for a project or task.",
     memory_list: "🧠 MEMORY (read) — List stored memory notes; filter by taskId, projectId, or kind; paginated.",
     memory_get: "🧠 MEMORY (read) — Fetch one memory record by id.",

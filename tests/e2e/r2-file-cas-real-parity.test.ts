@@ -17,17 +17,20 @@ describe("R2.08 actual MCP and durable Task file revision/idempotency parity",()
     setActiveWorkspace(fixture.root);
     const harness=await connectInProcessMcp();
     try{
-      const raw=await harness.client.callTool({name:"read_file",arguments:{path:target,includeSha256:true}});
+      // CI-G6: the pool now holds two roots (repo + fixture), so every direct
+      // workspace-bound call must carry this conversation's project handle.
+      const handle=(json(await harness.client.callTool({name:"open_project",arguments:{path:fixture.root}})) as {handle:string}).handle;
+      const raw=await harness.client.callTool({name:"read_file",arguments:{path:target,includeSha256:true,project:handle}});
       expect(raw.isError).not.toBe(true);
       const direct=json(raw) as {content:string;sha256:string};
       expect(direct.sha256).toBe(sha("alpha"));
       expect(direct.content).toBe("alpha");
       const key=crypto.randomUUID();
-      const first=json(await harness.client.callTool({name:"write_file",arguments:{path:target,content:"beta",ifMatchSha256:direct.sha256,idempotencyKey:key}})) as {backupId:string};
+      const first=json(await harness.client.callTool({name:"write_file",arguments:{path:target,content:"beta",ifMatchSha256:direct.sha256,idempotencyKey:key,project:handle}})) as {backupId:string};
       expect(first.backupId).toBeTruthy();
-      const replay=json(await harness.client.callTool({name:"write_file",arguments:{path:target,content:"beta",ifMatchSha256:direct.sha256,idempotencyKey:key}})) as {backupId:string};
+      const replay=json(await harness.client.callTool({name:"write_file",arguments:{path:target,content:"beta",ifMatchSha256:direct.sha256,idempotencyKey:key,project:handle}})) as {backupId:string};
       expect(replay.backupId).toBe(first.backupId);
-      const stale=await harness.client.callTool({name:"write_file",arguments:{path:target,content:"overwritten",ifMatchSha256:direct.sha256}});
+      const stale=await harness.client.callTool({name:"write_file",arguments:{path:target,content:"overwritten",ifMatchSha256:direct.sha256,project:handle}});
       expect(stale.isError).toBe(true);
       expect(fs.readFileSync(target,"utf8")).toBe("beta");
       const created=json(await harness.client.callTool({name:"task_create",arguments:{
@@ -43,9 +46,9 @@ describe("R2.08 actual MCP and durable Task file revision/idempotency parity",()
       expect(plan.steps[0]?.output).toMatchObject({sha256:sha("beta")});
       expect(plan.steps[1]?.output?.backupId).toBeTruthy();
       expect(fs.readFileSync(target,"utf8")).toBe("gamma");
-      const modified=json(await harness.client.callTool({name:"modify_file",arguments:{path:target,search:"gamma",replacement:"delta",ifMatchSha256:sha("gamma")}})) as {backupId:string};
+      const modified=json(await harness.client.callTool({name:"modify_file",arguments:{path:target,search:"gamma",replacement:"delta",ifMatchSha256:sha("gamma"),project:handle}})) as {backupId:string};
       expect(modified.backupId).toBeTruthy();
-      const staleModify=await harness.client.callTool({name:"modify_file",arguments:{path:target,search:"delta",replacement:"unexpected",ifMatchSha256:sha("gamma")}});
+      const staleModify=await harness.client.callTool({name:"modify_file",arguments:{path:target,search:"delta",replacement:"unexpected",ifMatchSha256:sha("gamma"),project:handle}});
       expect(staleModify.isError).toBe(true);
       expect(fs.readFileSync(target,"utf8")).toBe("delta");
       const taskModify=json(await harness.client.callTool({name:"task_create",arguments:{

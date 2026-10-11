@@ -34,7 +34,7 @@ describe("R5 real HTTP operator session lifecycle with an isolated fake clock",(
         HOOSHIX_LOG_DIR:path.join(fixture.root,"logs"),
         HOOSHIX_WORKSPACE:fixture.root,
         HOOSHIX_BOOTSTRAP_TOKEN:bootstrap,
-        MCP_BIND_HOST:"127.0.0.1",MCP_PORT:String(port),MCP_PUBLIC_BASE_URL:base,
+        MCP_BIND_HOST:"127.0.0.1",MCP_PORT:String(port),HOOSHIX_PUBLIC_BASE_URL:undefined,MCP_PUBLIC_BASE_URL:base,
         MCP_ACCESS_TOKEN:undefined,MCP_API_KEY:undefined}
     });
     let logs="";

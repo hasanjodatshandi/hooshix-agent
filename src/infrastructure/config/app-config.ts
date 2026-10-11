@@ -266,6 +266,16 @@ export function parseTerminationGraceMs(env: Readonly<Record<string, string | un
   return value;
 }
 
+/** CI-G6 — absolute lifetime of a conversation-scoped project handle. */
+export function parseProjectHandleTtlMs(env: Readonly<Record<string, string | undefined>> = process.env): number {
+  const raw = env.HOOSHIX_PROJECT_HANDLE_TTL_MS;
+  if (raw === undefined) return 24 * 60 * 60_000;
+  const value = Number(raw);
+  if (!Number.isSafeInteger(value) || value < 250 || value > 30 * 24 * 60 * 60_000)
+    throw new Error("HOOSHIX_PROJECT_HANDLE_TTL_MS must be an integer from 250 through 2592000000");
+  return value;
+}
+
 /** Returns a validated positive integer, or `fallback` when the name is absent. */
 function positiveInt(
   env: Readonly<Record<string, string | undefined>>,

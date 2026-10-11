@@ -30,6 +30,15 @@ export interface ResolvedContext {
   readonly ownershipEpoch: number;
   /** The binding that authorized this request — the lease's expected owner. */
   readonly createdByBindingId: string;
+  /**
+   * CI-G5: the grant's canonical workspace root. Under an enforcement mode the
+   * file jail is confined to this directory, so a connection's file tools can
+   * neither read another Context's directory nor escape it (threats T01/T02).
+   * A legacy operator token resolves to the shared workspace root here, so the
+   * jail is a no-op for it (ADR-CI-007). Absent means no per-Context root was
+   * attached — enforcement never invents one.
+   */
+  readonly workspaceRoot?: string;
 }
 
 export interface TrustedInboundIdentity {

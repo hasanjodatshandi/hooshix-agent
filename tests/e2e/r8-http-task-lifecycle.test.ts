@@ -40,7 +40,7 @@ describe("R8.02 real Task lifecycle over HTTP/OAuth transport",()=>{
     const child=spawn(process.execPath,["--import",loader,runner],
       {cwd:fixture.root,env:{...process.env,
         HOOSHIX_BOOTSTRAP_TOKEN:bootstrap,MCP_ACCESS_TOKEN:undefined,MCP_API_KEY:undefined,
-        MCP_PORT:String(port),MCP_BIND_HOST:"127.0.0.1",MCP_PUBLIC_BASE_URL:base,
+        MCP_PORT:String(port),MCP_BIND_HOST:"127.0.0.1",HOOSHIX_PUBLIC_BASE_URL:undefined,MCP_PUBLIC_BASE_URL:base,
         HOOSHIX_WORKSPACE:fixture.root,HOOSHIX_DB_PATH:fixture.sqlitePath,
         HOOSHIX_LOG_DIR:path.join(fixture.root,"logs"),HOOSHIX_PERMISSION_LEVEL:"DEVELOPER_MODE"},
       stdio:["pipe","pipe","pipe"],windowsHide:true});

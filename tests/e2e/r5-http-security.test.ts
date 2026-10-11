@@ -20,7 +20,7 @@ describe("R5 HTTP/OAuth protected process, 2026 MCP compatibility",()=>{
     const resource=base+"/mcp";
     const child=spawn(process.execPath,["--import",pathToFileURL(path.join(repo,"node_modules/tsx/dist/loader.mjs")).href,runner],{
       cwd:repo,env:{...process.env,MCP_PORT:String(port),MCP_BIND_HOST:"127.0.0.1",
-        MCP_PUBLIC_BASE_URL:base,HOOSHIX_BOOTSTRAP_TOKEN:bootstrap,
+        HOOSHIX_PUBLIC_BASE_URL:undefined,MCP_PUBLIC_BASE_URL:base,HOOSHIX_BOOTSTRAP_TOKEN:bootstrap,
         HOOSHIX_WORKSPACE:fixture.root,HOOSHIX_DB_PATH:path.join(fixture.root,"db","agent.sqlite"),
         HOOSHIX_LOG_DIR:path.join(fixture.root,"logs"),HOOSHIX_PERMISSION_LEVEL:"DEVELOPER_MODE",
         MCP_ACCESS_TOKEN:undefined,MCP_API_KEY:undefined},

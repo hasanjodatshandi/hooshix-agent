@@ -39,6 +39,7 @@ pnpm run dev
 - Packages: `install_package`, `remove_package`, `update_package`
 - Tasks: `task_create`, `task_get`, `task_list`, `task_run`, `task_approve`, `task_resume`, `task_report`, `task_replay`, `task_cancel`, `task_append_steps`, `task_link`, `task_links`, `task_step_risks`, `task_snapshot`, `task_rollback`, `task_reconcile`
 - Context: `project_save`, `project_get`, `project_list`, `project_archive`, `project_delete`, `memory_add`, `memory_get`, `memory_list`, `memory_update`, `memory_delete`
+- Projects (conversation-scoped): `open_project`, `close_project`
 
 **فرمان‌های مجاز `execute_command`:** `node`, `npm`, `pnpm`, `git`, `python`, `py`, `gh`. دستورهای فقط-خواندنی (مثل `git status`، `gh pr list`، `node --version`) مستقیم اجرا می‌شوند؛ اجرای کد (اسکریپت node/python، `npm run/test`، git mutating، gh mutating) نیازمند step تاییدشده است.
 

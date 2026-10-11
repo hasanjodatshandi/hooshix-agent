@@ -18,7 +18,7 @@ describe("R5 protected HTTP edge and operator bootstrap process contracts",()=>{
     const loader=pathToFileURL(path.join(repo,"node_modules/tsx/dist/loader.mjs")).href;
     const env:NodeJS.ProcessEnv={...process.env,
       HOOSHIX_BOOTSTRAP_TOKEN:undefined,MCP_ACCESS_TOKEN:undefined,MCP_API_KEY:undefined,
-      MCP_PORT:String(port),MCP_PUBLIC_BASE_URL:base,MCP_BIND_HOST:"127.0.0.1",
+      MCP_PORT:String(port),HOOSHIX_PUBLIC_BASE_URL:undefined,MCP_PUBLIC_BASE_URL:base,MCP_BIND_HOST:"127.0.0.1",
       HOOSHIX_WORKSPACE:fixture.root,HOOSHIX_DB_PATH:fixture.sqlitePath,
       HOOSHIX_LOG_DIR:path.join(fixture.root,"logs"),
       HOOSHIX_PERMISSION_LEVEL:"READ_ONLY"

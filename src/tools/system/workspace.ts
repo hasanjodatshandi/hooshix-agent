@@ -1,5 +1,15 @@
 import { z } from "zod";
 import type { McpServer } from "../../adapters/inbound/mcp/legacy-sdk-bridge.js";
+import { auditToolCall } from "../../core/memory/tool-audit.js";
+import { resolveCorrelationId } from "../../core/runtime/correlation-id.js";
+import { getTrustedInboundIdentity } from "../../core/runtime/r2-trusted-inbound-identity.js";
+import { saveDecisionWithContext } from "../../core/memory/context-memory.js";
+import { assertToolPermission } from "../../security/permission.js";
+import { closeProjectHandle, mintProjectHandle, resolveProjectSelector } from "../../security/project-handles.js";
+
+function response(value: unknown, correlationId: string) {
+  return { content: [{ type: "text" as const, text: JSON.stringify(value, null, 2) }], _meta: { correlationId } };
+}
 
 /** Schema-only registrations. Workspace state changes occur behind R2 gateway. */
 export function registerWorkspaceTools(server: McpServer): void {
@@ -53,5 +63,67 @@ export function registerWorkspaceTools(server: McpServer): void {
       }),
     },
     async () => { throw new Error("r2_legacy_direct_callback_retired"); },
+  );
+  server.registerTool(
+    "open_project",
+    {
+      title: "Open Project",
+      description: "📂 PROJECT (conversation-scoped) — Open one allowed project root for THIS conversation and get a handle (ph_...). Nothing server-side changes: the handle lives only in this chat, so other chats are never affected by it. After opening, ALWAYS pass project=\"<handle>\" on every file/exec/git call you make in THIS conversation (read_file, write_file, list_directory, execute_command, git_*, ...). The handle must already be an allowed root (add it with add_workspace_roots first).\n\nExample: { \"path\": \"D:/Projects/app-a\" } or { \"path\": \"app-a\" } (unique folder name)",
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: false },
+      inputSchema: z.object({
+        path: z.string().min(1).describe("Absolute path of an allowed project root, or its unique folder name."),
+        correlationId: z.string().min(1).optional(),
+      }),
+    },
+    async ({ path: selector, correlationId }) => {
+      assertToolPermission("open_project");
+      const traceId = resolveCorrelationId(correlationId);
+      return auditToolCall("open_project", traceId, undefined, () => {
+        const principalId = String(getTrustedInboundIdentity().principal.id);
+        const resolved = resolveProjectSelector(selector);
+        const minted = mintProjectHandle(principalId, resolved.root, resolved.label);
+        saveDecisionWithContext({
+          action: "project_handle_mint", reason: resolved.label,
+          context: { correlationId: traceId, createdAt: new Date().toISOString() },
+        });
+        return response({
+          project: resolved.label,
+          root: resolved.root,
+          handle: minted.handle,
+          expiresAt: new Date(minted.expiresAt).toISOString(),
+          instruction: `Project "${resolved.label}" is now open for THIS conversation only. From now on include project: "${minted.handle}" on every file, exec and git call in this conversation. Never reuse this handle in another conversation.`,
+        }, traceId);
+      });
+    },
+  );
+  server.registerTool(
+    "close_project",
+    {
+      title: "Close Project",
+      description: "📂 PROJECT (conversation-scoped) — Revoke a project handle opened with open_project. Calls that still send the revoked handle are denied until open_project issues a new one.\n\nExample: { \"handle\": \"ph_Ab3xYz9Qr1Tc\" }",
+      annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true },
+      inputSchema: z.object({
+        handle: z.string().min(1),
+        correlationId: z.string().min(1).optional(),
+      }),
+    },
+    async ({ handle, correlationId }) => {
+      assertToolPermission("close_project");
+      const traceId = resolveCorrelationId(correlationId);
+      return auditToolCall("close_project", traceId, undefined, () => {
+        const principalId = String(getTrustedInboundIdentity().principal.id);
+        const closed = closeProjectHandle(handle, principalId);
+        if (!closed)
+          throw new Error("project_handle_unknown: no open project handle with that value for this credential");
+        saveDecisionWithContext({
+          action: "project_handle_close", reason: closed.label,
+          context: { correlationId: traceId, createdAt: new Date().toISOString() },
+        });
+        return response({
+          closed: true, project: closed.label, root: closed.root,
+          instruction: "This handle is revoked. If work continues on this project in this conversation, call open_project again and use the new handle.",
+        }, traceId);
+      });
+    },
   );
 }

@@ -60,9 +60,14 @@ describe("R2 gateway surfaces typed failure reasons", () => {
     fs.writeFileSync(target, "alpha");
     const mcp = await connectInProcessMcp();
     try {
+      // CI-G6: two roots are in the pool, so workspace-bound calls carry the
+      // conversation's project handle.
+      const handle = (json(await mcp.client.callTool({
+        name: "open_project", arguments: { path: fixture.root },
+      })) as { handle: string }).handle;
       const stale = await mcp.client.callTool({
         name: "write_file",
-        arguments: { path: target, content: "beta", ifMatchSha256: "0".repeat(64) },
+        arguments: { path: target, content: "beta", ifMatchSha256: "0".repeat(64), project: handle },
       });
       expect(stale.isError).toBe(true);
       const block = (stale as { content: Array<{ type: string; text?: string }> }).content.find((b) => b.type === "text");

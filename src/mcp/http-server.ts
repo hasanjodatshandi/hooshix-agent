@@ -389,6 +389,7 @@ async function handleRequest(
         workspaceGrantId:observation.resolution.grant.id,
         ownershipEpoch:observation.resolution.context.epoch,
         createdByBindingId:observation.resolution.binding.id,
+        workspaceRoot:observation.resolution.grant.canonicalRoot,
       };
     }
   }

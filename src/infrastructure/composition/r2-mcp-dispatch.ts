@@ -6,6 +6,9 @@ import { runWithWorkspaceScope } from "../../security/workspace-guard.js";
 import { resolveCorrelationId } from "../../core/runtime/correlation-id.js";
 import { auditToolCall } from "../../core/memory/tool-audit.js";
 import { getWorkspaceRoot, listWorkspaceRoots } from "../../security/workspace-guard.js";
+import { mintProjectHandle } from "../../security/project-handles.js";
+import { saveDecisionWithContext } from "../../core/memory/context-memory.js";
+import path from "node:path";
 
 const flatFile = new Set<ToolName>([
   "write_file","create_file","modify_file","delete_file","restore_file",
@@ -76,22 +79,41 @@ export async function executeAuthorizedDirectTool(
     }
     if(name==="get_workspace"){
       const active=getWorkspaceRoot();
+      const roots=listWorkspaceRoots();
+      const projects=roots.filter((root)=>root.exists).map((root)=>({
+        name:path.basename(root.path),path:root.path,
+      }));
       const value={
-        active,roots:listWorkspaceRoots(),
+        active,roots,projects,
         security:{
           fileToolsScope:"active workspace only",
           subprocessScope:"active workspace; cwd outside requires approval",
           effectiveDescription:"File tools: active workspace only. Subprocesses: active workspace; cwd outside requires approval.",
         },
-        hint:active===null
-          ?"No active workspace — file tools are DENIED until you select a persisted root with set_workspace. Allowed roots survive service restarts."
-          :"File tools touch the ACTIVE workspace only. Use add_workspace_roots to extend the persistent pool, set_workspace to select the active root, remove_workspace_root to drop one.",
+        hint:projects.length>=2
+          ?"This server hosts several projects. Call open_project with the path (or its unique folder name), then pass project=<handle> on every file/exec/git call in THIS conversation. The handle stays inside the conversation it was opened in."
+          :active===null
+            ?"No active workspace — file tools are DENIED until you select a persisted root with set_workspace. Allowed roots survive service restarts."
+            :"File tools touch the ACTIVE workspace only. Use add_workspace_roots to extend the persistent pool, set_workspace to select the active root, remove_workspace_root to drop one. For per-conversation project selection use open_project.",
       };
       return jsonResult(value,trace);
     }
     if(name==="set_workspace"){
       const value=raw as Record<string,unknown>;
-      const flat={...value,allRoots:listWorkspaceRoots(),
+      let handleInfo:Record<string,unknown>={};
+      if(typeof value.workspace==="string"&&value.workspace){
+        try {
+          const minted=mintProjectHandle(String(scope.principalId),value.workspace,path.basename(value.workspace));
+          handleInfo={
+            projectHandle:minted.handle,
+            projectHandleExpiresAt:new Date(minted.expiresAt).toISOString(),
+            instruction:`To stay on THIS project in this conversation, include project: "${minted.handle}" on every file/exec/git call here.`,
+          };
+          saveDecisionWithContext({action:"project_handle_mint",reason:path.basename(value.workspace),
+            context:{correlationId:trace,createdAt:new Date().toISOString()}});
+        } catch { /* selection already succeeded; the handle is a convenience */ }
+      }
+      const flat={...value,...handleInfo,allRoots:listWorkspaceRoots(),
         message:`Active workspace: ${value.workspace}. File tools are restricted to the active workspace. Other allowed roots are listed but not implicitly accessible.`};
       return jsonResult(flat,trace);
     }

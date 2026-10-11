@@ -27,8 +27,9 @@ describe("R2.09 direct command handler workspace contract",()=>{
     process.env.HOOSHIX_DIRECT_AUTO_APPROVE="0";
     const harness=await connectInProcessMcp();
     try{
+      const handle=(json(await harness.client.callTool({name:"open_project",arguments:{path:fixture.root}})) as {handle:string}).handle;
       const raw=await harness.client.callTool({name:"execute_command",arguments:{
-        command:"node",args:["--version"],
+        command:"node",args:["--version"],project:handle,
       }});
       expect(raw.isError,JSON.stringify(raw)).not.toBe(true);
       expect(json(raw)).toMatchObject({exitCode:0});

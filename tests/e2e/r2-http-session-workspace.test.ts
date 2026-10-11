@@ -35,7 +35,7 @@ describe("R2.04 HTTP transport session-scoped real workspace",()=>{
       // node/tsx cleanup can retain a directory handle briefly after process close.
       // All runtime DB/log/workspace paths remain explicitly isolated below.
       cwd:repo,
-      env:{...process.env,MCP_PORT:String(port),MCP_PUBLIC_BASE_URL:undefined,MCP_BIND_HOST:"127.0.0.1",MCP_ALLOWED_ORIGINS:undefined,MCP_ACCESS_TOKEN:undefined,HOOSHIX_BOOTSTRAP_TOKEN:bootstrap,
+      env:{...process.env,MCP_PORT:String(port),HOOSHIX_PUBLIC_BASE_URL:undefined,MCP_PUBLIC_BASE_URL:undefined,MCP_BIND_HOST:"127.0.0.1",MCP_ALLOWED_ORIGINS:undefined,MCP_ACCESS_TOKEN:undefined,HOOSHIX_BOOTSTRAP_TOKEN:bootstrap,
         HOOSHIX_WORKSPACE:[a,b].join(","),HOOSHIX_DB_PATH:path.join(fixture.root,"db","agent.sqlite"),
         HOOSHIX_LOG_DIR:path.join(fixture.root,"logs"),HOOSHIX_PERMISSION_LEVEL:"DEVELOPER_MODE"},
       stdio:["pipe","pipe","pipe"],windowsHide:true,
@@ -97,12 +97,15 @@ describe("R2.04 HTTP transport session-scoped real workspace",()=>{
       const two=await rpc("initialize",{protocolVersion:"2025-06-18",capabilities:{},clientInfo:{name:"fixture-b",version:"1"}});
       const s1=one.session!,s2=two.session!;
       expect(s1).toBeTruthy();expect(s2).toBeTruthy();expect(s1).not.toBe(s2);
-      await tool(s1,"set_workspace",{path:a});
-      await tool(s2,"set_workspace",{path:b});
+      const ws1=await tool(s1,"set_workspace",{path:a});
+      const ws2=await tool(s2,"set_workspace",{path:b});
+      expect(ws1.projectHandle).toBeTruthy();
+      expect(ws2.projectHandle).toBeTruthy();
+      expect(ws1.projectHandle).not.toBe(ws2.projectHandle);
       const [w1,w2]=await Promise.all([tool(s1,"get_workspace"),tool(s2,"get_workspace")]);
       expect(w1.active.toLowerCase()).toBe(fs.realpathSync(a).toLowerCase());
       expect(w2.active.toLowerCase()).toBe(fs.realpathSync(b).toLowerCase());
-      const [readA,readB]=await Promise.all([tool(s1,"read_file",{path:"proof.txt"}),tool(s2,"read_file",{path:"proof.txt"})]);
+      const [readA,readB]=await Promise.all([tool(s1,"read_file",{path:"proof.txt",project:ws1.projectHandle}),tool(s2,"read_file",{path:"proof.txt",project:ws2.projectHandle})]);
       // read_file returns text/plain in MCP content, not a JSON object.
       expect(readA).toBe("A-only");
       expect(readB).toBe("B-only");
