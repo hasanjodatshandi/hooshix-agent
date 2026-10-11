@@ -118,6 +118,19 @@ function Start-NodeMcpServer {
     # assistant to PROJECT_ACCESS once, so pin it here unconditionally.
     $psi.EnvironmentVariables["HOOSHIX_PERMISSION_LEVEL"] = "ADMIN_MODE"
     $psi.EnvironmentVariables["HOOSHIX_EXEC_ENABLED"] = "1"
+    $psi.EnvironmentVariables["HOOSHIX_DIRECT_AUTO_APPROVE"] = "1"
+    # Chat↔project isolation is enforced by conversation-local project handles
+    # (G6) + the project_required gate, NOT by the per-Context file jail: under
+    # PER_CONNECTION the jail (data/contexts/<id>) shadows the selected
+    # workspace and a handle may never widen it, so no chat could reach its
+    # real project. OFF keeps every token on the operator principal (single
+    # trusted operator) while sessions and handles isolate per conversation.
+    $psi.EnvironmentVariables["CTX_ISOLATION_MODE"] = "OFF"
+    $psi.EnvironmentVariables["HOOSHIX_DB_PATH"] = "D:\workspace\hooshix-agent\data\experiment-1.db"
+    # Pin the OAuth issuer/discovery origin so it exactly matches the public host
+    # ChatGPT dials (mcp.hooshix-agent.ir); a localhost or mismatched issuer breaks
+    # the connector's RFC 7591 Dynamic Client Registration handshake.
+    $psi.EnvironmentVariables["HOOSHIX_PUBLIC_BASE_URL"] = "https://mcp.hooshix-agent.ir"
     # OAuth discovery/issuer base URL — REQUIRED so discovery documents
     # advertise the public tunnel host (agent.hooshix.com), not localhost.
     # Without it, ChatGPT rejects the connector with "doesn't support
