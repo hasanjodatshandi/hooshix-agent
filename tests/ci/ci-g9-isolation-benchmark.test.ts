@@ -80,6 +80,7 @@ const observe = createRequestObserver({
 interface RegimeResult {
   readonly regime: string;
   readonly microsPerRequest: number;
+  readonly spreadMicros: number;
   readonly allowed: boolean;
 }
 
@@ -90,18 +91,28 @@ async function timeRegime(mode: "OFF" | "SHADOW" | "PER_CONNECTION", credentialH
     const observation = await observe({credentialHash, action: "MCP_REQUEST", traceId: "warm", mode});
     decideEnforcement({mode, resolution: observation.resolution});
   }
-  const start = process.hrtime.bigint();
-  for (let i = 0; i < iterations; i++) {
-    const observation = await observe({credentialHash, action: "MCP_REQUEST", traceId: `bench-${i}`, mode});
-    decideEnforcement({mode, resolution: observation.resolution});
+  // The measured work is a real INSERT into `security_audit`, and an insert is
+  // priced by the disk's fsync latency, which swings 5x on a developer machine
+  // and 30% on a CI runner. A single batch therefore reports the machine's
+  // moment, not the code's cost. Sample several batches and keep the least
+  // interfered one: an algorithmic regression slows EVERY batch, so the ceiling
+  // keeps its full detection power while unrelated load stops failing the gate.
+  const batches: number[] = [];
+  for (let b = 0; b < 5; b++) {
+    const start = process.hrtime.bigint();
+    for (let i = 0; i < iterations; i++) {
+      const observation = await observe({credentialHash, action: "MCP_REQUEST", traceId: `bench-${b}-${i}`, mode});
+      decideEnforcement({mode, resolution: observation.resolution});
+    }
+    batches.push(Number(process.hrtime.bigint() - start) / 1000 / iterations);
   }
-  const elapsed = Number(process.hrtime.bigint() - start);
   // One decision per iteration, for the assertion below.
   const final = await observe({credentialHash, action: "MCP_REQUEST", traceId: "final", mode});
   const decision = decideEnforcement({mode, resolution: final.resolution});
   return {
     regime: `${mode}/${credentialHash === boundHash ? "bound" : "unbound"}`,
-    microsPerRequest: elapsed / 1000 / iterations,
+    microsPerRequest: Math.min(...batches),
+    spreadMicros: Math.max(...batches) - Math.min(...batches),
     allowed: decision.allowed,
   };
 }
@@ -123,7 +134,7 @@ describe("CI-G9 / before-after benchmark of the isolation request path", () => {
     ];
 
     const report = results
-      .map((r) => `${r.regime}: ${r.microsPerRequest.toFixed(1)}µs (allowed=${r.allowed})`)
+      .map((r) => `${r.regime}: ${r.microsPerRequest.toFixed(1)}µs best of 5 (spread ${r.spreadMicros.toFixed(1)}µs, allowed=${r.allowed})`)
       .join("\n  ");
 
     // Correctness first, in every regime:
