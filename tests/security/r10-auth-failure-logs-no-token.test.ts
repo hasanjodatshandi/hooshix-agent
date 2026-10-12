@@ -28,7 +28,9 @@ describe("10.6 auth-failure logging leaks no token",()=>{
   const tokenFile=path.resolve(fixture.root,".token");
 
   beforeAll(async()=>{
-    fs.writeFileSync(tokenFile,BOOTSTRAP_SECRET,{flag:"wx"});
+    // 0o600 or the server refuses to boot on POSIX ("insecure bootstrap secret
+    // file: expected 0600") and every request below fails with ECONNREFUSED.
+    fs.writeFileSync(tokenFile,BOOTSTRAP_SECRET,{flag:"wx",mode:0o600});
     const port=30300+Math.floor(Math.random()*600);
     base=`http://127.0.0.1:${port}`;
     child=spawn(process.execPath,[path.resolve("dist/index-http.js")],{
@@ -50,6 +52,7 @@ describe("10.6 auth-failure logging leaks no token",()=>{
     // Wait for liveness.
     for(let attempt=0;attempt<90;attempt++){
       try{if((await fetch(base+"/health/live")).status===200)break;}catch{/* booting */}
+      if(child.exitCode!==null)throw new Error("server exited during startup:\n"+captured.join(""));
       await new Promise(resolve=>setTimeout(resolve,100));
     }
   },30000);

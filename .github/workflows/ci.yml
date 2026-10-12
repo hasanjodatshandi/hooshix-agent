@@ -42,6 +42,13 @@ jobs:
           pnpm run build
       - name: Architecture boundary gate
         run: node scripts/verify-g1-global.mjs
+      - name: Give the runner a git identity
+        # The commit/snapshot tests drive real `git commit`, and subprocesses
+        # inherit only the allowlisted environment, so the identity must come
+        # from the machine's git config, as it would on an operator workstation.
+        run: |
+          git config --global user.name "HooshiX CI"
+          git config --global user.email "ci@hooshix-agent.ir"
       - name: Test security, migrations and HTTP process contracts
         run: pnpm exec vitest run --maxWorkers=1 --no-file-parallelism
       - name: Per-file coverage evidence

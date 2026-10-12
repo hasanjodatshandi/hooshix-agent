@@ -79,7 +79,9 @@ describe("R7.03 bootstrap secret lifecycle and rotation",()=>{
   it("rejects a token file whose stored secret is too short",async()=>{
     const fixture=createDisposableFixture("r7-secret");
     const runner=runnerFor(fixture);
-    fs.writeFileSync(path.join(fixture.root,".token"),"too-short",{flag:"wx"});
+    // mode 0o600 is part of the contract: loadToken() rejects a world-readable
+    // secret on POSIX before it ever checks the length.
+    fs.writeFileSync(path.join(fixture.root,".token"),"too-short",{flag:"wx",mode:0o600});
     try{
       const proc=start(fixture,runner,baseEnv(fixture));
       const code=await awaitExit(proc.child);
@@ -114,7 +116,9 @@ describe("R7.03 bootstrap secret lifecycle and rotation",()=>{
     const base="http://127.0.0.1:"+port;
     const runner=runnerFor(fixture);
     const tokenA=strong(),tokenB=strong();
-    fs.writeFileSync(path.join(fixture.root,".token"),tokenA,{flag:"wx"});
+    // The server refuses a token file that is group/world readable, so the
+    // fixture must create it with the same 0600 the operator would use.
+    fs.writeFileSync(path.join(fixture.root,".token"),tokenA,{flag:"wx",mode:0o600});
     const login=(secret:string)=>fetch(base+"/operator/login",{
       method:"POST",redirect:"manual",body:new URLSearchParams({secret})});
 

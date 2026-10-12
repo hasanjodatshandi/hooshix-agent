@@ -71,11 +71,9 @@ describe("in-process MCP tool coverage", () => {
 
   it("git tools: init, add, commit, status, diff, branch, checkout, log", async () => {
     const cwd = "tests/tool-coverage";
-    // Ensure a git identity exists so the commit can succeed
-    process.env.GIT_AUTHOR_NAME ??= "Test User";
-    process.env.GIT_AUTHOR_EMAIL ??= "test@example.com";
-    process.env.GIT_COMMITTER_NAME ??= "Test User";
-    process.env.GIT_COMMITTER_EMAIL ??= "test@example.com";
+    // A commit needs a git identity from the environment (repo or global config),
+    // like any operator machine; GIT_* env set here would never reach the child
+    // because subprocesses get only the allowlisted environment.
     // git_init is approval-gated like other git mutations — run through a task.
     // The init task pauses for approval (git_init ∈ APPROVAL_TOOLS), so drive
     // the full task_create → task_run → task_approve → task_resume cycle.
@@ -230,7 +228,10 @@ describe("in-process MCP tool coverage", () => {
     expect(rejected).toMatchObject({ isError: true });
     expect(JSON.stringify(rejected)).toMatch(/unrestricted|Unrecognized key/i);
     const after = json(await client.callTool({ name: "get_workspace", arguments: {} }));
-    expect(after.security.fileToolsScope).toBe("active workspace only");
+    // The root added above made the pool multi-root, which is the state the
+    // handle model documents. Selection stayed pure: scope names the handle, and
+    // no unrestricted scope ever appears.
+    expect(after.security.fileToolsScope).toBe("conversation project handle (project=<handle>)");
     expect(JSON.stringify(after)).not.toContain("unrestricted");
   });
 
