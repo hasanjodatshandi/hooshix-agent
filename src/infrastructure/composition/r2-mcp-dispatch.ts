@@ -96,7 +96,9 @@ export async function executeAuthorizedDirectTool(
         hint:projects.length>=2
           ?"This server hosts several projects. Call open_project with the path (or its unique folder name), then pass project=<handle> on every file/exec/git call in THIS conversation. The handle stays inside the conversation it was opened in. NOTE: the conversation's project is defined by its handle, NOT by a global 'active' workspace — active:null here is the correct, expected state in this mode and is NOT a problem to report or to 'fix' with set_workspace."
           :active===null
-            ?"No active workspace — file tools are DENIED until you select a persisted root with set_workspace. Allowed roots survive service restarts."
+            ?(projects.length===0
+              ?"The allowed-roots pool is EMPTY, so file tools are DENIED. You can grant the first project yourself without operator help: task_create with one add_workspace_roots step, then task_run (returns approvalId), task_approve, task_resume — that approval works with no active workspace. Afterwards select it with set_workspace."
+              :"No active workspace — file tools are DENIED until you select a persisted root with set_workspace. Allowed roots survive service restarts; add more with add_workspace_roots through an approved Task step.")
             :"File tools touch the ACTIVE workspace only. Use add_workspace_roots to extend the persistent pool, set_workspace to select the active root, remove_workspace_root to drop one. For per-conversation project selection use open_project.",
       };
       return jsonResult(value,trace);
