@@ -79,7 +79,14 @@ jobs:
             echo "UNSAFE: stale lockfile image build unexpectedly succeeded"
             exit 1
           fi
-          grep -q 'ERR_PNPM_OUTDATED_LOCKFILE' "$fixture/build.log"
+          if ! grep -q 'ERR_PNPM_OUTDATED_LOCKFILE' "$fixture/build.log"; then
+            # The gate stays exactly as strict; this only refuses to fail blind.
+            # build.log is the sole evidence of why the build died, and the trap
+            # above deletes it on exit.
+            echo "EXPECTED ERR_PNPM_OUTDATED_LOCKFILE is absent from the build log:"
+            cat "$fixture/build.log"
+            exit 1
+          fi
       - name: Build immutable-source image
         run: docker build --pull --tag hooshix-r7-ci:${{ github.sha }} .
       - name: Verify non-root runtime and live health
