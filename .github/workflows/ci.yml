@@ -73,8 +73,13 @@ jobs:
           set -euo pipefail
           fixture="$(mktemp -d)"
           trap 'rm -rf "$fixture"' EXIT
-          cp Dockerfile package.json pnpm-lock.yaml pnpm-workspace.yaml "$fixture/"
-          node -e 'const fs=require("node:fs");const f=process.argv[1];const p=JSON.parse(fs.readFileSync(f,"utf8"));p.dependencies={...p.dependencies,"hooshix-ci-lock-drift-fixture":"0.0.0"};fs.writeFileSync(f,JSON.stringify(p))' "$fixture/package.json"
+          cp package.json pnpm-lock.yaml pnpm-workspace.yaml "$fixture/"
+          # The fixture image stops at the install layer. The real Dockerfile
+          # continues with COPY tsconfig.json / COPY src and a second stage;
+          # neither file exists in the fixture directory, so BuildKit aborted the
+          # build while resolving those layers and the frozen install never ran.
+          awk '/RUN pnpm install --frozen-lockfile/{print; exit} {print}' Dockerfile > "$fixture/Dockerfile"
+          node -e 'const fs=require("node:fs");const [f,run]=process.argv.slice(1);const p=JSON.parse(fs.readFileSync(f,"utf8"));p._hooshixCiDriftRun=run;p.dependencies={...p.dependencies,"hooshix-ci-lock-drift-fixture":"0.0.0"};fs.writeFileSync(f,JSON.stringify(p))' "$fixture/package.json" "$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
           if docker build --no-cache --progress=plain --file "$fixture/Dockerfile" "$fixture" >"$fixture/build.log" 2>&1; then
             echo "UNSAFE: stale lockfile image build unexpectedly succeeded"
             exit 1
