@@ -52,7 +52,7 @@ async function withIsolationServer(
     HOOSHIX_PUBLIC_BASE_URL: undefined, HOOSHIX_ALLOWED_ORIGINS: undefined,
     HOOSHIX_BOOTSTRAP_TOKEN: bootstrap,
     MCP_ACCESS_TOKEN: undefined, MCP_API_KEY: undefined,
-    MCP_PORT: String(port), HOOSHIX_PUBLIC_BASE_URL: undefined, MCP_PUBLIC_BASE_URL: base, MCP_BIND_HOST: "127.0.0.1",
+    MCP_PORT: String(port), MCP_PUBLIC_BASE_URL: base, MCP_BIND_HOST: "127.0.0.1",
     HOOSHIX_WORKSPACE: fixture.root, HOOSHIX_DB_PATH: fixture.sqlitePath,
     HOOSHIX_LOG_DIR: path.join(fixture.root, "logs"),
     HOOSHIX_PERMISSION_LEVEL: "READ_ONLY",
@@ -62,7 +62,7 @@ async function withIsolationServer(
     cwd: fixture.root, env, stdio: ["pipe", "pipe", "pipe"], windowsHide: true,
   });
   let stderr = "";
-  child.stderr.on("data", (chunk: Buffer) => { stderr += chunk.toString(); });
+  child.stderr!.on("data", (chunk: Buffer) => { stderr += chunk.toString(); });
   try {
     let ready = false;
     for (let attempt = 0; attempt < 75; attempt++) {
@@ -181,7 +181,7 @@ function issueLegacyOperatorToken(sqlitePath: string, resource: string): string 
   return raw;
 }
 
-async function mcpInitialize(base: string, resource: string, accessToken: string): Promise<void> {
+async function mcpInitialize(resource: string, accessToken: string): Promise<void> {
   const client = new Client({ name: "ci-g4-enforcement", version: "1" }, { versionNegotiation: { mode: { pin: "2026-07-28" } } });
   const transport = new StreamableHTTPClientTransport(new URL(resource), {
     requestInit: { headers: { Authorization: "Bearer " + accessToken } },
@@ -203,7 +203,7 @@ describe("CI-G4 / PER_CONNECTION enforcement on the live path", () => {
       // not invalidate live credentials.
       const legacyToken = issueLegacyOperatorToken(sqlitePath, resource);
 
-      await expect(mcpInitialize(base, resource, legacyToken)).resolves.toBeUndefined();
+      await expect(mcpInitialize(resource, legacyToken)).resolves.toBeUndefined();
 
       const db = new Database(sqlitePath, { readonly: true });
       try {
@@ -228,8 +228,8 @@ describe("CI-G4 / PER_CONNECTION enforcement on the live path", () => {
       // exactly the per-connection issuance that the CI-G7b host test found missing.
       const tok1 = await obtainToken(base, resource, bootstrap);
       const tok2 = await obtainToken(base, resource, bootstrap);
-      await expect(mcpInitialize(base, resource, tok1)).resolves.toBeUndefined();
-      await expect(mcpInitialize(base, resource, tok2)).resolves.toBeUndefined();
+      await expect(mcpInitialize(resource, tok1)).resolves.toBeUndefined();
+      await expect(mcpInitialize(resource, tok2)).resolves.toBeUndefined();
 
       const hash = (t: string) => crypto.createHash("sha256").update(t).digest("hex");
       const db = new Database(sqlitePath, { readonly: true });
@@ -300,7 +300,7 @@ describe("CI-G4 / PER_CONNECTION enforcement on the live path", () => {
 
       // SHADOW observes only: the same unbound credential authenticates and the
       // request proceeds, with the DENY recorded for the operator.
-      await expect(mcpInitialize(base, resource, unbound)).resolves.toBeUndefined();
+      await expect(mcpInitialize(resource, unbound)).resolves.toBeUndefined();
 
       const db = new Database(sqlitePath, { readonly: true });
       try {

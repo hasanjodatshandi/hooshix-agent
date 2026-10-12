@@ -42,6 +42,13 @@ jobs:
           pnpm run build
       - name: Architecture boundary gate
         run: node scripts/verify-g1-global.mjs
+      - name: Give the runner a git identity
+        # The commit/snapshot tests drive real `git commit`, and subprocesses
+        # inherit only the allowlisted environment, so the identity must come
+        # from the machine's git config, as it would on an operator workstation.
+        run: |
+          git config --global user.name "HooshiX CI"
+          git config --global user.email "ci@hooshix-agent.ir"
       - name: Test security, migrations and HTTP process contracts
         run: pnpm exec vitest run --maxWorkers=1 --no-file-parallelism
       - name: Per-file coverage evidence
@@ -66,13 +73,25 @@ jobs:
           set -euo pipefail
           fixture="$(mktemp -d)"
           trap 'rm -rf "$fixture"' EXIT
-          cp Dockerfile package.json pnpm-lock.yaml pnpm-workspace.yaml "$fixture/"
-          node -e 'const fs=require("node:fs");const f=process.argv[1];const p=JSON.parse(fs.readFileSync(f,"utf8"));p.dependencies={...p.dependencies,"hooshix-ci-lock-drift-fixture":"0.0.0"};fs.writeFileSync(f,JSON.stringify(p))' "$fixture/package.json"
+          cp package.json pnpm-lock.yaml pnpm-workspace.yaml "$fixture/"
+          # The fixture image stops at the install layer. The real Dockerfile
+          # continues with COPY tsconfig.json / COPY src and a second stage;
+          # neither file exists in the fixture directory, so BuildKit aborted the
+          # build while resolving those layers and the frozen install never ran.
+          awk '/RUN pnpm install --frozen-lockfile/{print; exit} {print}' Dockerfile > "$fixture/Dockerfile"
+          node -e 'const fs=require("node:fs");const [f,run]=process.argv.slice(1);const p=JSON.parse(fs.readFileSync(f,"utf8"));p._hooshixCiDriftRun=run;p.dependencies={...p.dependencies,"hooshix-ci-lock-drift-fixture":"0.0.0"};fs.writeFileSync(f,JSON.stringify(p))' "$fixture/package.json" "$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
           if docker build --no-cache --progress=plain --file "$fixture/Dockerfile" "$fixture" >"$fixture/build.log" 2>&1; then
             echo "UNSAFE: stale lockfile image build unexpectedly succeeded"
             exit 1
           fi
-          grep -q 'ERR_PNPM_OUTDATED_LOCKFILE' "$fixture/build.log"
+          if ! grep -q 'ERR_PNPM_OUTDATED_LOCKFILE' "$fixture/build.log"; then
+            # The gate stays exactly as strict; this only refuses to fail blind.
+            # build.log is the sole evidence of why the build died, and the trap
+            # above deletes it on exit.
+            echo "EXPECTED ERR_PNPM_OUTDATED_LOCKFILE is absent from the build log:"
+            cat "$fixture/build.log"
+            exit 1
+          fi
       - name: Build immutable-source image
         run: docker build --pull --tag hooshix-r7-ci:${{ github.sha }} .
       - name: Verify non-root runtime and live health
@@ -81,11 +100,32 @@ jobs:
           set -euo pipefail
           image="hooshix-r7-ci:${{ github.sha }}"
           test "$(docker image inspect --format '{{.Config.User}}' "$image")" = "node"
+          # The Dockerfile binds 0.0.0.0 and promises that an external binding
+          # still requires a declared trusted origin. Prove the refusal before
+          # supplying one, otherwise the promise is only a comment.
+          if docker run --rm "$image" >"$RUNNER_TEMP/refusal.log" 2>&1; then
+            echo "UNSAFE: container accepted an external bind with no HOOSHIX_PUBLIC_BASE_URL"
+            cat "$RUNNER_TEMP/refusal.log"
+            exit 1
+          fi
+          grep -q 'HOOSHIX_PUBLIC_BASE_URL\|PUBLIC_BASE_URL required' "$RUNNER_TEMP/refusal.log" || {
+            echo "container died for an unexpected reason while refusing:"
+            cat "$RUNNER_TEMP/refusal.log"
+            exit 1
+          }
           name="hooshix-r7-smoke-${{ github.run_id }}"
           trap 'docker rm -f "$name" >/dev/null 2>&1 || true' EXIT
-          docker run --detach --name "$name" "$image" >/dev/null
+          # .test is an RFC 6761 reserved TLD: a synthetic HTTPS origin that can
+          # never resolve to a real host, so no deployment endpoint is encoded.
+          docker run --detach --name "$name" \
+            -e HOOSHIX_PUBLIC_BASE_URL=https://hooshix-r7-smoke.test "$image" >/dev/null
           ready=0
           for i in $(seq 1 30); do
+            if [ "$(docker inspect --format '{{.State.Running}}' "$name")" != "true" ]; then
+              echo "container exited before becoming healthy:"
+              docker logs "$name"
+              exit 1
+            fi
             status="$(docker inspect --format '{{.State.Health.Status}}' "$name")"
             if [ "$status" = healthy ]; then ready=1; break; fi
             if [ "$status" = unhealthy ]; then docker logs "$name"; exit 1; fi

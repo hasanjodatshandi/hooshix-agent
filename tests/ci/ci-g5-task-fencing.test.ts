@@ -12,6 +12,7 @@ import {
 import { runWithTaskLeaseContext } from "../../src/core/runtime/r3-task-lease-context.js";
 import { createTaskPlan } from "../../src/core/planner/legacy-task-plan-factory.js";
 import type { TaskPlan, TaskStep } from "../../src/application/dto/legacy-task-plan.js";
+import type { ExecutionId, StepId, ToolId } from "../../src/domain/shared/ids.js";
 import {
   acquireOwnershipLease,
 } from "../../src/adapters/outbound/persistence/sqlite/repositories/context-lease.adapter.js";
@@ -99,7 +100,7 @@ function createBoundTask(input: {
   bindingId: string;
 }): void {
   const plan = oneStepPlan(input.taskId);
-  plan.state = "running";
+  plan.state = "executing";
   plan.executionContext = {
     principalId: "principal-A",
     sessionId: "sess-1",
@@ -113,7 +114,7 @@ function createBoundTask(input: {
     ownershipEpoch: input.epoch,
     createdByBindingId: input.bindingId,
   };
-  saveTaskPlan(plan, "running");
+  saveTaskPlan(plan, "executing");
 }
 
 describe("CI-G5 / migration 25 — tasks and task_leases carry the Context binding", () => {
@@ -188,7 +189,7 @@ describe("CI-G5 / migration 25 — tasks and task_leases carry the Context bindi
 
   it("leaves task_leases.context_id null for an unbound (pre-CI) task", () => {
     const plan = oneStepPlan("task-legacy");
-    plan.state = "running";
+    plan.state = "executing";
     plan.executionContext = {
       principalId: "local-stdio",
       sessionId: "local-stdio-session",
@@ -198,7 +199,7 @@ describe("CI-G5 / migration 25 — tasks and task_leases carry the Context bindi
       roots: [],
       unrestricted: false,
     };
-    saveTaskPlan(plan, "running");
+    saveTaskPlan(plan, "executing");
     acquireTaskLease("task-legacy", "runner-1", 30_000);
     const row = db.prepare("SELECT context_id FROM task_leases WHERE task_id=?").get("task-legacy") as {
       context_id: string | null;
@@ -336,24 +337,26 @@ describe("CI-G5 / fence at the receipt — zero double execution", () => {
 
   /** Start the receipt the way the loop does, inside a live task lease. */
   function beginReceiptFor(taskId: string, step: TaskStep): void {
+    // The lease ALS runs its callback synchronously, so a fencing refusal
+    // escapes here and the tests' `expect(() => …).toThrow()` still sees it.
     runWithTaskLeaseContext(acquireTaskLease(taskId, "runner-1", 30_000), () => {
       beginStepExecutionReceipt(taskId, step, 0, {
-        executionId: "exec-" + taskId,
-        stepId: step.id,
-        attempt: 1,
-        toolId: "exec",
+        executionId: ("exec-" + taskId) as ExecutionId,
+        stepId: step.id as StepId,
+        toolId: "exec" as ToolId,
         effect: "non_idempotent_mutation",
         status: "started",
         startedAt: new Date().toISOString(),
         reconciliation: "unresolved",
       });
+      return Promise.resolve();
     });
   }
 
   /** A step of a running Task, in the state the loop dispatches from. */
   function runningStepOf(taskId: string): TaskStep {
     const plan = oneStepPlan(taskId);
-    plan.state = "running";
+    plan.state = "executing";
     const step = plan.steps[0];
     step.status = "running";
     step.attempts = 1;
@@ -393,7 +396,7 @@ describe("CI-G5 / fence at the receipt — zero double execution", () => {
   it("never fences an unbound task even when no lease exists anywhere", () => {
     db.prepare("DELETE FROM ownership_lease").run();
     const plan = oneStepPlan("task-unbound");
-    plan.state = "running";
+    plan.state = "executing";
     plan.executionContext = {
       principalId: "local-stdio",
       sessionId: "local-stdio-session",
@@ -403,7 +406,7 @@ describe("CI-G5 / fence at the receipt — zero double execution", () => {
       roots: [],
       unrestricted: false,
     };
-    saveTaskPlan(plan, "running");
+    saveTaskPlan(plan, "executing");
     expect(() => beginReceiptFor("task-unbound", runningStepOf("task-unbound"))).not.toThrow();
   });
 });

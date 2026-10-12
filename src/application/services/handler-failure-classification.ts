@@ -21,7 +21,9 @@
 export function classifyHandlerFailure(error: unknown): string {
   if (!(error instanceof Error)) return "tool_handler_failure";
   const message = error.message;
-  const code = (error as NodeJS.ErrnoException & { code?: string }).code;
+  // Structural, not `NodeJS.ErrnoException`: the R1 gate compiles this layer with
+  // `types: []` precisely so application/domain cannot depend on Node globals.
+  const code = (error as { code?: string }).code;
 
   // AgentError carries a typed code (src/core/errors.ts). Importing that
   // module here would break the layering rule (application may not import

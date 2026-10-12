@@ -42,11 +42,20 @@ export interface SpawnResult extends Omit<ExecaResultLike, "stdout" | "stderr"> 
  */
 function killProcessTree(pid: number): void {
   try {
-    const killer = process.platform === "win32"
-      ? nodeSpawn("taskkill", ["/PID", String(pid), "/T", "/F"], { windowsHide: true, stdio: "ignore" })
-      : nodeSpawn("kill", ["-TERM", String(pid)], { stdio: "ignore" });
-    killer.unref();
-    killer.on("error", () => { /* best effort */ });
+    if (process.platform === "win32") {
+      const killer = nodeSpawn("taskkill", ["/PID", String(pid), "/T", "/F"], { windowsHide: true, stdio: "ignore" });
+      killer.unref();
+      killer.on("error", () => { /* best effort */ });
+      return;
+    }
+    // A negative pid signals the whole process group, which the child leads
+    // because it is spawned detached on POSIX. Signalling only `pid` would kill
+    // the direct child and strand its descendants.
+    try {
+      process.kill(-pid, "SIGTERM");
+    } catch {
+      process.kill(pid, "SIGTERM");
+    }
   } catch {
     /* best effort — see jsdoc */
   }
@@ -90,6 +99,8 @@ export async function spawn(command: string, args: string[], options: SpawnOptio
   try {
     const subprocess = execa(command, args, {
       ...rest, encoding: "utf8", extendEnv: false,
+      // Own process group on POSIX so termination can signal every descendant.
+      detached: process.platform !== "win32",
       env: buildChildProcessEnvironment(), cancelSignal: controller.signal,
     } as Options);
     if (typeof subprocess.pid === "number" && subprocess.pid > 0) pidHolder.pid = subprocess.pid;

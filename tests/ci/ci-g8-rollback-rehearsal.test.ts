@@ -98,7 +98,7 @@ function issueUnboundToken(sqlitePath: string, resource: string): string {
   return raw;
 }
 
-async function mcpInitialize(base: string, resource: string, accessToken: string): Promise<void> {
+async function mcpInitialize(resource: string, accessToken: string): Promise<void> {
   const client = new Client({name: "ci-g8-rehearsal", version: "1"}, {versionNegotiation: {mode: {pin: "2026-07-28"}}});
   const transport = new StreamableHTTPClientTransport(new URL(resource), {
     requestInit: {headers: {Authorization: "Bearer " + accessToken}},
@@ -162,7 +162,7 @@ async function runPhase(
     HOOSHIX_PUBLIC_BASE_URL: undefined, HOOSHIX_ALLOWED_ORIGINS: undefined,
     HOOSHIX_BOOTSTRAP_TOKEN: bootstrap,
     MCP_ACCESS_TOKEN: undefined, MCP_API_KEY: undefined,
-    MCP_PORT: String(port), HOOSHIX_PUBLIC_BASE_URL: undefined, MCP_PUBLIC_BASE_URL: base, MCP_BIND_HOST: "127.0.0.1",
+    MCP_PORT: String(port), MCP_PUBLIC_BASE_URL: base, MCP_BIND_HOST: "127.0.0.1",
     HOOSHIX_WORKSPACE: fixture.root, HOOSHIX_DB_PATH: fixture.sqlitePath,
     HOOSHIX_LOG_DIR: path.join(fixture.root, "logs"),
     HOOSHIX_PERMISSION_LEVEL: "READ_ONLY",
@@ -172,7 +172,7 @@ async function runPhase(
     cwd: fixture.root, env, stdio: ["pipe", "pipe", "pipe"], windowsHide: true,
   });
   let stderr = "";
-  child.stderr.on("data", (chunk: Buffer) => {
+  child.stderr!.on("data", (chunk: Buffer) => {
     stderr += chunk.toString();
   });
   try {
@@ -214,7 +214,7 @@ describe("CI-G8 / rollback rehearsal on one non-sensitive project", () => {
       await runPhase(fixture, port, "OFF", bootstrap, async (base) => {
         const resource = base + "/mcp";
         liveCredential = await obtainToken(base, resource, bootstrap);
-        await expect(mcpInitialize(base, resource, liveCredential)).resolves.toBeUndefined();
+        await expect(mcpInitialize(resource, liveCredential)).resolves.toBeUndefined();
       });
 
       // ── Phase 2: SHADOW — observe only. The unbound credential flows, but the
@@ -223,9 +223,9 @@ describe("CI-G8 / rollback rehearsal on one non-sensitive project", () => {
         const resource = base + "/mcp";
         const unbound = issueUnboundToken(sqlitePath, resource);
         // Live traffic still served.
-        await expect(mcpInitialize(base, resource, liveCredential)).resolves.toBeUndefined();
+        await expect(mcpInitialize(resource, liveCredential)).resolves.toBeUndefined();
         // Unbound traffic ALSO served — SHADOW observes, never enforces.
-        await expect(mcpInitialize(base, resource, unbound)).resolves.toBeUndefined();
+        await expect(mcpInitialize(resource, unbound)).resolves.toBeUndefined();
         const audits = readAudits(sqlitePath);
         const denies = audits.filter((row) => row.decision === "DENY");
         expect(denies, JSON.stringify(audits)).not.toHaveLength(0);
@@ -236,7 +236,7 @@ describe("CI-G8 / rollback rehearsal on one non-sensitive project", () => {
       await runPhase(fixture, port, "PER_CONNECTION", bootstrap, async (base, sqlitePath) => {
         const resource = base + "/mcp";
         const unbound = issueUnboundToken(sqlitePath, resource);
-        await expect(mcpInitialize(base, resource, liveCredential)).resolves.toBeUndefined();
+        await expect(mcpInitialize(resource, liveCredential)).resolves.toBeUndefined();
         await expectRefused(resource, unbound);
       });
 
@@ -247,8 +247,8 @@ describe("CI-G8 / rollback rehearsal on one non-sensitive project", () => {
       await runPhase(fixture, port, "OFF", bootstrap, async (base, sqlitePath) => {
         const resource = base + "/mcp";
         const unbound = issueUnboundToken(sqlitePath, resource);
-        await expect(mcpInitialize(base, resource, liveCredential)).resolves.toBeUndefined();
-        await expect(mcpInitialize(base, resource, unbound)).resolves.toBeUndefined();
+        await expect(mcpInitialize(resource, liveCredential)).resolves.toBeUndefined();
+        await expect(mcpInitialize(resource, unbound)).resolves.toBeUndefined();
       });
 
       // ── Phase 5: re-enroll in SHADOW. The audit history written in phases 2
@@ -256,7 +256,7 @@ describe("CI-G8 / rollback rehearsal on one non-sensitive project", () => {
       // not erase the observation record.
       await runPhase(fixture, port, "SHADOW", bootstrap, async (base, sqlitePath) => {
         const resource = base + "/mcp";
-        await expect(mcpInitialize(base, resource, liveCredential)).resolves.toBeUndefined();
+        await expect(mcpInitialize(resource, liveCredential)).resolves.toBeUndefined();
         const audits = readAudits(sqlitePath);
         // History from the earlier SHADOW pass survived the full cycle.
         const shadowDenies = audits.filter((row) => row.action === "MCP_REQUEST" && row.decision === "DENY");

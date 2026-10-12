@@ -279,11 +279,12 @@ describe("CI-1.01 / TransferIntent", () => {
       ...sampleIntent(),
       id: "intent-2",
       kind: "FORK",
+      now: NOW,
     });
     expect(fork.kind).toBe("FORK");
     expect(isIntentVisibleToSource(fork)).toBe(true);
     expect(isIntentTerminal(transitionTransferIntent(fork, "CANCELLED", NOW))).toBe(true);
     // Unknown kind is a domain error.
-    expect(() => createTransferIntent({ ...sampleIntent(), kind: "CLONE" as never })).toThrow(DomainError);
+    expect(() => createTransferIntent({ ...sampleIntent(), now: NOW, kind: "CLONE" as never })).toThrow(DomainError);
   });
 });

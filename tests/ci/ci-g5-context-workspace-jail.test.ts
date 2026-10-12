@@ -51,7 +51,7 @@ async function withServer(
     HOOSHIX_PUBLIC_BASE_URL: undefined, HOOSHIX_ALLOWED_ORIGINS: undefined,
     HOOSHIX_BOOTSTRAP_TOKEN: bootstrap,
     MCP_ACCESS_TOKEN: undefined, MCP_API_KEY: undefined,
-    MCP_PORT: String(port), HOOSHIX_PUBLIC_BASE_URL: undefined, MCP_PUBLIC_BASE_URL: base, MCP_BIND_HOST: "127.0.0.1",
+    MCP_PORT: String(port), MCP_PUBLIC_BASE_URL: base, MCP_BIND_HOST: "127.0.0.1",
     HOOSHIX_WORKSPACE: workspaceDir,
     HOOSHIX_DB_PATH: fixture.sqlitePath,
     HOOSHIX_LOG_DIR: path.join(fixture.root, "logs"),
@@ -62,7 +62,7 @@ async function withServer(
     cwd: fixture.root, env, stdio: ["pipe", "pipe", "pipe"], windowsHide: true,
   });
   let stderr = "";
-  child.stderr.on("data", (chunk: Buffer) => { stderr += chunk.toString(); });
+  child.stderr!.on("data", (chunk: Buffer) => { stderr += chunk.toString(); });
   try {
     let ready = false;
     for (let attempt = 0; attempt < 75; attempt++) {
