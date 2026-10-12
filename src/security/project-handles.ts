@@ -136,7 +136,7 @@ export function resolveProjectSelector(selector: string): ProjectSelectorResolut
   const describePool = () =>
     pool.length
       ? pool.map((p) => `${path.basename(p)} (${p})`).join(", ")
-      : "(none — add one with add_workspace_roots)";
+      : "(none — add one through a governed Task containing an add_workspace_roots step)";
   let match: string | undefined;
   const direct = path.resolve(selector);
   try {
@@ -158,7 +158,7 @@ export function resolveProjectSelector(selector: string): ProjectSelectorResolut
     match = byName[0];
   }
   if (!match)
-    throw new Error(`project_not_allowed: "${selector}" is not an allowed project. Allowed projects: ${describePool()}.`);
+    throw new Error(`project_not_allowed: "${selector}" is not an allowed project. Allowed projects: ${describePool()}. To grant a new one, run a governed Task with a single add_workspace_roots step (task_create → task_run → task_approve → task_resume) — it works with no active workspace.`);
   if (!fs.existsSync(match))
     throw new Error(`project_unavailable: ${match} does not exist on disk — fix or remove it with remove_workspace_root`);
   return { root: fs.realpathSync(match), label: path.basename(match) };
