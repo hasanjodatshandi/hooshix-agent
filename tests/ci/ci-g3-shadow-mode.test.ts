@@ -41,7 +41,7 @@ async function withShadowServer(
     HOOSHIX_PUBLIC_BASE_URL: undefined, HOOSHIX_ALLOWED_ORIGINS: undefined,
     HOOSHIX_BOOTSTRAP_TOKEN: bootstrap,
     MCP_ACCESS_TOKEN: undefined, MCP_API_KEY: undefined,
-    MCP_PORT: String(port), HOOSHIX_PUBLIC_BASE_URL: undefined, MCP_PUBLIC_BASE_URL: base, MCP_BIND_HOST: "127.0.0.1",
+    MCP_PORT: String(port), MCP_PUBLIC_BASE_URL: base, MCP_BIND_HOST: "127.0.0.1",
     HOOSHIX_WORKSPACE: fixture.root, HOOSHIX_DB_PATH: fixture.sqlitePath,
     HOOSHIX_LOG_DIR: path.join(fixture.root, "logs"),
     HOOSHIX_PERMISSION_LEVEL: "READ_ONLY",
@@ -51,7 +51,7 @@ async function withShadowServer(
     cwd: fixture.root, env, stdio: ["pipe", "pipe", "pipe"], windowsHide: true,
   });
   let stderr = "";
-  child.stderr.on("data", (chunk: Buffer) => { stderr += chunk.toString(); });
+  child.stderr!.on("data", (chunk: Buffer) => { stderr += chunk.toString(); });
   try {
     let ready = false;
     for (let attempt = 0; attempt < 75; attempt++) {
@@ -107,7 +107,7 @@ async function obtainToken(base: string, resource: string, bootstrap: string): P
   return (await exchange.json() as { access_token: string }).access_token;
 }
 
-async function mcpInitialize(base: string, resource: string, accessToken: string): Promise<void> {
+async function mcpInitialize(resource: string, accessToken: string): Promise<void> {
   const client = new Client({ name: "ci-g3-shadow", version: "1" }, { versionNegotiation: { mode: { pin: "2026-07-28" } } });
   const transport = new StreamableHTTPClientTransport(new URL(resource), {
     requestInit: { headers: { Authorization: "Bearer " + accessToken } },
@@ -127,7 +127,7 @@ describe("CI-G3 / SHADOW mode request observation", () => {
       expect(accessToken).toBeTruthy();
 
       // SHADOW must not change behavior: the request is served as before.
-      await expect(mcpInitialize(base, resource, accessToken)).resolves.toBeUndefined();
+      await expect(mcpInitialize(resource, accessToken)).resolves.toBeUndefined();
 
       const db = new Database(sqlitePath, { readonly: true });
       try {
@@ -150,7 +150,7 @@ describe("CI-G3 / SHADOW mode request observation", () => {
     await withShadowServer("OFF", async (base, sqlitePath, bootstrap) => {
       const resource = base + "/mcp";
       const accessToken = await obtainToken(base, resource, bootstrap);
-      await mcpInitialize(base, resource, accessToken);
+      await mcpInitialize(resource, accessToken);
 
       const db = new Database(sqlitePath, { readonly: true });
       try {

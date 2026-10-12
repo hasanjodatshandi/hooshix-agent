@@ -21,7 +21,9 @@ const NOW = "2026-10-02T14:00:00.000Z";
 function fakeResolver(bindings: ReadonlyMap<string, { contextId: string; state: "ACTIVE" | "FROZEN" }>): ContextResolver {
   return {
     async resolve({ principal }) {
-      if (!isPrincipalBound(principal)) return { status: "UNBOUND", reason: "CONTEXT_NOT_BOUND" };
+      // Deny-by-default: a caller that arrives without a verified principal has
+      // no identity to key on, which is the same refusal as an unbound one.
+      if (principal === undefined || !isPrincipalBound(principal)) return { status: "UNBOUND", reason: "CONTEXT_NOT_BOUND" };
       const entry = bindings.get(principal.credentialBindingId as string);
       if (!entry) return { status: "UNBOUND", reason: "CONTEXT_NOT_BOUND" };
       if (entry.state !== "ACTIVE") {

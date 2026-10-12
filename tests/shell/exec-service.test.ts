@@ -121,7 +121,10 @@ describe("exec: unrestricted shell behind a two-part access gate", () => {
 
   it("dispatches through the shell handler like the task executor does", async () => {
     enable();
-    const result = await dispatchToHandler("exec", { command: "node --version" }, "exec-dispatch-correlation");
+    const result = (await dispatchToHandler("exec", { command: "node --version" }, "exec-dispatch-correlation")) as {
+      exitCode?: number;
+      stdout?: string;
+    };
     expect(result).toMatchObject({ exitCode: 0 });
     expect(String(result.stdout)).toContain("v");
   });

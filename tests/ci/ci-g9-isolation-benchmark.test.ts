@@ -1,7 +1,6 @@
 import crypto from "node:crypto";
 import {beforeEach, afterEach, describe, expect, it} from "vitest";
 import {createDisposableFixture} from "../helpers/r0-disposable-fixtures.js";
-import Database from "better-sqlite3";
 import {runMigrations} from "../../src/core/memory/database/migrations.js";
 import {applyBaseSchemaMigration} from "../../src/adapters/outbound/persistence/sqlite/base-schema.migration.js";
 import {closeAgentDatabase} from "../../src/adapters/outbound/persistence/sqlite/connection.adapter.js";

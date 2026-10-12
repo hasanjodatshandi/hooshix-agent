@@ -57,7 +57,7 @@ async function withIsolationServer(
     HOOSHIX_PUBLIC_BASE_URL: undefined, HOOSHIX_ALLOWED_ORIGINS: undefined,
     HOOSHIX_BOOTSTRAP_TOKEN: bootstrap,
     MCP_ACCESS_TOKEN: undefined, MCP_API_KEY: undefined,
-    MCP_PORT: String(port), HOOSHIX_PUBLIC_BASE_URL: undefined, MCP_PUBLIC_BASE_URL: base, MCP_BIND_HOST: "127.0.0.1",
+    MCP_PORT: String(port), MCP_PUBLIC_BASE_URL: base, MCP_BIND_HOST: "127.0.0.1",
     HOOSHIX_WORKSPACE: fixture.root, HOOSHIX_DB_PATH: fixture.sqlitePath,
     HOOSHIX_LOG_DIR: path.join(fixture.root, "logs"),
     HOOSHIX_PERMISSION_LEVEL: "READ_ONLY",
@@ -67,7 +67,7 @@ async function withIsolationServer(
     cwd: fixture.root, env, stdio: ["pipe", "pipe", "pipe"], windowsHide: true,
   });
   let stderr = "";
-  child.stderr.on("data", (chunk: Buffer) => {
+  child.stderr!.on("data", (chunk: Buffer) => {
     stderr += chunk.toString();
   });
   try {
@@ -180,7 +180,7 @@ function bindTokenToContext(
 }
 
 /** Call the read-only probe through the modern MCP endpoint. */
-async function callProbe(base: string, resource: string, accessToken: string): Promise<Record<string, unknown>> {
+async function callProbe(resource: string, accessToken: string): Promise<Record<string, unknown>> {
   const client = new Client({ name: "ci-g7-probe", version: "1" }, { versionNegotiation: { mode: { pin: "2026-07-28" } } });
   const transport = new StreamableHTTPClientTransport(new URL(resource), {
     requestInit: { headers: { Authorization: "Bearer " + accessToken } },
@@ -188,7 +188,8 @@ async function callProbe(base: string, resource: string, accessToken: string): P
   try {
     await client.connect(transport);
     const result = await client.callTool({ name: "chat_isolation_probe", arguments: {} });
-    const text = result.content?.[0]?.text;
+    const block = result.content?.[0];
+    const text = block?.type === "text" ? block.text : undefined;
     expect(text, JSON.stringify(result)).toBeDefined();
     return JSON.parse(text!) as Record<string, unknown>;
   } finally {
@@ -198,7 +199,7 @@ async function callProbe(base: string, resource: string, accessToken: string): P
 
 describe("CI-G7 / chat_isolation_probe on a live server", () => {
   it("reports DISTINCT Context pseudonyms for two independently bound connections", async () => {
-    await withIsolationServer("PER_CONNECTION", async (base, sqlitePath, bootstrap) => {
+    await withIsolationServer("PER_CONNECTION", async (base, sqlitePath) => {
       const resource = base + "/mcp";
       // Two chats = two connections = two principals, each with its own token,
       // Context, binding and grant. Nothing is shared except the server.
@@ -209,8 +210,8 @@ describe("CI-G7 / chat_isolation_probe on a live server", () => {
         sqlitePath, resource, "principal-chat-b", "ctx-chat-b", "bind-chat-b", "grant-chat-b",
       );
 
-      const probeA = await callProbe(base, resource, tokenA);
-      const probeB = await callProbe(base, resource, tokenB);
+      const probeA = await callProbe(resource, tokenA);
+      const probeB = await callProbe(resource, tokenB);
 
       // Both requests resolved — the gate requires 100% request-context match.
       expect(probeA.bind_state).toBe("RESOLVED");
@@ -225,14 +226,14 @@ describe("CI-G7 / chat_isolation_probe on a live server", () => {
   }, 45_000);
 
   it("reports the SAME Context when the same connection asks twice (request-context match)", async () => {
-    await withIsolationServer("PER_CONNECTION", async (base, sqlitePath, bootstrap) => {
+    await withIsolationServer("PER_CONNECTION", async (base, sqlitePath) => {
       const resource = base + "/mcp";
       const token = bindTokenToContext(
         sqlitePath, resource, "principal-chat-a", "ctx-chat-a", "bind-chat-a", "grant-chat-a",
       );
 
-      const first = await callProbe(base, resource, token);
-      const second = await callProbe(base, resource, token);
+      const first = await callProbe(resource, token);
+      const second = await callProbe(resource, token);
 
       // One connection, one Context, repeated requests — the resolution is
       // stable, so a chat never observes a Context that shifts under it.
@@ -270,7 +271,7 @@ describe("CI-G7 / chat_isolation_probe on a live server", () => {
         db.close();
       }
 
-      const probe = await callProbe(base, resource, raw);
+      const probe = await callProbe(resource, raw);
       expect(probe.bind_state).toBe("UNBOUND");
       expect(probe.server_context_pseudonym).toBeNull();
       expect(probe.ownership_epoch).toBeNull();
@@ -288,7 +289,7 @@ describe("CI-G7 / chat_isolation_probe on a live server", () => {
         sqlitePath, resource, "principal-chat-a", "ctx-chat-a", "bind-chat-a", "grant-chat-a",
       );
 
-      const probe = await callProbe(base, resource, token);
+      const probe = await callProbe(resource, token);
       const serialized = JSON.stringify(probe);
 
       // The probe output must not carry any raw identity material back to the
@@ -312,7 +313,7 @@ describe("CI-G7 / chat_isolation_probe on a live server", () => {
       // pinned, so resolution is a total no-op and the probe's honest answer is
       // UNBOUND — not a tool that has silently vanished from the catalog.
       const accessToken = await obtainToken(base, resource, bootstrap);
-      const probe = await callProbe(base, resource, accessToken);
+      const probe = await callProbe(resource, accessToken);
       expect(probe.bind_state).toBe("UNBOUND");
       expect(probe.server_context_pseudonym).toBeNull();
       expect(probe.ownership_epoch).toBeNull();
