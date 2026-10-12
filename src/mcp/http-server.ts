@@ -10,6 +10,7 @@ import { parseTimestamp } from "../core/executor/handlers/metrics-arguments.js";
 import http from "node:http";
 import crypto from "node:crypto";
 import fs from "node:fs";
+import path from "node:path";
 import {loadAppConfig} from "../infrastructure/config/app-config.js";
 import { createSessionWorkspaceContext, runWithSessionWorkspace, type SessionWorkspaceContext } from "../security/workspace-guard.js";
 import { runWithTrustedInboundIdentity } from "../core/runtime/r2-trusted-inbound-identity.js";
@@ -128,8 +129,12 @@ const modernContexts=new HttpPrincipalContexts<SessionWorkspaceContext>(undefine
   APP_CONFIG.session.idleMs,APP_CONFIG.session.absoluteMs,APP_CONFIG.session.contextCap);
 const modernHandler=toNodeHandler(createMcpHandler(()=>createServer(),{legacy:"reject"}));
 
-fs.mkdirSync("logs", { recursive: true });
-const MCP_DIAG_LOG = "logs/mcp-requests.jsonl";
+// The diagnostic log belongs to the configured log directory, not a
+// CWD-relative "logs": the shipped container runs as the non-root `node` user
+// with a root-owned /app working directory, so the relative path failed boot
+// with EACCES and silently ignored HOOSHIX_LOG_DIR.
+const MCP_DIAG_LOG = path.join(APP_CONFIG.logDirectory, "mcp-requests.jsonl");
+fs.mkdirSync(APP_CONFIG.logDirectory, { recursive: true });
 
 
 /**
