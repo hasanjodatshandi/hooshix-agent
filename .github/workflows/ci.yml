@@ -100,11 +100,32 @@ jobs:
           set -euo pipefail
           image="hooshix-r7-ci:${{ github.sha }}"
           test "$(docker image inspect --format '{{.Config.User}}' "$image")" = "node"
+          # The Dockerfile binds 0.0.0.0 and promises that an external binding
+          # still requires a declared trusted origin. Prove the refusal before
+          # supplying one, otherwise the promise is only a comment.
+          if docker run --rm "$image" >"$RUNNER_TEMP/refusal.log" 2>&1; then
+            echo "UNSAFE: container accepted an external bind with no HOOSHIX_PUBLIC_BASE_URL"
+            cat "$RUNNER_TEMP/refusal.log"
+            exit 1
+          fi
+          grep -q 'HOOSHIX_PUBLIC_BASE_URL\|PUBLIC_BASE_URL required' "$RUNNER_TEMP/refusal.log" || {
+            echo "container died for an unexpected reason while refusing:"
+            cat "$RUNNER_TEMP/refusal.log"
+            exit 1
+          }
           name="hooshix-r7-smoke-${{ github.run_id }}"
           trap 'docker rm -f "$name" >/dev/null 2>&1 || true' EXIT
-          docker run --detach --name "$name" "$image" >/dev/null
+          # .test is an RFC 6761 reserved TLD: a synthetic HTTPS origin that can
+          # never resolve to a real host, so no deployment endpoint is encoded.
+          docker run --detach --name "$name" \
+            -e HOOSHIX_PUBLIC_BASE_URL=https://hooshix-r7-smoke.test "$image" >/dev/null
           ready=0
           for i in $(seq 1 30); do
+            if [ "$(docker inspect --format '{{.State.Running}}' "$name")" != "true" ]; then
+              echo "container exited before becoming healthy:"
+              docker logs "$name"
+              exit 1
+            fi
             status="$(docker inspect --format '{{.State.Health.Status}}' "$name")"
             if [ "$status" = healthy ]; then ready=1; break; fi
             if [ "$status" = unhealthy ]; then docker logs "$name"; exit 1; fi
