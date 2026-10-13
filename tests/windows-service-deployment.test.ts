@@ -5,17 +5,27 @@ import { describe, expect, it } from "vitest";
 const repo = process.cwd();
 const deployRoot = path.join(repo, "deploy", "windows");
 
+/**
+ * Read a file with the line endings the assertions are written against. This
+ * checkout uses `core.autocrlf`, so the same Go source has CRLF on a Windows
+ * developer machine and LF in CI and in git; a gate that matched `\n` would
+ * disagree about the code depending on who cloned it.
+ */
+function readText(file: string): string {
+  return fs.readFileSync(file, "utf8").replaceAll("\r\n", "\n");
+}
+
 /** Every Go source in the Windows deployment module, including its tests. */
 function goSources(dir = deployRoot): { file: string; text: string }[] {
   return fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
     const where = path.join(dir, entry.name);
     if (entry.isDirectory()) return goSources(where);
-    return entry.name.endsWith(".go") ? [{ file: where, text: fs.readFileSync(where, "utf8") }] : [];
+    return entry.name.endsWith(".go") ? [{ file: where, text: readText(where) }] : [];
   });
 }
 
 function find(relative: string): string {
-  return fs.readFileSync(path.join(deployRoot, relative), "utf8");
+  return readText(path.join(deployRoot, relative));
 }
 
 describe("Windows service deployment invariants", () => {
@@ -88,7 +98,7 @@ describe("Windows service deployment invariants", () => {
     const portable = new Set(["state.go", "state_test.go", "icon.go", "icon_test.go"]);
     for (const entry of fs.readdirSync(trayDir)) {
       if (!entry.endsWith(".go")) continue;
-      const text = fs.readFileSync(path.join(trayDir, entry), "utf8");
+      const text = readText(path.join(trayDir, entry));
       const first = text.split("\n", 1)[0].trim();
       if (portable.has(entry)) {
         expect(first, `${entry} must build on every OS`).not.toMatch(/^\/\/go:build/);
@@ -165,7 +175,7 @@ describe("Windows installer package invariants", () => {
   const layout = find("internal/setup/layout.go");
   const payload = find("internal/setup/payload.go");
   const archive = find("internal/setup/archive.go");
-  const buildScript = fs.readFileSync(path.join(repo, "scripts", "build-windows-installer.mjs"), "utf8");
+  const buildScript = readText(path.join(repo, "scripts", "build-windows-installer.mjs"));
 
   it("verifies the runtime it carries before it changes the machine", () => {
     // The order is the entire contract: a truncated download has to fail with

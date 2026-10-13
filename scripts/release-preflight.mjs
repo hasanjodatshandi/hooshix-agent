@@ -68,7 +68,7 @@ const result = {
   outstandingManualGates: [
     "Official docs/implementation/27_RELEASE_READINESS_CHECKLIST.md and 29_IMPLEMENTATION_PROGRESS_LEDGER.md",
     "Representative database-copy migration, integrity and restore-drill evidence",
-    "Authentication, external HTTP exposure, watchdog ownership and operator-approved cutover/rollback",
+    "Authentication, external HTTP exposure, supervised process ownership and operator-approved cutover/rollback",
     "Release tag/commit provenance and owner approval"
   ]
 };

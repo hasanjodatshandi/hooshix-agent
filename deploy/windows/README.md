@@ -80,6 +80,33 @@ Permission knobs stay out of the installer on purpose. `HOOSHIX_PERMISSION_LEVEL
 are never written: shipping them switched on would hand every fresh install an
 endpoint that executes anything the model asks for.
 
+## Migrating a machine that already runs the connector
+
+A machine where the server already runs some other way — a logon task, a respawn
+script, an interactive `pnpm dev:http` — holds two things the service must not
+duplicate: the listener on the port and the operator's data. In order:
+
+1. **Read the live environment first.** Whatever the old launcher pinned (the
+   permission ceiling, `CTX_ISOLATION_MODE`, the database path, the log
+   directory, the token file) has to be written into
+   `%ProgramData%\HooshiXMCP\settings.json` before the service starts, because a
+   connector that comes back with a different ceiling looks identical from the
+   outside. Those go in the `env` map, which overrides the defaults
+   `internal/host/settings.go` would otherwise apply — including
+   `HOOSHIX_DB_PATH`, whose default is a fresh `data/mcp.db`, not the operator's
+   existing file.
+2. **Stop the old mechanism by its own name** — disable its task, exit its script
+   — and confirm the port is free. Neither the service nor the installer stops a
+   process it did not start; both refuse to bind over one instead.
+3. **Install and start.** `pnpm run installer:windows` plus Setup.exe is the
+   delivered install. `hooshix-mcp-service service install` from an elevated
+   prompt, beside a settings document that points at the checkout, is what a
+   machine that develops the code wants: after that, `pnpm build` and
+   `pnpm run service:restart` is the whole loop.
+4. **Verify before removing anything.** `pnpm run service:status` shows the SCM
+   state and the published server state together, `/health/ready` answers 200, and
+   the tray icon is green. Only then does the old launcher get deleted.
+
 ## Settings document
 
 `%ProgramData%\HooshiXMCP\settings.json` is the machine-wide description of the

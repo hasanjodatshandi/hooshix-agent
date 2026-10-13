@@ -5,7 +5,7 @@ Status: R7 implementation document. This is NOT a production release or a replac
 ## Supported security contract
 
 - Use Node.js 24 and pnpm 11.24.0; install with `pnpm install --frozen-lockfile`, then `pnpm run typecheck && pnpm run build`.
-- The default local HTTP listener is `127.0.0.1:3001`. Start with `node dist/index-http.js` or `scripts/start_nodejs_mcp.bat` from a deliberately configured environment. Do not start another instance when the port already has an unowned listener.
+- The default local HTTP listener is `127.0.0.1:3001`. Start with `node dist/index-http.js` from a deliberately configured environment, or install the Windows service described below. Do not start another instance when the port already has an unowned listener.
 - `GET /health/live` is unauthenticated and returns only `{"status":"ok"}`. `GET /health/ready` returns a minimal readiness result; `GET /health` is a protected monitoring endpoint, not the liveness probe.
 - The bootstrap credential is an operator-only secret, NOT an MCP bearer/access token. The server accepts `HOOSHIX_BOOTSTRAP_TOKEN` (minimum 32 UTF-8 bytes), otherwise loads a securely generated local token file. Default file location for Windows/local mode: `.token` in the service working directory; container mode: `HOOSHIX_BOOTSTRAP_TOKEN_FILE=/app/data/.token`. Never copy a bootstrap secret into client `Authorization` headers. Use OAuth discovery and authorization code/PKCE for MCP clients; use the operator login for browser diagnostics.
 - `MCP_API_KEY` and `MCP_ACCESS_TOKEN` are REMOVED legacy input names and cause explicit startup failure; eliminate them from host/service environments. Neither an empty legacy variable nor an old watchdog configuration is permitted.
@@ -50,16 +50,28 @@ Status: R7 implementation document. This is NOT a production release or a replac
   `docs/implementation/R7_DEPLOYMENT_PINNING_2026-09-23.md`. Refresh the digest only through
   that procedure and re-run the container smoke gate afterwards; do not revert to a rolling tag.
 
-## Windows watchdog / manual startup
+## Windows service / manual startup
 
-- The watchdog probes unauthenticated `/health/live` and must NEVER pass the obsolete `MCP_ACCESS_TOKEN` variable into the server. The operator supplies an optional public base URL in the service environment. Check OS process ownership before stopping/restarting; unowned Node processes cannot be terminated by the watchdog.
-- Both the watchdog and `scripts/start_nodejs_mcp.bat` validate the toolchain before launch
-  (Node.js 24 line, pnpm `11.24.0`). The shared machine-independent gate is
+- A Windows machine delivers the connector as the `HooshiX MCP` SCM service (`start=auto`,
+  LocalSystem), supervised by the Go host in `deploy/windows`; see `deploy/windows/README.md`
+  and the Installing section there for `pnpm run installer:windows` and the single
+  `HooshiX-MCP-Setup-<version>.exe` that carries its own runtime. The supervisor probes the
+  unauthenticated `/health/live` and `/health/ready` and never attaches a credential to a
+  probe.
+- The two rules the retired launcher stack enforced are now enforced inside the service:
+  a process the supervisor did not spawn is never terminated (the child is killed through a
+  job object that closes with the host), and a port already held by an unknown listener is
+  refused rather than competed with. `tests/release-startup-safety.test.ts` keeps the retired
+  scripts deleted and these properties asserted.
+- Both the installer build and the runtime gate validate the toolchain before anything runs
+  (Node.js 24 line, pnpm pinned in `packageManager`). The shared machine-independent gate is
   `node scripts/verify-runtime-versions.mjs`, which reads the same pins (`.nvmrc` and
   `package.json` `packageManager`) and exits non-zero on a wrong Node line, a missing pnpm,
-  or a pnpm version mismatch. Its failure paths are executed by
+  or a pnpm version mismatch. `scripts/build-windows-installer.mjs` runs it first, so a `dist/`
+  compiled by one engine can never ship beside another. Its failure paths are executed by
   `tests/core/r7-runtime-version-gate.test.ts`.
-- For manual local use, `scripts/start_nodejs_mcp.bat` resolves the project relative to its own location. The watchdog remains intentionally separate from release cutover and must not be restarted against active operational data merely to test these changes.
+- Nothing here is part of a release cutover by itself: the service must not be restarted
+  against active operational data merely to test a change.
 - An operator inspecting a token with `scripts/mcp-token.ps1 show` must keep the terminal output private. The generated/bootstrap secret is not a raw OAuth access token.
 
 ## Bootstrap token generation and rotation (R7.03)
@@ -81,9 +93,9 @@ Generation (automatic, no operator action):
 Rotation procedure (execute against the target environment only; do NOT rotate the
 active production credential without an authorized change window):
 
-1. Stop the service through the mechanism that owns the process (the planned Windows
-   service / Scheduled Task stop, or the operator process stop the watchdog performs
-   via its internal `Stop-NodeProcesses` path). Confirm the process and its lock on the
+1. Stop the service through the mechanism that owns the process — on Windows,
+   `hooshix-mcp-service service stop` or the tray menu, which stops the supervisor and,
+   through its job object, the Node child it started. Confirm the process and its lock on the
    SQLite database are gone before proceeding; do not rotate while a writer is active.
 2. Replace the token file content — write the new value into the same path with `0600`
    permissions, or set a new `HOOSHIX_BOOTSTRAP_TOKEN` (>= 32 bytes) in the service
@@ -100,9 +112,10 @@ active production credential without an authorized change window):
 Historical secret disposition:
 
 - The retired static bootstrap credential that earlier setup guidance contained was
-  removed from every active deployment surface (Dockerfile, Compose, watchdog,
-  `start_nodejs_mcp.bat`, SETUP guide, runbook). It remains only as quoted historical
-  evidence inside the consolidated audit document, which is deliberately not rewritten.
+  removed from every active deployment surface (Dockerfile, Compose, the Windows launcher
+  stack that the SCM service replaced, its SETUP guide, this runbook). It remains only as
+  quoted historical evidence inside the consolidated audit document, which is deliberately
+  not rewritten.
   If any environment ever used that retired literal as a real credential, it MUST be
   rotated using the procedure above before that environment is considered trusted; no
   automated code change can substitute for operator rotation.
