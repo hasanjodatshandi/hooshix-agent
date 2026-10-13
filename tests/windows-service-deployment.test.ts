@@ -78,4 +78,83 @@ describe("Windows service deployment invariants", () => {
     }
     expect(settings).toContain("must be an absolute path");
   });
+
+  it("keeps the tray's colour logic portable and its Win32 calls gated", () => {
+    // The mapping from state to colour is the part that can be wrong and the
+    // part that can be tested on Linux CI, so it carries no build tag. Every
+    // other file in the package needs the notification area and is gated,
+    // which keeps `GOOS=linux go build ./...` meaningful instead of accidental.
+    const trayDir = path.join(deployRoot, "internal", "tray");
+    const portable = new Set(["state.go", "state_test.go", "icon.go", "icon_test.go"]);
+    for (const entry of fs.readdirSync(trayDir)) {
+      if (!entry.endsWith(".go")) continue;
+      const text = fs.readFileSync(path.join(trayDir, entry), "utf8");
+      const first = text.split("\n", 1)[0].trim();
+      if (portable.has(entry)) {
+        expect(first, `${entry} must build on every OS`).not.toMatch(/^\/\/go:build/);
+      } else {
+        expect(first, `${entry} is not build-tagged`).toMatch(/^\/\/go:build (!windows|windows)$/);
+      }
+    }
+    // Windows delivers a window's messages to the thread that created it, so an
+    // unpinned pump loses icon clicks at the mercy of the Go scheduler.
+    expect(find("internal/tray/tray_windows.go")).toContain("runtime.LockOSThread()");
+  });
+
+  it("earns green only from a live ready report by the running service", () => {
+    const state = find("internal/tray/state.go");
+    // A stopped service leaves its last status.json on disk, and SCM can report
+    // running while the server inside it died. Both must be able to stop green.
+    expect(state).toMatch(/if snapshot\.Service !==? "running"[\s\S]{0,80}return readinessRed/);
+    expect(state).toMatch(/!snapshot\.Published \|\| snapshot\.Stale \{[\s\S]{0,80}return readinessYellow/);
+    expect(state).toMatch(/State == host\.StateReady \{[\s\S]{0,80}return readinessGreen/);
+    // Staleness is a bounded window, not a guess: the publisher rewrites every
+    // two seconds, so silence past the window means the publisher is gone.
+    expect(state).toMatch(/liveReportWindow = \d+ \* time\.Second/);
+    expect(state).toContain("clock().Sub(publishedAt) > liveReportWindow");
+  });
+
+  it("gives the tray no credential, no probe and no filesystem asset", () => {
+    const trayFiles = fs.readdirSync(path.join(deployRoot, "internal", "tray")).filter((name) => name.endsWith(".go"));
+    for (const entry of trayFiles) {
+      const text = find(path.join("internal", "tray", entry));
+      // The tray reads the document the service publishes. It never touches the
+      // bootstrap PIN, the database, or the MCP endpoint, so it stays runnable
+      // by an ordinary user with nothing to leak.
+      for (const forbidden of [".token", "HOOSHIX_BOOTSTRAP", "secrets", "net/http", "better-sqlite3"]) {
+        expect(text, `${entry} touches ${forbidden}`).not.toContain(forbidden);
+      }
+      // Assets come from the binary, not from a directory that an upgrade, a
+      // moved install, or a missing %ProgramData% can empty.
+      expect(text, `${entry} reads a file at runtime`).not.toContain("os.ReadFile");
+    }
+    const icons = find("internal/tray/icon.go");
+    for (const colour of ["green", "yellow", "red"]) {
+      expect(icons, `hooshix-mcp-${colour}.ico is not embedded`).toContain(`icons/hooshix-mcp-${colour}.ico`);
+      const asset = path.join(deployRoot, "internal", "tray", "icons", `hooshix-mcp-${colour}.ico`);
+      expect(fs.existsSync(asset), `${asset} must be committed, not generated at build time`).toBe(true);
+    }
+  });
+
+  it("closes the icon without ever stopping the service", () => {
+    const tray = find("internal/tray/tray_windows.go");
+    const exit = tray.match(/func \(app \*App\) exit\(\)[\s\S]*?\n\}/);
+    expect(exit, "App.exit is missing").not.toBeNull();
+    // The tray is a convenience in the user's session; the connector is a
+    // machine-wide service other people depend on. "Close tray icon" must not
+    // be a way to take the endpoint down.
+    expect(exit![0]).not.toContain("svc.Stop");
+    expect(exit![0]).toContain("app.menu.quit()");
+    expect(find("internal/tray/menu_windows.go")).toContain('"Close tray icon"');
+  });
+
+  it("runs service commands off the message-loop thread", () => {
+    // Stop and Restart wait for SCM to settle. On the pump thread that freezes
+    // the window, and a frozen tray stops answering clicks exactly when the
+    // operator is watching the colour change.
+    const tray = find("internal/tray/tray_windows.go");
+    expect(tray).toMatch(/func \(app \*App\) command\([\s\S]*?go func\(\) \{[\s\S]*?action\(\)/);
+    // A double click must not stack two SCM transactions.
+    expect(tray).toContain("app.busy.CompareAndSwap(false, true)");
+  });
 });
