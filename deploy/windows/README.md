@@ -13,11 +13,13 @@ inside it.
 |---|---|
 | `cmd/hooshix-mcp-service` | the service binary: install, control, run, status |
 | `cmd/hooshix-mcp-tray` | the notification-area binary the user actually clicks |
+| `cmd/hooshix-mcp-setup` | the installer: `Setup.exe` installs and uninstalls itself |
+| `cmd/make-setup` | build-time assembler that appends the runtime to setup.exe |
 | `cmd/make-tray-icons` | regenerates the tinted `.ico` assets (see below) |
 | `internal/svc` | the SCM boundary: registration, DACL, failure policy, start/stop |
 | `internal/host` | the supervisor: settings, child process, health, status document |
 | `internal/tray` | icon colour, menu, and the Win32 host that renders them |
-| `cmd/setup` | one-click installer (planned) |
+| `internal/setup` | the payload: archive, trailer, layout, and the machine entries |
 
 Build and test on Windows: `go build ./...`, `go vet ./...`, `go test ./...`.
 Regenerate the tinted icons with `go run ./cmd/make-tray-icons`, which rewrites
@@ -27,6 +29,56 @@ Regenerate the tinted icons with `go run ./cmd/make-tray-icons`, which rewrites
 `GOOS=linux` (amd64 and arm64) builds and vets clean, because the Windows-only
 code sits behind `//go:build windows` with stubs beside it. That keeps the
 module portable enough for a Linux CI runner to test the supervisor logic.
+
+## Installing
+
+The deliverable is one file a non-technical operator double-clicks:
+
+```bat
+pnpm run installer:windows            :: build dist, then assemble the installer
+pnpm run installer:windows -- --skip-build    :: reuse the current dist
+pnpm run installer:windows -- --node <node.exe> --out <file>
+```
+
+`scripts/build-windows-installer.mjs` checks the toolchain against `.nvmrc` and
+`packageManager`, compiles `dist/` with that same pinned runtime, installs
+production dependencies hoisted (flat, no symlinks, `--frozen-lockfile`) into a
+scratch tree outside the repository, cross-compiles the three Windows binaries,
+zips the whole runtime, and appends it to setup.exe. The result is
+`deploy/windows/build/HooshiX-MCP-Setup-<version>.exe` (about 61 MB: a
+`node.exe`, `dist/`, and `node_modules/`) beside its `.sha256`. That directory
+is gitignored — the artifact is a download, never a commit.
+
+One elevation prompt covers everything. In order, the installer:
+
+1. reads the appended archive and checks its CRC32 **before writing anything**,
+   so a truncated download fails with "get setup.exe again" on an untouched
+   machine;
+2. unregisters the previous service, then waits for port 3001 to be released —
+   which is also the proof that the old `node.exe` image is unlocked — and
+   refuses to continue while a tray icon it did not start is holding the file
+   (the message names the menu item, it never kills a process);
+3. extracts under `%ProgramFiles%\HooshiX MCP`, rejecting any entry that would
+   escape the directory, arrive as a symbolic link, or exceed the byte bound;
+4. writes `%ProgramData%\HooshiXMCP\settings.json` **only when absent**, so an
+   upgrade keeps the operator's origin, port and any knob they switched on;
+5. copies its own payload-less head to `bin\uninstall.exe`, which is what the
+   entry in Programs runs, so removing an install never needs the download;
+6. writes the HKLM startup value for the tray and the Programs entry, registers
+   the service and starts it.
+
+What lands on the machine is exactly `%Program Files%\HooshiX MCP`,
+`%ProgramData%\HooshiXMCP\settings.json`, `HKLM\...\Run\HooshiX MCP tray` and
+`HKLM\...\Uninstall\HooshiXMCP`. `--uninstall` removes those two keys and the
+install directory and keeps the data root — the database, approvals and logs are
+the operator's, so `--purge-data` has to be asked for. `--base-url` sets the
+HTTPS origin at install time; with no argument the deployment default
+(`https://mcp.hooshix-agent.ir`) is used, and an `http://` origin is refused.
+
+Permission knobs stay out of the installer on purpose. `HOOSHIX_PERMISSION_LEVEL`,
+`HOOSHIX_DIRECT_AUTO_APPROVE`, `HOOSHIX_EXEC_ENABLED` and `CTX_ISOLATION_MODE`
+are never written: shipping them switched on would hand every fresh install an
+endpoint that executes anything the model asks for.
 
 ## Settings document
 
@@ -181,3 +233,6 @@ restart`: SCM starts the new binary, and no watchdog or logon task is involved.
   exits `1`, otherwise the restart-on-failure policy would undo every Stop.
 - The tray asks SCM and reads one JSON document. It never enumerates, adopts,
   or terminates a process, so a menu click cannot reach the wrong Node instance.
+- The installer carries its runtime instead of fetching one, verifies it before
+  the first write, and stops with an explanation rather than ending a process it
+  did not start.

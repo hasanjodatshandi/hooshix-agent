@@ -11,6 +11,7 @@
     "dev": "tsx src/index.ts",
     "dev:http": "tsx src/index-http.ts",
     "build": "tsc -p tsconfig.json",
+    "installer:windows": "node scripts/build-windows-installer.mjs",
     "lint": "node scripts/verify-g1-global.mjs && node scripts/r7-secret-policy-check.mjs",
     "typecheck": "tsc -p tsconfig.r1.json && tsc -p tsconfig.test.json --noEmit",
     "typecheck:r1": "tsc -p tsconfig.r1.json",

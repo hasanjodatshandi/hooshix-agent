@@ -158,3 +158,115 @@ describe("Windows service deployment invariants", () => {
     expect(tray).toContain("app.busy.CompareAndSwap(false, true)");
   });
 });
+
+describe("Windows installer package invariants", () => {
+  const installer = find("cmd/hooshix-mcp-setup/main.go");
+  const winapi = find("cmd/hooshix-mcp-setup/winapi_windows.go");
+  const layout = find("internal/setup/layout.go");
+  const payload = find("internal/setup/payload.go");
+  const archive = find("internal/setup/archive.go");
+  const buildScript = fs.readFileSync(path.join(repo, "scripts", "build-windows-installer.mjs"), "utf8");
+
+  it("verifies the runtime it carries before it changes the machine", () => {
+    // The order is the entire contract: a truncated download has to fail with
+    // "get setup.exe again" while the machine is still untouched, not half
+    // install a service that then fails at every boot. Reading the archive and
+    // checking its checksum both happen inside Locate.
+    const locate = installer.indexOf("setup.Locate(file)");
+    expect(locate, "the installer does not locate its payload").toBeGreaterThan(-1);
+    for (const after of ["svc.Uninstall()", "setup.ExtractArchive(", "svc.Install(", "WriteSettings"]) {
+      expect(installer.indexOf(after), `${after} runs before the payload is verified`).toBeGreaterThan(locate);
+    }
+    expect(payload).toContain("crc32OfSection(file, payload.Offset, payload.Size)");
+    // Two mistakes with one honest message: a build that skipped the assembler,
+    // and a fetch that ended early.
+    expect(payload).toContain("built without one (run scripts/build-windows-installer.mjs)");
+    expect(payload).toContain("did not finish downloading");
+  });
+
+  it("carries the runtime inside the file and never fetches it", () => {
+    // Nothing to download beside setup.exe is what makes this usable on a
+    // machine with no browser, no network share and no idea what a URL is.
+    for (const text of [installer, winapi, layout, payload, archive]) {
+      expect(text, "the installer reaches the network").not.toContain("net/http");
+    }
+    expect(archive).toContain("io.NewSectionReader(file, payload.Offset, payload.Size)");
+  });
+
+  it("unpacks only inside the install directory and never as a link", () => {
+    // Setup runs elevated. A payload whose entry names can escape the install
+    // directory is therefore a system-wide write, not a per-user one, and a
+    // symbolic link under Program Files is a path nobody can read.
+    expect(archive).toContain("resolveEntry(targetDir, entry.Name)");
+    expect(archive).toContain("is an absolute path");
+    expect(archive).toContain("is a symbolic link, which the installer will not create");
+    expect(archive).toContain("total > maxExtractBytes");
+  });
+
+  it("starts the tray for every account and points at nothing that persists", () => {
+    // HKLM, not HKCU: the elevated token can belong to an administrator who is
+    // installing on somebody else's machine, and a value written into that
+    // profile means the icon never appears for the person who owns it.
+    expect(winapi).toContain("registry.LOCAL_MACHINE");
+    expect(winapi).not.toContain("registry.CURRENT_USER");
+    // The startup value runs the tray image and nothing else. The service is
+    // persistent because SCM registered it; a startup entry pointing at the
+    // service binary would start a second copy inside a user session.
+    expect(winapi).toContain("setup.RunValueName, layout.TrayCommand()");
+    expect(layout).toMatch(/func \(layout Layout\) TrayCommand\(\) string \{\n\treturn QuoteCommand\(layout\.TrayBinary\(\)\)/);
+    expect(layout).toMatch(/"UninstallString": layout\.UninstallCommand\(\)/);
+  });
+
+  it("removes what it wrote and keeps what it never owned", () => {
+    // The data root holds the operator's database, approvals and logs. Deleting
+    // it on an ordinary uninstall turns a routine re-install into data loss.
+    const purge = installer.indexOf("os.RemoveAll(layout.DataRoot)");
+    expect(installer.indexOf("if !purgeData"), "the data root is deleted without being asked").toBeLessThan(purge);
+    expect(installer).toContain("os.RemoveAll(layout.InstallDir)");
+    // The entry in Programs runs the payload-less head copy of this same image,
+    // so removing an install never needs the original download.
+    expect(installer).toContain("setup.WriteUninstaller(self, layout.UninstallerBinary(), payload.Offset)");
+    expect(payload).toContain("func WriteUninstaller(setupPath, outPath string, exeSize int64) error");
+    expect(installer).toMatch(/\*uninstall \|\| isUninstaller\(self\)/);
+  });
+
+  it("keeps an existing settings document on a re-run", () => {
+    // An upgrade replaces program files. Resetting the origin, the port or a
+    // permission the operator switched on is not part of upgrading.
+    expect(layout).toMatch(/if _, err := os\.Stat\(path\); err == nil \{\n\t\treturn false, nil/);
+    expect(installer).toContain("kept the existing");
+    // The permission knobs stay out of the installer entirely: shipping them
+    // switched on hands every fresh machine an endpoint that executes anything.
+    for (const key of ["HOOSHIX_PERMISSION_LEVEL", "HOOSHIX_DIRECT_AUTO_APPROVE", "HOOSHIX_EXEC_ENABLED", "CTX_ISOLATION_MODE"]) {
+      expect(layout, `the installer ships ${key}`).not.toContain(key);
+    }
+  });
+
+  it("builds the payload with the pinned runtime and production dependencies only", () => {
+    // dist/ compiled by one engine and shipped beside another is how an
+    // installer produces a server that dies on the first request, and a dev
+    // dependency in the payload is tens of megabytes of nothing.
+    expect(buildScript).toContain("verify-runtime-versions.mjs");
+    expect(buildScript).toContain(`"install", "--prod", "--node-linker=hoisted", "--frozen-lockfile"`);
+    expect(buildScript).toContain(`"node_modules", "typescript", "bin", "tsc"`);
+    // A package manager that re-resolves the tree before running a script is
+    // free to prune it, and doing that to a live checkout takes down the server.
+    // The only verb the build is allowed to ask of pnpm is the install above.
+    expect(buildScript.match(/runPackageManager\(\["[a-z]+"/g)).toEqual(['runPackageManager(["install"']);
+    expect(JSON.parse(fs.readFileSync(path.join(repo, "package.json"), "utf8")).scripts["installer:windows"]).toContain("build-windows-installer.mjs");
+    // The artifact is the size of a Node distribution: it belongs on a share,
+    // never in git.
+    expect(fs.readFileSync(path.join(repo, ".gitignore"), "utf8")).toContain("deploy/windows/build/");
+  });
+
+  it("persists through SCM and touches no process it did not start", () => {
+    // The build script is where a logon task creeps back in: it is the file that
+    // knows about the old launcher, and re-adding one there reintroduces the
+    // exact failure the service exists to end.
+    const lower = buildScript.toLowerCase();
+    for (const forbidden of ["schtasks", "onlogon", "taskschd", "taskkill", "stop-process"]) {
+      expect(lower, `the build script mentions ${forbidden}`).not.toContain(forbidden);
+    }
+    expect(lower).not.toContain("watchdog");
+  });
+});

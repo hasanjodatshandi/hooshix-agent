@@ -17,3 +17,7 @@ trace-test.txt
 .env
 .env.*
 *.local
+
+# Windows installer build output: the payload carries a whole Node runtime,
+# so a committed setup.exe would put a hundred megabytes of binary in git.
+deploy/windows/build/
