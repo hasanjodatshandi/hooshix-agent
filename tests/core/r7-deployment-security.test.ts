@@ -35,12 +35,18 @@ describe("R7 deployment security contracts", () => {
       expect(ignore.split(/\r?\n/)).toContain(pattern);
     }
   });
-  it("watchdog probes unauthenticated liveness without injecting obsolete credential", () => {
-    const watchdog = read("scripts/hooshix_nodejs_mcp_watchdog.ps1");
-    expect(watchdog).toContain("/health/live");
-    expect(watchdog).not.toContain('EnvironmentVariables["MCP_ACCESS_TOKEN"]');
-    expect(watchdog).not.toContain('Authorization"] = "Bearer');
-    expect(read("scripts/start_nodejs_mcp.bat")).toContain("/health/live");
+  it("the service host probes unauthenticated liveness without injecting obsolete credential", () => {
+    // The watchdog is gone; the supervisor inside the Windows service answers
+    // for the same contract: an unauthenticated probe of the server's own health
+    // routes, with no credential attached to the request at any point.
+    const host = read("deploy/windows/internal/host/host.go");
+    expect(host).toContain(`base+"/health/live"`);
+    expect(host).toContain(`base+"/health/ready"`);
+    expect(host).not.toContain("MCP_ACCESS_TOKEN");
+    expect(host).not.toContain("Bearer");
+    // The tray reads the document that probe publishes instead of dialling the
+    // endpoint itself, so it holds nothing to leak.
+    expect(read("deploy/windows/internal/tray/state.go")).not.toContain("net/http");
   });
   it("Compose does not expose the MCP backend publicly or resurrect the retired key", () => {
     const compose = read("docker-compose.yml");
@@ -62,17 +68,23 @@ describe("R7 deployment security contracts", () => {
       "pnpm run test:coverage", "pnpm audit --prod", "docker build", "docker exec",
       "scripts/verify-g1-global.mjs", "scripts/verify-runtime-versions.mjs"]) expect(ci).toContain(gate);
   });
-  it("manual startup and service watchdog validate Node/pnpm versions before execution", () => {
-    const watchdog = read("scripts/hooshix_nodejs_mcp_watchdog.ps1");
-    const start = read("scripts/start_nodejs_mcp.bat");
+  it("the installer validates the pinned toolchain before anything is built or shipped", () => {
+    // What the .bat and the watchdog did by hand — prove node and pnpm are the
+    // pinned lines, then start an absolute interpreter — is now a build-time
+    // gate plus an absolute path in the settings document.
+    const installer = read("scripts/build-windows-installer.mjs");
+    expect(installer).toContain("verify-runtime-versions.mjs");
+    // The candidate runtime is asked for its version, not trusted by directory name.
+    expect(installer).toContain('execFileSync(candidate, ["-v"]');
+    expect(read("scripts/verify-runtime-versions.mjs")).toContain("packageManager must be pinned as pnpm@<exact>");
     expect(read(".nvmrc").trim()).toBe("24.18.0");
-    expect(watchdog).toContain("Get-Command node");
-    expect(watchdog).toContain("Get-Command pnpm");
-    expect(watchdog).toContain("11.24.0");
-    expect(watchdog).toContain("$psi.FileName = $script:NodeExecutable");
-    expect(start).toContain("requires Node.js 24");
-    expect(start).toContain("requires pnpm 11.24.0");
-    expect(start).not.toContain("set MCP_PUBLIC_BASE_URL=https://");
+    expect(JSON.parse(read("package.json")).packageManager).toMatch(/^pnpm@\d+\.\d+\.\d+$/);
+    // The child is spawned by absolute path from the settings document: a service
+    // session has no operator PATH to inherit.
+    expect(read("deploy/windows/internal/host/settings.go")).toContain('Node string `json:"node"`');
+    // The retired public-origin alias must not return through the new surfaces.
+    expect(installer).not.toContain("MCP_PUBLIC_BASE_URL");
+    expect(read("deploy/windows/internal/setup/layout.go")).not.toContain("MCP_PUBLIC_BASE_URL");
   });
   it("old bootstrap credential names fail explicitly", () => {
     expect(() => readHttpBootstrapSecret({ MCP_API_KEY: "legacy" })).toThrow(/MCP_API_KEY/);

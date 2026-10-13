@@ -15,10 +15,30 @@ Runbook for operating the service. The authoritative implementation runbook is `
 | HTTP | `node dist/index-http.js` (default `127.0.0.1:3001`) |
 | dev stdio | `pnpm dev` (tsx src/index.ts) |
 | dev HTTP | `pnpm dev:http` |
+| Windows, delivered | the `HooshiX MCP` service — see below |
 
 Build: `pnpm build` (tsc). Typecheck (both configs): `pnpm typecheck`.
 
 The default bind is **loopback only**. External exposure requires `HOOSHIX_PUBLIC_BASE_URL` set to an exact trusted HTTPS origin — the service refuses untrusted public binding. External deployment itself is the owner's responsibility.
+
+## Windows service
+
+On a Windows machine the connector runs as the **`HooshiX MCP` SCM service** (`start=auto`, LocalSystem), supervised by the Go host in `deploy/windows` — see `deploy/windows/README.md` for the module and the settings document. It answers right after a reboot, before anybody signs in.
+
+| Action | How |
+|---|---|
+| Install on a new machine | `pnpm run installer:windows`, then double-click `deploy/windows/build/HooshiX-MCP-Setup-<version>.exe` |
+| Upgrade after a code change | `pnpm build`, then run Setup.exe again — it replaces the program files and keeps `%ProgramData%\HooshiXMCP\settings.json` |
+| Start / stop / restart | the tray icon menu, or `hooshix-mcp-service service start\|stop\|restart` (unelevated: the service DACL grants exactly query, start, stop) |
+| Status | `hooshix-mcp-service status` — the SCM state plus what the server published |
+| Host log | `%ProgramData%\HooshiXMCP\service.log` (rotated), or `Open logs` in the tray menu |
+| Audit log | `HOOSHIX_LOG_DIR` (`command-actions.log`, `file-actions.log`) |
+
+The tray icon colour is the operator-facing health signal: green means ChatGPT can reach it, yellow means it is starting or degraded, red means it is not usable.
+
+There is **no logon scheduled task and no watchdog script**. `tests/release-startup-safety.test.ts` keeps the retired launcher stack retired and holds the two rules it used to enforce inside the service: a process the supervisor did not spawn is never terminated, and a port owned by an unknown listener is refused rather than competed with.
+
+A machine that *develops* the connector usually points its settings document at the checkout (`entry`, `workingDirectory`, and the `HOOSHIX_DB_PATH` / `HOOSHIX_LOG_DIR` / `HOOSHIX_BOOTSTRAP_TOKEN_FILE` env entries), so the loop is `pnpm build` then `service restart` with no reinstall. `pnpm run service:build` compiles that control CLI into the gitignored `build/bin` once, after which `pnpm run service:status` and `pnpm run service:restart` work from an ordinary unelevated shell. The delivered install under `C:\Program Files` is the one that ships to other people.
 
 ## Health endpoints
 

@@ -5,9 +5,11 @@ import { execFileSync } from "node:child_process";
 
 const active = [
   "Dockerfile", "docker-compose.yml", "README.md",
-  "scripts/start_nodejs_mcp.bat", "scripts/hooshix_nodejs_mcp_watchdog.ps1",
-  "scripts/install_nodejs_mcp_task.bat", "scripts/SETUP_NODEJS_MCP_V2.md",
+  "deploy/windows/README.md", "scripts/build-windows-installer.mjs",
+  "deploy/windows/internal/host/settings.go", "deploy/windows/internal/setup/layout.go",
+  "deploy/windows/cmd/hooshix-mcp-setup/main.go",
   "scripts/mcp-token.ps1",
+  "docs/OPERATIONS.md",
   "docs/implementation/R7_LOCAL_OPERATIONS_RUNBOOK_2026-09-23.md",
 ];
 const retiredLiteral = ["hooshix", "-v2-secret"].join("");
