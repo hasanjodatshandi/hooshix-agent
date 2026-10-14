@@ -43,6 +43,15 @@ type Status struct {
 // StatusPath is the JSON document's location inside the state directory.
 func StatusPath(dataRoot string) string { return filepath.Join(dataRoot, "status.json") }
 
+// A publication that meets a locked document waits this long between attempts,
+// for this many attempts. The tray polls the same two-second cadence the service
+// publishes on, so the two regularly overlap, and one collision used to cost an
+// error line and one missed report.
+const (
+	publishAttempts = 5
+	publishRetry    = 20 * time.Millisecond
+)
+
 // Write publishes the status atomically. A tray that caught a half-written
 // document would render a broken tooltip, so the file is renamed into place.
 func Write(path string, status Status) error {
@@ -54,17 +63,39 @@ func Write(path string, status Status) error {
 	if err != nil {
 		return fmt.Errorf("encode status: %w", err)
 	}
-	// A fixed temp name is enough: one service process owns this document, and
-	// a leftover from a killed predecessor is always overwritten before rename.
-	temporary := path + ".tmp"
-	if err := os.WriteFile(temporary, append(raw, '\n'), 0o640); err != nil {
+	// One temp per publication, not one shared temp name. Status changes are
+	// published from several goroutines (the two-second tick, a health result, a
+	// phase change), and a shared name let them collide on each other's file and
+	// let a failed rename delete the file the winner was about to publish.
+	temporary, err := os.CreateTemp(filepath.Dir(path), filepath.Base(path)+".tmp-")
+	if err != nil {
 		return fmt.Errorf("write status temp: %w", err)
 	}
-	if err := os.Rename(temporary, path); err != nil {
-		_ = os.Remove(temporary)
-		return fmt.Errorf("publish status: %w", err)
+	defer func() {
+		_ = temporary.Close()
+		_ = os.Remove(temporary.Name())
+	}()
+	if _, err := temporary.Write(append(raw, '\n')); err != nil {
+		return fmt.Errorf("write status temp: %w", err)
 	}
-	return nil
+	if err := temporary.Close(); err != nil {
+		return fmt.Errorf("close status temp: %w", err)
+	}
+	// The retry is what makes this survive Windows. Replacing an existing file by
+	// rename is refused with ERROR_ACCESS_DENIED while ANY handle to it is open —
+	// measured on this machine with a handle that shared delete, so no share mode
+	// chosen by a reader avoids it. The lock belongs to the reader and clears in
+	// milliseconds, so the publisher waits rather than reporting a fault.
+	for attempt := 0; attempt < publishAttempts; attempt++ {
+		err = os.Rename(temporary.Name(), path)
+		if err == nil {
+			return nil
+		}
+		if attempt != publishAttempts-1 {
+			time.Sleep(publishRetry)
+		}
+	}
+	return fmt.Errorf("publish status: %w", err)
 }
 
 // ReadStatus loads the published document for the tray and `service status`.
