@@ -69,6 +69,16 @@ describe("CI-1.03 / error taxonomy", () => {
     }
   });
 
+  it("gives a subprocess-echo failure its own label instead of the opaque fallback", () => {
+    // The Git service re-throws the child's stderr verbatim, so its most common
+    // operator error used to collapse into tool_handler_failure and told the
+    // caller nothing about what to fix.
+    expect(classifyHandlerFailure(new Error("fatal: not a git repository (or any of the parent directories): .git")))
+      .toBe("not_a_git_repository");
+    // An unfamiliar subprocess message is still not re-labelled by guesswork.
+    expect(classifyHandlerFailure(new Error("fatal: unable to access remote repository"))).toBe("tool_handler_failure");
+  });
+
   it("never leaks which Context or record was involved (threat T07, anti-enumeration)", () => {
     // A record that does not exist and a record owned by another Context must
     // produce the identical sentinel and label — no existence oracle.

@@ -77,6 +77,13 @@ export function classifyHandlerFailure(error: unknown): string {
   // Optimistic-concurrency precondition (write_file/modify_file ifMatchSha256).
   if (message.includes("STALE_WRITE")) return "stale_write";
 
+  // Git service (src/services/git/git-service.ts) re-throws the subprocess
+  // stderr, so a plain `tool_handler_failure` here told the caller nothing about
+  // the one Git failure that is both common and self-explanatory: the handle's
+  // root is not a repository. Matched as a fixed string; the stderr itself is
+  // never interpolated into the label.
+  if (message.includes("not a git repository")) return "not_a_git_repository";
+
   // Project/memory record guards.
   if (message.includes("already registered to project")) return "duplicate_project_record";
 

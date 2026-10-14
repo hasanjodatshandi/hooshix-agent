@@ -175,6 +175,10 @@ export function createExecuteToolUseCase(deps: {
           action:descriptorId,
           correlationId:input.correlationId ?? ("r2-application-gateway" as CorrelationId),
           status:result.kind,
+          // The closed-set label travels with the status. A row that says only
+          // "failed" cannot be triaged afterwards — the live connector failures
+          // stayed unproven precisely because the reason was computed and dropped.
+          reason:"reason" in result ? result.reason : undefined,
         });
       } catch {
         if (result.kind==="succeeded") return {...result,observabilityDegraded:true};

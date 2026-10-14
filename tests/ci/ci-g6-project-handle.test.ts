@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
-import { spawn, type ChildProcess } from "node:child_process";
+import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import { pathToFileURL } from "node:url";
 import { Client, StreamableHTTPClientTransport } from "@modelcontextprotocol/client";
 import { describe, expect, it } from "vitest";
@@ -32,6 +32,9 @@ import { createDisposableFixture, reserveEphemeralLoopbackPort } from "../helper
  *      jail's root, never widen it, and the refusal is explicit.
  *   7. A handle crosses the Task boundary: task_create requires it, the plan
  *      persists that root as its immutable workspace, and its steps run there.
+ *   8. Exec, Git and search are scoped by the handle exactly as file tools are,
+ *      and a failed call persists its classified label — not a bare "failed" —
+ *      so a live failure can be triaged after the fact.
  */
 interface G6Context {
   readonly base: string;
@@ -42,7 +45,7 @@ interface G6Context {
 }
 
 async function withG6Server(
-  options: { tag: string; mode: string; pool: "both" | "a-only"; extraEnv?: Record<string, string | undefined> },
+  options: { tag: string; mode: string; pool: "both" | "a-only"; git?: boolean; extraEnv?: Record<string, string | undefined> },
   block: (ctx: G6Context) => Promise<void>,
 ): Promise<void> {
   const fixture = createDisposableFixture(`ci-g6-${options.tag}`);
@@ -52,6 +55,15 @@ async function withG6Server(
   fs.mkdirSync(dirB, { recursive: true });
   fs.writeFileSync(path.join(dirA, "alpha.txt"), "ALPHA-MARKER");
   fs.writeFileSync(path.join(dirB, "beta.txt"), "BETA-MARKER");
+  // Only A becomes a repository: through a handle, a Git call must succeed on A
+  // and fail on B, which is what proves the subprocess cwd followed the handle.
+  if (options.git) {
+    for (const args of [["init", "--quiet", dirA], ["-C", dirA, "config", "user.name", "CI G6"],
+      ["-C", dirA, "config", "user.email", "ci-g6@example.invalid"]] as string[][]) {
+      const result = spawnSync("git", args, { encoding: "utf8" });
+      if (result.status !== 0) throw new Error(`Fixture git ${args.join(" ")} failed: ${result.stderr}`);
+    }
+  }
   const lease = await reserveEphemeralLoopbackPort();
   const port = lease.port;
   await lease.close();
@@ -368,6 +380,89 @@ describe("CI-G6 / conversation-scoped project handles on the live path", () => {
         expect((JSON.parse(escaped.text) as { status: string }).status).toBe("failed");
         expect(escaped.text).toMatch(/outside workspace/i);
         expect(escaped.text).not.toContain("BETA-MARKER");
+      },
+    );
+  }, 180_000);
+
+  it("scopes exec, git and search to the handle root and persists why a call failed", async () => {
+    await withG6Server(
+      {
+        tag: "scopetools", mode: "OFF", pool: "both", git: true,
+        extraEnv: { HOOSHIX_PERMISSION_LEVEL: "DEVELOPER_MODE", HOOSHIX_DIRECT_AUTO_APPROVE: "0" },
+      },
+      async ({ base, sqlitePath, bootstrap, dirA, dirB }) => {
+        const resource = base + "/mcp";
+        // Git and process operations sit behind the execute scope even when the
+        // operation itself is read-only; the read scope alone cannot reach them.
+        const token = await obtainToken(base, resource, bootstrap, "offline_access hooshix:read hooshix:execute");
+        const openedA = await callTool(resource, token, "open_project", { path: dirA });
+        expect(openedA.ok, JSON.stringify(openedA)).toBe(true);
+        const hA = parseOpenProject(openedA.text).handle;
+        const openedB = await callTool(resource, token, "open_project", { path: dirB });
+        expect(openedB.ok, JSON.stringify(openedB)).toBe(true);
+        const hB = parseOpenProject(openedB.text).handle;
+
+        // 1. Exec, Git and search are as ambiguous as the file tools were: an
+        //    untargeted call has no project to resolve against.
+        for (const [name, args] of [
+          ["git_status", {}],
+          ["search_files", { query: "MARKER" }],
+          ["execute_command", { command: "git", args: ["status"] }],
+        ] as Array<[string, Record<string, unknown>]>) {
+          const untargeted = await callTool(resource, token, name, args);
+          expect(untargeted.ok, JSON.stringify(untargeted)).toBe(false);
+          expect(untargeted.text).toMatch(/project_required/);
+        }
+
+        // 2. Only ProjectAlpha is a repository, so a Git call that succeeds
+        //    through A's handle and reports "not a git repository" through B's
+        //    can only have run inside the handle's root.
+        const gitThroughA = await callTool(resource, token, "git_status", { project: hA });
+        expect(gitThroughA.ok, JSON.stringify(gitThroughA)).toBe(true);
+        const gitThroughB = await callTool(resource, token, "git_status", { project: hB });
+        expect(gitThroughB.ok).toBe(false);
+        expect(gitThroughB.text).toMatch(/not_a_git_repository/);
+        const execThroughA = await callTool(resource, token, "execute_command", {
+          command: "git", args: ["status"], project: hA,
+        });
+        expect(execThroughA.ok, JSON.stringify(execThroughA)).toBe(true);
+        expect((JSON.parse(execThroughA.text) as { exitCode: number }).exitCode).toBe(0);
+
+        // 3. Search resolves its path through the handle too, and an escaping
+        //    path is refused rather than quietly re-rooted.
+        const searched = await callTool(resource, token, "search_files", { query: "MARKER", path: ".", project: hA });
+        expect(searched.ok, JSON.stringify(searched)).toBe(true);
+        expect(searched.text).toContain("ALPHA-MARKER");
+        expect(searched.text).not.toContain("BETA-MARKER");
+        const escaped = await callTool(resource, token, "search_files", {
+          query: "MARKER", path: path.posix.join("..", path.basename(dirB)), project: hA,
+        });
+        expect(escaped.ok).toBe(false);
+        expect(escaped.text).toMatch(/path_outside_workspace/);
+
+        // 4. The persisted gateway row carries the classified label, not a bare
+        //    "failed". Without it a live failure cannot be triaged afterwards —
+        //    the operator-reported ones stayed unproven precisely because the
+        //    label was computed, sent to the client and then dropped.
+        const missing = await callTool(resource, token, "read_file", { path: "no-such-file.txt", project: hA });
+        expect(missing.ok).toBe(false);
+        expect(missing.text).toMatch(/resource_not_found/);
+        const db = new Database(sqlitePath, { readonly: true });
+        try {
+          const reasons = db.prepare(
+            "SELECT action, reason FROM decisions WHERE action IN " +
+              "('r2_gateway:read_file','r2_gateway:search_files','r2_gateway:git_status') ORDER BY id DESC LIMIT 12",
+          ).all() as Array<{ action: string; reason: string }>;
+          // Rows come newest-first, so the first row per action is the latest call.
+          const byAction = new Map<string, string>();
+          for (const row of reasons) if (!byAction.has(row.action)) byAction.set(row.action, row.reason);
+          expect(byAction.get("r2_gateway:read_file")).toBe("resource_not_found");
+          expect(byAction.get("r2_gateway:search_files")).toBe("path_outside_workspace");
+          expect(byAction.get("r2_gateway:git_status")).toBe("not_a_git_repository");
+          expect(reasons.some((row) => row.reason === "failed")).toBe(false);
+        } finally {
+          db.close();
+        }
       },
     );
   }, 180_000);
