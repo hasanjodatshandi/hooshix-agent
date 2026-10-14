@@ -15,6 +15,7 @@ const scope=captureWorkspaceScope({principalId:p,sessionId:session,root:"/allowe
 const descriptor:ToolDescriptor={id,requiredPermission:"READ",risk:"low",approval:"never",effect:"read_only",workspaceScope:"read",supportsIdempotency:false,capabilities:[]};
 function harness(options:{allow?:boolean; failedAudit?:boolean}={}) {
  const calls:{toolId:ToolId;args:unknown;root:string|null}[]=[];
+ const audits:{action:string;status:string;reason?:string}[]=[];
  const state={scope};
  const workspace:WorkspaceContextRepository={
    async get(sessionId,principalId){return sessionId===session&&principalId===p?state.scope:null;},
@@ -30,9 +31,9 @@ function harness(options:{allow?:boolean; failedAudit?:boolean}={}) {
  const auth={decide:()=>options.allow===false?{kind:"blocked" as const,reason:"denied"}:{kind:"allowed" as const}};
  const usecase=createExecuteToolUseCase({
    catalog:{get(name){return name===id?descriptor:null;}},validator,authorization:auth,
-   handler,audit:{async record(){if(options.failedAudit)throw new Error("audit unavailable");}},workspace,
+   handler,audit:{async record(event){audits.push({action:event.action,status:event.status,reason:event.reason});if(options.failedAudit)throw new Error("audit unavailable");}},workspace,
  });
- return {usecase,calls,state,workspace,descriptor};
+ return {usecase,calls,audits,state,workspace,descriptor};
 }
 describe("R2.02 common application execution gateway",()=>{
  it("resolves direct workspace by trusted principal/session, and task workspace from immutable captured context",async()=>{
@@ -97,6 +98,11 @@ describe("R2.02 common application execution gateway",()=>{
      .toMatchObject({kind:"succeeded",observabilityDegraded:true});
    expect(h.calls).toHaveLength(1);
  });
+ it("leaves the reason absent on a successful audit row",async()=>{
+   const h=harness();
+   await h.usecase.execute({principal,descriptorId:id,arguments:{},directContext:{sessionId:session}});
+   expect(h.audits).toEqual([{action:id,status:"succeeded",reason:undefined}]);
+ });
  it("returns a recoverable reason code instead of an opaque tool_handler_failure",async()=>{
    // A handler that fails must surface WHY in a fixed, message-free label so a
    // client can react (call set_workspace, pick a smaller file, ...) instead of
@@ -108,23 +114,29 @@ describe("R2.02 common application execution gateway",()=>{
      [new Error("File exceeds 1000000 byte limit"),"size_limit_exceeded"],
      [new Error("Target is not a file"),"not_a_file"],
      [Object.assign(new Error("ENOENT: no such file or directory, open 'D:/secret/path/file.txt'"),{code:"ENOENT"}),"resource_not_found"],
+     [new Error("fatal: not a git repository (or any of the parent directories): .git"),"not_a_git_repository"],
      [new Error("totally unexpected internal boom"),"tool_handler_failure"],
    ];
    for (const [thrown,expected] of cases) {
+     const audits:{status:string;reason?:string}[]=[];
      const usecase=createExecuteToolUseCase({
        catalog:{get:()=>descriptor},
        validator:{validate:(_id,value)=>({valid:true,value})},
        authorization:{decide:()=>({kind:"allowed" as const})},
        handler:{async execute(){throw thrown;}},
-       audit:{async record(){}},workspace:harness().workspace,
+       audit:{async record(event){audits.push({status:event.status,reason:event.reason});}},workspace:harness().workspace,
      });
      const result=await usecase.execute({principal,descriptorId:id,arguments:{},directContext:{sessionId:session}});
      expect(result.kind).toBe("failed");
      const reason=(result as {reason:string}).reason;
      expect(reason).toBe(expected);
+     // The same label must reach the audit sink: a row persisted as only "failed"
+     // is untriageable afterwards, which is exactly why live failures stayed opaque.
+     expect(audits).toEqual([{status:"failed",reason:expected}]);
      // The label never carries the thrown message, a path, or credentials.
      expect(reason).not.toContain("D:/");
      expect(reason).not.toContain("add_workspace_roots");
+     expect(reason).not.toContain("fatal:");
      expect(JSON.stringify(result)).not.toContain("secret/path");
    }
  });
