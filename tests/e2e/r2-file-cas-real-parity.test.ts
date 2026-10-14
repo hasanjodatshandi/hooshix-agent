@@ -33,8 +33,11 @@ describe("R2.08 actual MCP and durable Task file revision/idempotency parity",()
       const stale=await harness.client.callTool({name:"write_file",arguments:{path:target,content:"overwritten",ifMatchSha256:direct.sha256,project:handle}});
       expect(stale.isError).toBe(true);
       expect(fs.readFileSync(target,"utf8")).toBe("beta");
+      // The plan is born with a workspace, so on this two-root pool task_create
+      // must carry the same handle: the plan then permanently runs inside the
+      // fixture root instead of the process-wide selection.
       const created=json(await harness.client.callTool({name:"task_create",arguments:{
-        title:"disposable R2 file CAS",steps:[
+        title:"disposable R2 file CAS",project:handle,steps:[
           {action:"get current revision",tool:"read_file",arguments:{path:target,includeSha256:true}},
           {action:"write if unchanged",tool:"write_file",arguments:{path:target,content:"gamma",ifMatchSha256:"{{step1.output.sha256}}",idempotencyKey:crypto.randomUUID()},dependsOn:[1]},
         ],
@@ -52,7 +55,7 @@ describe("R2.08 actual MCP and durable Task file revision/idempotency parity",()
       expect(staleModify.isError).toBe(true);
       expect(fs.readFileSync(target,"utf8")).toBe("delta");
       const taskModify=json(await harness.client.callTool({name:"task_create",arguments:{
-        title:"disposable R2 Task modify CAS",steps:[
+        title:"disposable R2 Task modify CAS",project:handle,steps:[
           {action:"read revision",tool:"read_file",arguments:{path:target,includeSha256:true}},
           {action:"modify if unchanged",tool:"modify_file",arguments:{path:target,search:"delta",replacement:"epsilon",ifMatchSha256:"{{step1.output.sha256}}"},dependsOn:[1]},
         ],

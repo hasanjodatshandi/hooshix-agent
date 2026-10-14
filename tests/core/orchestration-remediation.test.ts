@@ -88,7 +88,12 @@ describe("TR-01: task_append_steps lifecycle", () => {
     save(p, "planning", p.correlationId);
 
     // The corrective step (pending) should be found first and executed
-    await runtime.run(plan.id, 0);
+    const r2 = await runtime.run(plan.id, 0);
+    // A corrective append restarts at the pending step and never re-runs the
+    // failed one, so this pass succeeded locally. It must still not report
+    // completed: the plan holds an unresolved step.
+    expect(r2.status).toBe("failed");
+    expect(runtime.get(plan.id)!.state).toBe("failed");
     // Corrective step completes; original failed step is NOT re-executed
     const final = runtime.get(plan.id)!;
     expect(final.steps[1].status).toBe("completed");
@@ -236,7 +241,8 @@ describe("TR-04: Corrective append unlocks retry gate", () => {
     save(p, "planning", p.correlationId);
 
     // Run 3: corrective step (pending) should execute first
-    await runtime.run(plan.id, 0);
+    const r3 = await runtime.run(plan.id, 0);
+    expect(r3.status).toBe("failed");
     const final = runtime.get(plan.id)!;
     // Corrective step completed
     expect(final.steps[1].status).toBe("completed");
@@ -245,8 +251,57 @@ describe("TR-04: Corrective append unlocks retry gate", () => {
   });
 });
 
-// ─── TR-07/TR-08: Report failure summary ─────────────────────────────
+// ─── TR-14: Terminal status aggregates every step ────────────────────
 
+describe("TR-14: terminal status aggregates unresolved steps", () => {
+  it("a step left blocked with nothing executable never reports completed", async () => {
+    const runtime = createTaskRuntimeService();
+    const plan = runtime.create({
+      title: "tr14-blocked-leftover",
+      steps: [{ action: "read", tool: "read_file", arguments: { path: "README.md" } }],
+    });
+    expect((await runtime.run(plan.id, 0)).status).toBe("completed");
+
+    // A governance-blocked step is never retryable, so no executable step
+    // remains and the pass has nothing to fail on locally. `blocked` is also
+    // absent from the reconciliation gate's resolved set, so the Task cannot
+    // be completed while it is there — including a Task already stored as
+    // completed by an earlier build.
+    const { withAgentDatabase } = await import("../../src/core/memory/database/index.js");
+    const now = new Date().toISOString();
+    withAgentDatabase((db) => {
+      db.prepare(
+        `INSERT INTO task_steps(task_id, step_id, step_order, action, tool, input, dependencies, status, run_when, step_timeout_ms, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      ).run(plan.id, 2, 1, "blocked read", "read_file", JSON.stringify({ path: "../outside.txt" }), JSON.stringify([]), "blocked", "success", null, now, now);
+    });
+
+    const r = await runtime.run(plan.id, 0);
+    expect(r.status).toBe("failed");
+    expect(r.reason).toContain("2:blocked");
+    expect(runtime.report(plan.id).failedSteps).toBe(0);
+    expect(runtime.report(plan.id).blockedSteps).toBe(1);
+  });
+
+  it("a task with every step resolved stays completed on rerun", async () => {
+    const runtime = createTaskRuntimeService();
+    const plan = runtime.create({
+      title: "tr14-resolved",
+      steps: [
+        { action: "read", tool: "read_file", arguments: { path: "README.md" } },
+        { action: "read again", tool: "read_file", arguments: { path: "README.md" }, dependsOn: [1], runWhen: "failure" },
+      ],
+    });
+    const r = await runtime.run(plan.id, 0);
+    // Step 1 succeeded, so the runWhen=failure step was skipped as cancelled —
+    // an intentional skip, not an unresolved effect.
+    expect(r.status).toBe("completed");
+    expect(runtime.get(plan.id)!.steps[1].status).toBe("cancelled");
+    expect((await runtime.run(plan.id, 0)).status).toBe("completed");
+  });
+});
+
+// ─── TR-07/TR-08: Report failure summary ─────────────────────────────
 describe("TR-07/TR-08: Report failure metrics", () => {
   it("failed task report shows correct everFailed and failedSteps", async () => {
     await fs.writeFile(`${root}/fail3.cjs`, "process.exit(1)", "utf8");

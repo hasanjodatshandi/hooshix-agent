@@ -56,6 +56,16 @@ function withAnnotationsTitle(server: McpServer): void {
  * conversations on ONE connection cannot bleed a workspace into each other.
  * `exec` is deliberately absent: it is unrestricted by design and ignores the
  * workspace entirely.
+ *
+ * `task_create` is here because a plan is born with a workspace: it persists the
+ * resolved root as its immutable execution context, and every later step —
+ * including the workspace-bound tools above, which a plan can only reach
+ * THROUGH that snapshot — is confined to it. Without the handle at creation the
+ * plan captures no root and every step is then denied for
+ * `workspace_missing_or_ungranted`, so the failure must surface here, where it
+ * is still fixable. `task_run`/`task_append_steps` are deliberately NOT listed:
+ * the plan's own captured root governs them, and asking for a handle that could
+ * not change the outcome would only suggest that it could.
  */
 const PROJECT_SCOPED_TOOLS: ReadonlySet<string> = new Set([
   "list_directory", "read_file", "write_file", "create_file", "modify_file",
@@ -63,11 +73,11 @@ const PROJECT_SCOPED_TOOLS: ReadonlySet<string> = new Set([
   "git_status", "git_diff", "git_clone", "git_commit", "git_branch",
   "git_checkout", "git_add", "git_init", "git_log",
   "install_package", "remove_package", "update_package",
-  "task_snapshot", "task_rollback",
+  "task_snapshot", "task_rollback", "task_create",
 ]);
 
 const PROJECT_ARGUMENT = z.string().min(1).optional().describe(
-  "Conversation project handle (ph_...) returned by open_project. Pass the SAME handle on every file/exec/git call in THIS conversation. Required whenever this server has more than one allowed project.",
+  "Conversation project handle (ph_...) returned by open_project. Pass the SAME handle on every file/exec/git call — and on task_create, whose plan keeps that project as its permanent workspace — in THIS conversation. Required whenever this server has more than one allowed project.",
 );
 
 function workspaceProjectNames(): string[] {

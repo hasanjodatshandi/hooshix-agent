@@ -141,6 +141,27 @@ function toolReportedFailure(result: unknown): string | undefined {
   return undefined;
 }
 
+/**
+ * A step is resolved once its outcome is known-good: completed, independently
+ * reconciled as succeeded, or intentionally skipped by run_when. This is the
+ * same set the reconciliation gate in the SQLite Task repository uses.
+ *
+ * Terminal Task status MUST be aggregated over every step, not over the steps
+ * this pass walked: a corrective append restarts at the first pending step and
+ * leaves earlier failures behind it, so a pass-local signal reported `completed`
+ * for a Task whose plan still held a failed or blocked step.
+ */
+const RESOLVED_STEP_STATUSES: readonly TaskStep["status"][] = ["completed", "reconciled_succeeded", "cancelled"];
+
+export function unresolvedTaskSteps(plan: TaskPlan): TaskStep[] {
+  return plan.steps.filter((step) => !RESOLVED_STEP_STATUSES.includes(step.status));
+}
+
+/** Short, secret-free pointer to the steps that block a `completed` verdict. */
+export function unresolvedTaskStepsReason(steps: TaskStep[]): string {
+  return `task_steps_unresolved: ${steps.map((step) => `${step.id}:${step.status}`).join(", ")}`;
+}
+
 export interface ClosedLoopResult {
   status: "completed" | "failed" | "pending_approval" | "blocked" | "cancelled" | "not_resumable";
   plan: TaskPlan;
@@ -182,7 +203,6 @@ export async function runClosedAgentLoop(
   const completedSteps = plan.steps.filter((step, index) => index < startIndex && step.status === "completed");
   let recoveries = 0;
   let index = startIndex;
-  let failedAt = -1; // Track first failure index for runWhen handling
 
   plan.correlationId = runtimeContext.correlationId;
   if (!plan.state) plan.state = "planning";
@@ -273,7 +293,6 @@ export async function runClosedAgentLoop(
       saveExecutionWithContext({taskId:plan.id,stepId:step.id,action:step.action,
         result:{error:argumentError,errorType:step.errorType},
         status:"failed",context:runtimeContext});
-      failedAt=failedAt===-1?index:failedAt;
       index++;
       continue;
     }
@@ -332,7 +351,6 @@ export async function runClosedAgentLoop(
       checkpointStep({ taskId: plan.id, stepId: step.id, stepIndex: index, status: "blocked", context: runtimeContext });
       saveDecisionWithContext({ taskId: plan.id, reason: governance.reason, action: "blocked", context: runtimeContext });
       saveExecutionWithContext({ taskId: plan.id, stepId: step.id, action: step.action, result: { error: governance.reason, errorType: "GOVERNANCE_BLOCKED", blocked: true }, status: "blocked", context: runtimeContext });
-      failedAt = failedAt === -1 ? index : failedAt;
       index++;
       continue; // Continue loop for runWhen=failure steps
     }
@@ -409,7 +427,6 @@ export async function runClosedAgentLoop(
         saveExecutionWithContext({ taskId: plan.id, stepId: step.id, action: step.action, result: { error: step.error, errorType: "TIMEOUT", timeout, reconciliationRequired: true }, status: "outcome_unknown", context: runtimeContext });
         // R3.04: a timed-out mutation has no proven safe replay. Never feed it
         // to self-healing or continue later steps until reconciliation.
-        failedAt=index;
         move(plan,"failed");
         return {status:"failed",plan,completedSteps,correlationId:runtimeContext.correlationId,
           reason:"outcome_unknown_requires_reconciliation"};
@@ -448,7 +465,6 @@ export async function runClosedAgentLoop(
         updateTaskHeartbeat(plan.id);
         checkpointStep({ taskId: plan.id, stepId: step.id, stepIndex: index, status: "failed", context: runtimeContext });
         saveExecutionWithContext({ taskId: plan.id, stepId: step.id, action: step.action, result, status: "failed", context: runtimeContext });
-        failedAt = failedAt === -1 ? index : failedAt;
         index++;
         continue; // Continue loop for runWhen=failure steps
       }
@@ -531,7 +547,6 @@ export async function runClosedAgentLoop(
         checkpointStep({ taskId: plan.id, stepId: step.id, stepIndex: index, status: "failed", context: runtimeContext });
         saveExecutionWithContext({ taskId: plan.id, stepId: step.id, action: step.action, result: { error: message, errorType: "MISSING_CONTEXT_VARIABLE", variable: error instanceof MissingVariableError ? error.variable : undefined }, status: "failed", context: runtimeContext });
         // Missing variables are not recoverable, but continue for runWhen=failure steps
-        failedAt = failedAt === -1 ? index : failedAt;
         index++;
         continue;
       }
@@ -546,7 +561,6 @@ export async function runClosedAgentLoop(
         checkpointStep({ taskId: plan.id, stepId: step.id, stepIndex: index, status: "blocked", context: runtimeContext });
         saveExecutionWithContext({ taskId: plan.id, stepId: step.id, action: step.action, result: { error: message, errorType: "SECURITY_POLICY", recoverable: false }, status: "blocked", context: runtimeContext });
         // Security blocks are not recoverable, but continue for runWhen=failure steps
-        failedAt = failedAt === -1 ? index : failedAt;
         index++;
         continue;
       }
@@ -562,7 +576,6 @@ export async function runClosedAgentLoop(
       saveExecutionWithContext({ taskId: plan.id, stepId: step.id, action: step.action, result: { error: message, errorType: errorCode }, status: "failed", context: runtimeContext });
 
       if (recoveries >= maxRecovery) {
-        failedAt = failedAt === -1 ? index : failedAt;
         index++;
         continue; // Continue loop for runWhen=failure steps
       }
@@ -571,7 +584,6 @@ export async function runClosedAgentLoop(
       // else needs a corrective plan — retrying a deterministic failure in a
       // tight loop is wasted work.
       if (!isTransientError(error)) {
-        failedAt = failedAt === -1 ? index : failedAt;
         index++;
         continue; // Continue loop for runWhen=failure steps
       }
@@ -605,7 +617,6 @@ export async function runClosedAgentLoop(
         retryCount: recoveries
       });
       if (action.type === "stop" || !recovered) {
-        failedAt = failedAt === -1 ? index : failedAt;
         index++;
         continue; // Continue loop for runWhen=failure steps
       }
@@ -621,9 +632,11 @@ export async function runClosedAgentLoop(
   // Ensure valid state transition before final status
   if (plan.state === "recovering") move(plan, "executing");
   move(plan, "verifying");
-  if (failedAt >= 0) {
+  const unresolved = unresolvedTaskSteps(plan);
+  if (unresolved.length > 0) {
     move(plan, "failed");
-    return { status: "failed", plan, completedSteps, correlationId: runtimeContext.correlationId };
+    return { status: "failed", plan, completedSteps, correlationId: runtimeContext.correlationId,
+      reason: unresolvedTaskStepsReason(unresolved) };
   }
   move(plan, "completed");
   return { status: "completed", plan, completedSteps, correlationId: runtimeContext.correlationId };
