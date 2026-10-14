@@ -209,7 +209,9 @@ export function createR2RuntimeGateway(handler:ToolHandlerPort) {
       return handler.execute(id,args,scope);
     }},
     audit:{async record(event){
-      saveDecisionWithContext({action:"r2_gateway:"+event.action,reason:event.status,
+      // reason carries the closed-set failure label; falling back to the bare
+      // status would leave every persisted failure indistinguishable from any other.
+      saveDecisionWithContext({action:"r2_gateway:"+event.action,reason:event.reason??event.status,
         context:{correlationId:event.correlationId,createdAt:new Date().toISOString()}});
     }},
     securityEvents:{async record(event){
