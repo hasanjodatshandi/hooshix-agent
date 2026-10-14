@@ -30,6 +30,8 @@ import { createDisposableFixture, reserveEphemeralLoopbackPort } from "../helper
  *   5. A single-project server keeps the old behavior — no handle required.
  *   6. Under a per-Context enforcement jail a handle can only confirm the
  *      jail's root, never widen it, and the refusal is explicit.
+ *   7. A handle crosses the Task boundary: task_create requires it, the plan
+ *      persists that root as its immutable workspace, and its steps run there.
  */
 interface G6Context {
   readonly base: string;
@@ -107,7 +109,7 @@ const pkce = () => {
   return { verifier, challenge: crypto.createHash("sha256").update(verifier).digest("base64url") };
 };
 
-async function obtainToken(base: string, resource: string, bootstrap: string): Promise<string> {
+async function obtainToken(base: string, resource: string, bootstrap: string, scopes = "offline_access hooshix:read"): Promise<string> {
   const { verifier, challenge } = pkce();
   const redirect = "http://127.0.0.1:49994/callback";
   const registration = await fetch(base + "/oauth/register", {
@@ -120,7 +122,7 @@ async function obtainToken(base: string, resource: string, bootstrap: string): P
     method: "POST",
     body: new URLSearchParams({
       response_type: "code", client_id: clientId, redirect_uri: redirect,
-      resource, scope: "offline_access hooshix:read",
+      resource, scope: scopes,
       code_challenge: challenge, code_challenge_method: "S256", pin: bootstrap,
     }),
     redirect: "manual",
@@ -311,6 +313,64 @@ describe("CI-G6 / conversation-scoped project handles on the live path", () => {
       },
     );
   }, 120_000);
+
+  it("carries the conversation's project handle across the Task boundary", async () => {
+    await withG6Server(
+      { tag: "taskplan", mode: "OFF", pool: "both", extraEnv: { HOOSHIX_PERMISSION_LEVEL: "DEVELOPER_MODE" } },
+      async ({ base, sqlitePath, bootstrap, dirA, dirB }) => {
+        const resource = base + "/mcp";
+        // Task controls need their own OAuth scope; the plan inherits the
+        // creation-time scopes, which is what its steps are authorized with.
+        const token = await obtainToken(base, resource, bootstrap, "offline_access hooshix:read hooshix:task:manage");
+        const opened = await callTool(resource, token, "open_project", { path: dirA });
+        expect(opened.ok, JSON.stringify(opened)).toBe(true);
+        const hA = parseOpenProject(opened.text).handle;
+        const steps = (path: string) => [{ action: "read", tool: "read_file", arguments: { path } }];
+
+        // A plan is born with a workspace, so the handle is required here too —
+        // creating it untargeted would capture no root and every step would
+        // then be denied far from the reason.
+        const untargeted = await callTool(resource, token, "task_create", { title: "no handle", steps: steps("alpha.txt") });
+        expect(untargeted.ok).toBe(false);
+        expect(untargeted.text).toMatch(/project_required/);
+
+        const created = await callTool(resource, token, "task_create", { title: "alpha plan", project: hA, steps: steps("alpha.txt") });
+        expect(created.ok, JSON.stringify(created)).toBe(true);
+        const taskId = (JSON.parse(created.text) as { id: string }).id;
+
+        // The handle crosses into the persisted, immutable execution context.
+        let capturedRoot: string | null | undefined;
+        {
+          const db = new Database(sqlitePath, { readonly: true });
+          try {
+            const row = db.prepare("SELECT execution_context AS context FROM tasks WHERE id = ?")
+              .get(taskId) as { context: string };
+            capturedRoot = (JSON.parse(row.context) as { workspace?: string | null }).workspace;
+          } finally {
+            db.close();
+          }
+        }
+        expect(fs.realpathSync(capturedRoot ?? "")).toBe(fs.realpathSync(dirA));
+
+        // ...so the step resolves inside THAT project, not the server process.
+        const ran = await callTool(resource, token, "task_run", { taskId });
+        expect(ran.ok, JSON.stringify(ran)).toBe(true);
+        expect((JSON.parse(ran.text) as { status: string }).status).toBe("completed");
+        expect(ran.text).toContain("ALPHA-MARKER");
+        expect(ran.text).not.toContain("BETA-MARKER");
+
+        // The plan cannot widen its own root: an escape step is blocked, and the
+        // Task is reported failed rather than completed around that step.
+        const escapeTask = (JSON.parse((await callTool(resource, token, "task_create", {
+          title: "escape plan", project: hA, steps: steps(path.posix.join("..", path.basename(dirB), "beta.txt")),
+        })).text) as { id: string }).id;
+        const escaped = await callTool(resource, token, "task_run", { taskId: escapeTask });
+        expect((JSON.parse(escaped.text) as { status: string }).status).toBe("failed");
+        expect(escaped.text).toMatch(/outside workspace/i);
+        expect(escaped.text).not.toContain("BETA-MARKER");
+      },
+    );
+  }, 180_000);
 
   it("binds handles to the minting credential and never lets a jail be widened", async () => {
     await withG6Server({ tag: "perconn", mode: "PER_CONNECTION", pool: "both" }, async ({ base, bootstrap, dirA }) => {

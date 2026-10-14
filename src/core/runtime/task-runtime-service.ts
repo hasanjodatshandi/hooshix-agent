@@ -1,7 +1,7 @@
 import { approveRequest, getApprovalRequest, revokeTaskApprovals } from "../governance/approval-memory.js";
 import { createLocalToolExecutor } from "../executor/local-tool-executor.js";
 import { getTrustedInboundIdentity } from "./r2-trusted-inbound-identity.js";
-import { runClosedAgentLoop, type ClosedLoopResult } from "../loop/closed-agent-loop.js";
+import { runClosedAgentLoop, unresolvedTaskSteps, unresolvedTaskStepsReason, type ClosedLoopResult } from "../loop/closed-agent-loop.js";
 import { resumeApprovedTask } from "../loop/resume-orchestrator.js";
 import { getTaskPlan, findTaskByIdempotencyKey, listTasks, saveMemoryItem, saveTaskPlan } from "../memory/task-repository.js";
 import { fingerprintTaskCreate } from "./r3-task-request-hash.js";
@@ -16,7 +16,7 @@ import { computeRecoveryMetrics } from "../trace/recovery-metrics.js";
 import { analyzeTaskHistory } from "../reflection/reflection-engine.js";
 import { getTaskReconciliations, recordTaskReconciliation, resolveTaskReconciliation, type ReconciliationFinding, type ReconciliationDecision } from "../recovery/task-reconciliation.js";
 import { getAgentMetrics } from "../trace/metrics-service.js";
-import { getWorkspaceRoot, listWorkspaceRoots, isUnrestrictedMode } from "../../security/workspace-guard.js";
+import { getActiveWorkspace, listWorkspaceRoots, isUnrestrictedMode } from "../../security/workspace-guard.js";
 import { resolveTaskWorkspace } from "../../security/task-workspace.js";
 import { runWithWorkspaceScope } from "../../security/workspace-guard.js";
 import {withTaskExecutionLease} from "./task-lease-runner.js";
@@ -62,14 +62,17 @@ export class TaskRuntimeService {
     plan.state = "planning";
     plan.retryPolicy = input.retryPolicy;
     plan.projectId = input.projectId;
-    // Capture current workspace as immutable task execution context
+    // Capture current workspace as immutable task execution context.
+    // The EFFECTIVE root, not the process-wide selection: a conversation that
+    // called this through its `project` handle runs inside that handle's scope,
+    // and the plan must remember the project it was actually authorized for.
     const identity=getTrustedInboundIdentity();
     plan.executionContext = {
       principalId:identity.principal.id,
       sessionId:identity.sessionId,
       origin:identity.principal.origin,
       scopes:[...identity.principal.scopes],
-      workspace: getWorkspaceRoot(),
+      workspace: getActiveWorkspace(),
       roots: listWorkspaceRoots().map((r) => r.path),
       allowedRootsSnapshot: listWorkspaceRoots().map((r) => r.path),
       unrestricted: isUnrestrictedMode(),
@@ -147,20 +150,16 @@ export class TaskRuntimeService {
 
     if(plan.steps.some(step=>step.status==="outcome_unknown"))
       throw new Error("outcome_unknown_requires_reconciliation");
-    // Terminal state without pending steps: return structured no-op
     // Cancelled tasks always return no-op — pending steps cannot be executed
     // on a cancelled task (use task_append_steps to reopen first).
     if (plan.state === "cancelled") {
       return { status: "cancelled" as const, plan, completedSteps: plan.steps.filter((s) => s.status === "completed"), correlationId: plan.correlationId ?? "" };
     }
-    if (plan.state === "completed") {
-      const hasPending = plan.steps.some((s) => s.status === "pending" || s.status === "failed" || s.status === "outcome_unknown");
-      if (!hasPending) return { status: "completed" as const, plan, completedSteps: plan.steps.filter((s) => s.status === "completed"), correlationId: plan.correlationId ?? "" };
-    }
-
-    // Idempotent: all steps done returns structured no-op
-    const allComplete = plan.steps.every((s) => s.status === "completed" || s.status === "cancelled");
-    if (allComplete) {
+    // Idempotent: every step resolved returns a structured no-op. A Task whose
+    // stored state is already `completed` goes through the same aggregation —
+    // the verdict is a property of the plan, not of the last pass that walked it.
+    const unresolved = unresolvedTaskSteps(plan);
+    if (unresolved.length === 0) {
       return { status: "completed" as const, plan, completedSteps: plan.steps.filter((s) => s.status === "completed"), correlationId: plan.correlationId ?? "" };
     }
 
@@ -175,8 +174,10 @@ export class TaskRuntimeService {
     );
     const startIndex = pendingIndex >= 0 ? pendingIndex : retryableIndex;
     if (startIndex < 0) {
-      // No executable steps — idempotent
-      return { status: "completed" as const, plan, completedSteps: plan.steps.filter((s) => s.status === "completed"), correlationId: plan.correlationId ?? "" };
+      // Nothing is executable, yet the plan is unresolved: `blocked` and stale
+      // `running` steps are never picked up as retryable. Reporting completed
+      // here would bury the step that stopped the Task.
+      return { status: "failed" as const, plan, completedSteps: plan.steps.filter((s) => s.status === "completed"), correlationId: plan.correlationId ?? "", reason: unresolvedTaskStepsReason(unresolved) };
     }
     if (plan.steps[startIndex].status === "outcome_unknown") {
       throw new Error(`Step ${plan.steps[startIndex].id} has outcome_unknown status and requires reconciliation before retry`);
