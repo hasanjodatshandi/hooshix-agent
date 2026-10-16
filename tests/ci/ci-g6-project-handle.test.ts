@@ -34,7 +34,8 @@ import { createDisposableFixture, reserveEphemeralLoopbackPort } from "../helper
  *      persists that root as its immutable workspace, and its steps run there.
  *   8. Exec, Git and search are scoped by the handle exactly as file tools are,
  *      and a failed call persists its classified label — not a bare "failed" —
- *      so a live failure can be triaged after the fact.
+ *      so a live failure can be triaged after the fact, while the raw message
+ *      stays on the server side instead of reaching the client.
  */
 interface G6Context {
   readonly base: string;
@@ -42,6 +43,8 @@ interface G6Context {
   readonly bootstrap: string;
   readonly dirA: string;
   readonly dirB: string;
+  /** The child's stderr as captured so far — the operator's side of a failure. */
+  readonly serverStderr: () => string;
 }
 
 async function withG6Server(
@@ -105,7 +108,7 @@ async function withG6Server(
       await new Promise((resolve) => setTimeout(resolve, 100));
     }
     expect(ready, stderr).toBe(true);
-    await block({ base, sqlitePath: fixture.sqlitePath, bootstrap, dirA, dirB });
+    await block({ base, sqlitePath: fixture.sqlitePath, bootstrap, dirA, dirB, serverStderr: () => stderr });
   } finally {
     if (child.exitCode === null && child.signalCode === null) {
       const closed = new Promise<void>((resolve) => child.once("close", () => resolve()));
@@ -390,7 +393,7 @@ describe("CI-G6 / conversation-scoped project handles on the live path", () => {
         tag: "scopetools", mode: "OFF", pool: "both", git: true,
         extraEnv: { HOOSHIX_PERMISSION_LEVEL: "DEVELOPER_MODE", HOOSHIX_DIRECT_AUTO_APPROVE: "0" },
       },
-      async ({ base, sqlitePath, bootstrap, dirA, dirB }) => {
+      async ({ base, sqlitePath, bootstrap, dirA, dirB, serverStderr }) => {
         const resource = base + "/mcp";
         // Git and process operations sit behind the execute scope even when the
         // operation itself is read-only; the read scope alone cannot reach them.
@@ -463,6 +466,16 @@ describe("CI-G6 / conversation-scoped project handles on the live path", () => {
         } finally {
           db.close();
         }
+
+        // The label is what the client is allowed to learn; the thrown message goes
+        // only to the server's own stderr, which the Windows service redirects into
+        // service.log. Without it the operator had one line — `❌ tool_call
+        // tool=git_status duration=6ms` — and nothing to act on.
+        const logged = serverStderr();
+        expect(logged).toContain(
+          "hooshix_tool_failure tool=git_status reason=not_a_git_repository detail=fatal: not a git repository",
+        );
+        expect(gitThroughB.text).not.toMatch(/fatal:/);
       },
     );
   }, 180_000);

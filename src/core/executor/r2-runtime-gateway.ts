@@ -213,6 +213,11 @@ export function createR2RuntimeGateway(handler:ToolHandlerPort) {
       // status would leave every persisted failure indistinguishable from any other.
       saveDecisionWithContext({action:"r2_gateway:"+event.action,reason:event.reason??event.status,
         context:{correlationId:event.correlationId,createdAt:new Date().toISOString()}});
+      // The raw thrown message is written to the service log and to nothing else.
+      // The persisted decision row keeps the label and the client never sees
+      // either string, so an operator can triage without the API widening.
+      if(event.detail)
+        console.error(`hooshix_tool_failure tool=${event.action} reason=${event.reason??"unknown"} detail=${event.detail}`);
     }},
     securityEvents:{async record(event){
       saveDecisionWithContext({action:"r2_security:"+event.kind,

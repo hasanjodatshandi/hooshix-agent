@@ -15,7 +15,7 @@ const scope=captureWorkspaceScope({principalId:p,sessionId:session,root:"/allowe
 const descriptor:ToolDescriptor={id,requiredPermission:"READ",risk:"low",approval:"never",effect:"read_only",workspaceScope:"read",supportsIdempotency:false,capabilities:[]};
 function harness(options:{allow?:boolean; failedAudit?:boolean}={}) {
  const calls:{toolId:ToolId;args:unknown;root:string|null}[]=[];
- const audits:{action:string;status:string;reason?:string}[]=[];
+ const audits:{action:string;status:string;reason?:string;detail?:string}[]=[];
  const state={scope};
  const workspace:WorkspaceContextRepository={
    async get(sessionId,principalId){return sessionId===session&&principalId===p?state.scope:null;},
@@ -31,7 +31,7 @@ function harness(options:{allow?:boolean; failedAudit?:boolean}={}) {
  const auth={decide:()=>options.allow===false?{kind:"blocked" as const,reason:"denied"}:{kind:"allowed" as const}};
  const usecase=createExecuteToolUseCase({
    catalog:{get(name){return name===id?descriptor:null;}},validator,authorization:auth,
-   handler,audit:{async record(event){audits.push({action:event.action,status:event.status,reason:event.reason});if(options.failedAudit)throw new Error("audit unavailable");}},workspace,
+   handler,audit:{async record(event){audits.push({action:event.action,status:event.status,reason:event.reason,detail:event.detail});if(options.failedAudit)throw new Error("audit unavailable");}},workspace,
  });
  return {usecase,calls,audits,state,workspace,descriptor};
 }
@@ -101,7 +101,8 @@ describe("R2.02 common application execution gateway",()=>{
  it("leaves the reason absent on a successful audit row",async()=>{
    const h=harness();
    await h.usecase.execute({principal,descriptorId:id,arguments:{},directContext:{sessionId:session}});
-   expect(h.audits).toEqual([{action:id,status:"succeeded",reason:undefined}]);
+   // No detail on success either: the raw-message channel is for failures only.
+   expect(h.audits).toEqual([{action:id,status:"succeeded",reason:undefined,detail:undefined}]);
  });
  it("returns a recoverable reason code instead of an opaque tool_handler_failure",async()=>{
    // A handler that fails must surface WHY in a fixed, message-free label so a
@@ -115,16 +116,20 @@ describe("R2.02 common application execution gateway",()=>{
      [new Error("Target is not a file"),"not_a_file"],
      [Object.assign(new Error("ENOENT: no such file or directory, open 'D:/secret/path/file.txt'"),{code:"ENOENT"}),"resource_not_found"],
      [new Error("fatal: not a git repository (or any of the parent directories): .git"),"not_a_git_repository"],
+     // The real live connector failure: add_workspace_roots cannot stat a WSL UNC
+     // because Windows refuses WSL access to a LocalSystem service. It fell into
+     // the opaque bucket, so the client re-approved the same doomed Task.
+     [new Error("Workspace path does not exist: \\\\wsl.localhost\\Ubuntu\\home\\coder\\workspace\\Hooshix"),"workspace_path_not_found"],
      [new Error("totally unexpected internal boom"),"tool_handler_failure"],
    ];
    for (const [thrown,expected] of cases) {
-     const audits:{status:string;reason?:string}[]=[];
+     const audits:{status:string;reason?:string;detail?:string}[]=[];
      const usecase=createExecuteToolUseCase({
        catalog:{get:()=>descriptor},
        validator:{validate:(_id,value)=>({valid:true,value})},
        authorization:{decide:()=>({kind:"allowed" as const})},
        handler:{async execute(){throw thrown;}},
-       audit:{async record(event){audits.push({status:event.status,reason:event.reason});}},workspace:harness().workspace,
+       audit:{async record(event){audits.push({status:event.status,reason:event.reason,detail:event.detail});}},workspace:harness().workspace,
      });
      const result=await usecase.execute({principal,descriptorId:id,arguments:{},directContext:{sessionId:session}});
      expect(result.kind).toBe("failed");
@@ -132,12 +137,15 @@ describe("R2.02 common application execution gateway",()=>{
      expect(reason).toBe(expected);
      // The same label must reach the audit sink: a row persisted as only "failed"
      // is untriageable afterwards, which is exactly why live failures stayed opaque.
-     expect(audits).toEqual([{status:"failed",reason:expected}]);
+     // The raw message travels beside it for the operator log, never inside the label.
+     expect(audits).toEqual([{status:"failed",reason:expected,detail:thrown.message}]);
      // The label never carries the thrown message, a path, or credentials.
      expect(reason).not.toContain("D:/");
      expect(reason).not.toContain("add_workspace_roots");
      expect(reason).not.toContain("fatal:");
      expect(JSON.stringify(result)).not.toContain("secret/path");
+     expect(JSON.stringify(result)).not.toContain("wsl.localhost");
+     expect(JSON.stringify(result)).not.toContain(thrown.message);
    }
  });
 });

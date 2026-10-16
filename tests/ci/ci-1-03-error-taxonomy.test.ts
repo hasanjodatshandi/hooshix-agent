@@ -79,6 +79,19 @@ describe("CI-1.03 / error taxonomy", () => {
     expect(classifyHandlerFailure(new Error("fatal: unable to access remote repository"))).toBe("tool_handler_failure");
   });
 
+  it("labels a workspace root the server cannot stat as recoverable knowledge, not a mystery", () => {
+    // add_workspace_roots rejects a path its own process cannot see. Windows
+    // refuses WSL access to a service running as LocalSystem, so a client that
+    // granted \\wsl.localhost got tool_handler_failure and re-approved the same
+    // doomed Task. The guard's exact message is src/security/workspace-guard.ts's
+    // "Workspace path does not exist: <resolved>", kept in sync by this test.
+    expect(classifyHandlerFailure(new Error("Workspace path does not exist: \\\\wsl.localhost\\Ubuntu\\home\\coder\\workspace\\Hooshix")))
+      .toBe("workspace_path_not_found");
+    // The must-win-before-heuristics check: "does not exist" must not fall to the
+    // generic not-found / invalid buckets, and must not leak the path either.
+    expect(classifyHandlerFailure(new Error("Workspace path does not exist: D:/nope"))).toBe("workspace_path_not_found");
+  });
+
   it("never leaks which Context or record was involved (threat T07, anti-enumeration)", () => {
     // A record that does not exist and a record owned by another Context must
     // produce the identical sentinel and label — no existence oracle.

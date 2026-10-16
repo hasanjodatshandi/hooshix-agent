@@ -67,6 +67,12 @@ export function classifyHandlerFailure(error: unknown): string {
   if (message.includes("no active workspace")) return "workspace_missing_or_ungranted";
   if (message.includes("path outside workspace") || message.includes("Access denied: invalid")) return "path_outside_workspace";
   if (message.includes("Cannot remove the active workspace")) return "cannot_remove_active_workspace";
+  // add_workspace_roots rejects a path its own process cannot stat. This is the
+  // one workspace failure a caller cannot fix by re-approving: a network share
+  // (notably the WSL redirector, which Windows refuses to expose to a Windows
+  // service) simply is not visible in the service's logon context. Collapsing it
+  // to tool_handler_failure made clients blind-retry a granted-looking path.
+  if (message.includes("Workspace path does not exist")) return "workspace_path_not_found";
 
   // Filesystem service guards (src/services/filesystem/filesystem-service.ts).
   if (message.includes("sensitive-file denylist")) return "sensitive_file_rejected";

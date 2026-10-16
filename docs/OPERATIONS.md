@@ -40,6 +40,8 @@ There is **no logon scheduled task and no watchdog script**. `tests/release-star
 
 A machine that *develops* the connector usually points its settings document at the checkout (`entry`, `workingDirectory`, and the `HOOSHIX_DB_PATH` / `HOOSHIX_LOG_DIR` / `HOOSHIX_BOOTSTRAP_TOKEN_FILE` env entries), so the loop is `pnpm build` then `service restart` with no reinstall. `pnpm run service:build` compiles that control CLI into the gitignored `build/bin` once, after which `pnpm run service:status` and `pnpm run service:restart` work from an ordinary unelevated shell. The delivered install under `C:\Program Files` is the one that ships to other people.
 
+**Workspace roots must be reachable by the account the service runs under.** Because `HooshiXMCP` is LocalSystem, a client cannot grant a path the service cannot stat — and Windows deliberately refuses WSL to a local system (`Wsl/WSL_E_LOCAL_SYSTEM_NOT_SUPPORTED`), so `\\wsl.localhost\...` and `\\wsl$\...` are not grantable no matter how many times the Task is approved. The same applies to any network share needing a user token. The refusal surfaces as `workspace_path_not_found`, and `service.log` carries the thrown message on a `hooshix_tool_failure` line, which the client never sees. Put such a project on a local volume, or run the connector inside the Linux environment where the path is local.
+
 ## Health endpoints
 
 | Endpoint | Auth | Behavior |
