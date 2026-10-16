@@ -136,6 +136,11 @@ export function createExecuteToolUseCase(deps: {
       }
 
       let result:ToolExecutionResult;
+      // The thrown message stays on the server side only. It is the operator's
+      // single clue when a label is not enough (a path the service account
+      // cannot stat, a git stderr, an errno), and the closed-set label above is
+      // what travels to the client, so this can never widen what a caller learns.
+      let handlerDetail:string|undefined;
       try {
         result={kind:"succeeded",output:await deps.handler.execute(descriptorId,validated.value,scope)};
       } catch (error) {
@@ -149,6 +154,7 @@ export function createExecuteToolUseCase(deps: {
           error.message.includes("maxConsecutiveFailures");
         result={kind:"failed",reason:knownBudgetFailure
           ?"maxConsecutiveFailures_budget_exhausted":classifyHandlerFailure(error)};
+        handlerDetail=error instanceof Error ? error.message : String(error);
       }
       // Persist a distinct security decision event for any successfully
       // executed privilege elevation or workspace mutation. The exact
@@ -179,6 +185,7 @@ export function createExecuteToolUseCase(deps: {
           // "failed" cannot be triaged afterwards — the live connector failures
           // stayed unproven precisely because the reason was computed and dropped.
           reason:"reason" in result ? result.reason : undefined,
+          detail:handlerDetail,
         });
       } catch {
         if (result.kind==="succeeded") return {...result,observabilityDegraded:true};
