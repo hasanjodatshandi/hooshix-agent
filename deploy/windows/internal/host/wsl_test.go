@@ -201,6 +201,17 @@ func TestWslWarmupRunsTheLauncherAndKeepsItsOutput(t *testing.T) {
 	}
 }
 
+// utf16LE renders text the way the distribution launcher does: little-endian
+// UTF-16, which is why the raw bytes otherwise reach the log as a run of
+// escaped NULs. The launcher also prefixes a byte-order mark, tested apart.
+func utf16LE(value string) string {
+	encoded := ""
+	for _, r := range value {
+		encoded += string(rune(byte(r))) + string(rune(byte(r>>8)))
+	}
+	return encoded
+}
+
 // A launcher prints progress lines, warnings and blank space before the answer,
 // and a chatty one must not be able to fill service.log.
 func TestLauncherOutputReachesTheLogAsOneBoundedLine(t *testing.T) {
@@ -212,6 +223,8 @@ func TestLauncherOutputReachesTheLogAsOneBoundedLine(t *testing.T) {
 		{"the first printed line is kept", "starting\r\n/home/coder/workspace\r\nbye\r\n", "starting"},
 		{"blank lines are skipped", "\n\n   \tpadding   \nnext\n", "padding"},
 		{"nothing printed stays empty", "  \r\n \n", ""},
+		{"the launcher's UTF-16 answer is readable", utf16LE("Running WSL as local system is not supported.\r\n"), "Running WSL as local system is not supported."},
+		{"UTF-16 with a byte-order mark is decoded from the start", "\xff\xfe" + utf16LE("/home/coder/workspace"), "/home/coder/workspace"},
 	}
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
