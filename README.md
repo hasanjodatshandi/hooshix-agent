@@ -44,7 +44,7 @@ pnpm run dev
 **فرمان‌های مجاز `execute_command`:** `node`, `npm`, `pnpm`, `git`, `python`, `py`, `gh`. دستورهای فقط-خواندنی (مثل `git status`، `gh pr list`، `node --version`) مستقیم اجرا می‌شوند؛ اجرای کد (اسکریپت node/python، `npm run/test`، git mutating، gh mutating) نیازمند step تاییدشده است.
 
 
-**ابزار `exec` (unrestricted):** برخلاف `execute_command`، هیچ allowlistی ندارد، الگوی خطرناکی را مسدود نمی‌کند و cwd را به workspace محدود نمی‌کند — یک خط کامل shell (pipe، redirect، builtin، chaining) دقیقاً مثل ترمینال تعاملی اجرا می‌کند. تنها مرز آن دسترسی است: نیازمند `HOOSHIX_PERMISSION_LEVEL=ADMIN_MODE` **و** پرچم صریح `HOOSHIX_EXEC_ENABLED=1` است (پیش‌فرض خاموش). هر فراخوانی، حتی رد‌شده‌ها، در `logs/command-actions.log` لاگ می‌شود. متغیرهای محیطی سرور (HOOSHIX_*) هرگز به فرزند منتقل نمی‌شوند.
+**ابزار `exec` (unrestricted):** برخلاف `execute_command`، هیچ allowlistی ندارد، الگوی خطرناکی را مسدود نمی‌کند و cwd را به workspace محدود نمی‌کند — یک خط کامل shell (pipe، redirect، builtin، chaining) دقیقاً مثل ترمینال تعاملی اجرا می‌کند. تنها مرز آن پرچم صریح `HOOSHIX_EXEC_ENABLED=1` است (پیش‌فرض خاموش)؛ سقف دسترسی `HOOSHIX_PERMISSION_LEVEL` این ابزار را مسدود نمی‌کند، چون نصبی که نمی‌تواند سقفش را بالا ببرد باید بتواند shell خودش را آگاهانه فعال کند. هر فراخوانی، حتی رد‌شده‌ها، در `logs/command-actions.log` لاگ می‌شود. متغیرهای محیطی سرور (HOOSHIX_*) هرگز به فرزند منتقل نمی‌شوند.
 
 `task_create` باید plan صریح ChatGPT را بگیرد؛ هر step شامل `action`, `tool`, `arguments` و در صورت نیاز `dependsOn` است. نمونهٔ ورودی:
 

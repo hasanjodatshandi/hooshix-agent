@@ -67,7 +67,7 @@ export class ShellToolHandler implements ToolHandler {
       shell: z.string().optional(),
     }).parse(data);
     // Unrestricted by design: the exec service enforces only its access gate
-    // (ADMIN_MODE + HOOSHIX_EXEC_ENABLED=1) and audits the call. Any cwd —
+    // (HOOSHIX_EXEC_ENABLED=1) and audits the call. Any cwd —
     // including one outside every workspace — is accepted, as are commands the
     // execute_command policy would refuse.
     return executeUnrestrictedCommand(value.command, { cwd: value.cwd, timeout: value.timeout, shell: value.shell }, correlationId, signal);

@@ -57,4 +57,15 @@ describe("R2.03 effective authorization with explicit principal/server ceilings"
    expect(auth().decide({principal:local("DEVELOPER"),descriptor:descriptor("git_commit"),scope:workspace}).kind).toBe("approval_required");
    expect(auth().decide({principal:local("PROJECT_ACCESS"),descriptor:descriptor("write_file"),scope:workspace}).kind).toBe("approval_required");
  });
+ // `exec` is gated by HOOSHIX_EXEC_ENABLED alone, at every ceiling. If a future
+ // change puts an ADMIN requirement back into the catalog, this is the layer that
+ // would refuse first — long before the exec service ever sees the call.
+ it("never refuses exec on the permission ceiling, whatever the configured level is",()=>{
+   const exec=descriptor("exec");
+   for(const level of ["READ","PROJECT_ACCESS","DEVELOPER","ADMIN"] as const){
+     const decision=auth(level).decide({principal:local(level),descriptor:exec,scope:workspace});
+     expect(decision.kind).not.toBe("blocked");
+   }
+   expect(auth("READ").decide({principal:local("READ"),descriptor:exec,scope:workspace}).kind).toBe("approval_required");
+ });
 });
