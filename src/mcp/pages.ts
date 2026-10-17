@@ -137,6 +137,7 @@ function getToolDescription(tool: ToolName): string {
   const descriptions: Record<string, string> = {
     get_system_info: "Local machine info: platform, CPU model, and total memory.",
     agent_metrics: "View recovery, tool reliability, and performance dashboard.",
+    help: "❓ HELP — The operating manual for this server as Markdown: grant a folder → open it per conversation → pass project=<handle>, plus the task plan engine, memory scopes, and the execute_command vs exec boundary. Read-only; call it first in any new conversation.",
     list_directory: "List files and directories in the active workspace (or, on a multi-project server, the conversation's open project via project=<handle>).",
     read_file: "Read a file (relative or absolute path). Returns text content.",
     write_file: "Write content to a file. Overwrites if exists. Returns backupId for undo.",

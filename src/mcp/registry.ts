@@ -28,6 +28,7 @@ import { registerPackageTools } from "../tools/package/index.js";
 import { registerTaskTools } from "../tools/task/index.js";
 import { registerAgentMetricsTool } from "../tools/system/agent-metrics.js";
 import { registerChatIsolationProbeTool } from "../tools/system/chat-isolation-probe.js";
+import { registerHelpTool } from "../tools/system/help.js";
 import { registerWorkspaceTools } from "../tools/system/workspace.js";
 
 /**
@@ -176,6 +177,10 @@ export function registerTools(server: McpServer){
   // flag is OFF. It discloses only pseudonyms of the caller's OWN identity, so
   // there is nothing to gate behind the flag.
   registerChatIsolationProbeTool(server);
+  // The onboarding manual. Always advertised, always callable: an assistant
+  // that has not granted a folder yet is precisely the one that needs to be
+  // told the order things happen in.
+  registerHelpTool(server);
   registerWorkspaceTools(server);
 
   registerReadFileTool(server);
