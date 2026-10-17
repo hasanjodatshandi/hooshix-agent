@@ -59,7 +59,7 @@ const result = {
   source: { branch, head, aheadOfUpstream: ahead, dirtyFileCount: dirtyPaths.length, dirtyPaths },
   runtime: { node: process.versions.node, pnpm: pnpmVersion, pinnedPnpm },
   // Kept by hand, and asserted by tests/tools/in-process-tools.test.ts.
-  expectedToolInventory: 57,
+  expectedToolInventory: 58,
   // The SDK package was renamed for the MCP-2026 migration (spec 31): the
   // transport is now @modelcontextprotocol/node + @modelcontextprotocol/server.
   sdk: pkg.dependencies?.["@modelcontextprotocol/node"] ?? pkg.dependencies?.["@modelcontextprotocol/sdk"] ?? null,

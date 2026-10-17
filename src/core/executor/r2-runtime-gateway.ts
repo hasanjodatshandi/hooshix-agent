@@ -6,7 +6,7 @@ import { captureWorkspaceScope, type WorkspaceScope } from "../../domain/workspa
 import type { ToolExecutionResult, ToolHandlerPort } from "../../application/use-cases/tools/execute-tool.usecase.js";
 import { createExecuteToolUseCase } from "../../application/use-cases/tools/execute-tool.usecase.js";
 import { createAuthorizationService } from "../../application/services/authorization-service.js";
-import { operationDescriptorPort, getOperationDescriptor } from "../../application/services/operation-catalog.js";
+import { operationDescriptorPort, getOperationDescriptor, CONTROL_TOOL_NAMES } from "../../application/services/operation-catalog.js";
 import { getConfiguredPermissionLevel } from "../../infrastructure/config/permission-config.js";
 import { readLegacyWorkspaceBootstrapSettings } from "../../infrastructure/config/legacy-workspace-bootstrap.js";
 import { getTrustedInboundIdentity } from "../runtime/r2-trusted-inbound-identity.js";
@@ -153,14 +153,14 @@ export function createR2RuntimeGateway(handler:ToolHandlerPort) {
         catch { return "blocked"; }
       }
       if(scope.unrestricted)return "approval_required";
-      // Control-plane families (task_/project_/memory_ plus the CI-G6 project
-      // handle pair) run their own lifecycle behind this authorization
-      // boundary; command/file policy does not apply to their names.
-      const isControlFamily=executionDescriptor.id.startsWith("task_") ||
-          executionDescriptor.id.startsWith("project_") ||
-          executionDescriptor.id.startsWith("memory_") ||
-          executionDescriptor.id==="open_project" ||
-          executionDescriptor.id==="close_project";
+      // Control-plane operations — the task/project/memory lifecycle, the CI-G6
+      // handle pair, and the help manual — run their own lifecycle behind this
+      // authorization boundary. The command/file policy engine has no vocabulary
+      // for their names: validateToolName only knows the step-executable set, so
+      // sending a control name there would block the call instead of allowing it.
+      // Membership in the catalog's control list is the source of truth, so a new
+      // control tool cannot be silently policy-blocked by a forgotten name here.
+      const isControlFamily=(CONTROL_TOOL_NAMES as readonly string[]).includes(executionDescriptor.id);
       if(!isControlFamily) {
         const decision=policyDecisionPoint.evaluate({tool:descriptor.id,arguments:data});
         if(!decision.allowed) return "blocked";

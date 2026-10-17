@@ -14,7 +14,7 @@ export const TOOL_NAMES = [
 
 
 export type ToolName = typeof TOOL_NAMES[number];
-export const CONTROL_TOOL_NAMES = ["task_create","task_get","task_list","task_run","task_approve","task_resume","task_report","task_reconcile","task_replay","task_cancel","task_append_steps","task_link","task_links","task_step_risks","project_save","project_get","project_delete","project_archive","project_list","open_project","close_project","memory_add","memory_list","memory_update","memory_get","memory_delete"] as const;
+export const CONTROL_TOOL_NAMES = ["help","task_create","task_get","task_list","task_run","task_approve","task_resume","task_report","task_reconcile","task_replay","task_cancel","task_append_steps","task_link","task_links","task_step_risks","project_save","project_get","project_delete","project_archive","project_list","open_project","close_project","memory_add","memory_list","memory_update","memory_get","memory_delete"] as const;
 export const ALL_REGISTERED_TOOLS = [...TOOL_NAMES, ...CONTROL_TOOL_NAMES] as const;
 export type OperationName = typeof ALL_REGISTERED_TOOLS[number];
 export const TOOL_CATEGORIES = ["Read actions","Write actions","Execute & Git","Packages","Task Engine","Context & Memory"] as const;
@@ -35,6 +35,11 @@ export const OPERATION_CATALOG: Readonly<Record<OperationName, OperationDescript
   get_system_info: Object.freeze({id:"get_system_info" as ToolId,requiredPermission:"READ",risk:"low",approval:"never",effect:"read_only",workspaceScope:"none",securityClass:"read",supportsIdempotency:false,category:"Read actions",...{capabilities:["system","information","inspect"],requiredArguments:[]}}),
   agent_metrics: Object.freeze({id:"agent_metrics" as ToolId,requiredPermission:"READ",risk:"low",approval:"never",effect:"read_only",workspaceScope:"none",securityClass:"monitoring",supportsIdempotency:false,category:"Read actions",...{capabilities:["metrics","observability","dashboard","performance"],requiredArguments:[]}}),
   chat_isolation_probe: Object.freeze({id:"chat_isolation_probe" as ToolId,requiredPermission:"READ",risk:"low",approval:"never",effect:"read_only",workspaceScope:"none",securityClass:"read",supportsIdempotency:true,category:"Read actions",...{capabilities:["chat","isolation","probe","connection","context","identity"],requiredArguments:[]}}),
+  // help is the onboarding manual. It must be reachable with nothing configured
+  // at all — no workspace, no project handle, no mutation — because a client
+  // that has not yet granted a folder is exactly the client that needs it, so
+  // its ceiling is the same READ/read_only/none shape as the probe.
+  help: Object.freeze({id:"help" as ToolId,requiredPermission:"READ",risk:"low",approval:"never",effect:"read_only",workspaceScope:"none",securityClass:"read",supportsIdempotency:true,category:"Read actions",...{capabilities:["help","guide","documentation","usage","onboarding"],requiredArguments:[]}}),
   list_directory: Object.freeze({id:"list_directory" as ToolId,requiredPermission:"READ",risk:"low",approval:"never",effect:"read_only",workspaceScope:"read",securityClass:"file_mutation",supportsIdempotency:false,category:"Read actions",...{capabilities:["list","directory","files","inspect"],requiredArguments:[]}}),
   read_file: Object.freeze({id:"read_file" as ToolId,requiredPermission:"READ",risk:"low",approval:"never",effect:"read_only",workspaceScope:"read",securityClass:"file_mutation",supportsIdempotency:false,category:"Read actions",...{capabilities:["read","inspect","file","project","source"],requiredArguments:["path"]}}),
   write_file: Object.freeze({id:"write_file" as ToolId,requiredPermission:"PROJECT_ACCESS",risk:"medium",approval:"on-risk",effect:"non_idempotent_mutation",workspaceScope:"write",securityClass:"file_mutation",supportsIdempotency:false,category:"Write actions",...{capabilities:["implement","write","replace","file","changes"],requiredArguments:["path","content"]}}),
