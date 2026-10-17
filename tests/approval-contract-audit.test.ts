@@ -31,7 +31,7 @@ const APPROVAL_EXPECTED = new Set([
 // Deliberate carve-outs: governed by other, stronger mechanisms.
 const CARVE_OUTS = new Set([
   "execute_command", // command-permission engine + cwd classification + approval for code exec
-  "exec", // gated by its own access gate: ADMIN_MODE + HOOSHIX_EXEC_ENABLED=1; execution is deliberately unrestricted beyond that
+  "exec", // gated by its own access gate: HOOSHIX_EXEC_ENABLED=1 alone, at every permission ceiling; execution is deliberately unrestricted beyond that
 ]);
 
 describe("approval contract audit: metadata vs policy engine", () => {

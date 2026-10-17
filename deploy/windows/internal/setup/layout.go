@@ -202,9 +202,12 @@ func ValidatePublicBaseURL(raw string) (string, error) {
 // writes, so this document only names the runtime, the entry and the published
 // origin.
 //
-// Permission knobs are deliberately absent. ADMIN_MODE, exec and auto-approve
-// are opt-ins an operator adds here on purpose; shipping them switched on would
-// hand every install a remote code execution endpoint.
+// Permission knobs are deliberately absent. The permission ceiling, the
+// unrestricted-shell opt-in and auto-approve are switches an operator adds here
+// on purpose; shipping them switched on would hand every install a remote code
+// execution endpoint. The shell opt-in is the only gate that tool has, so a
+// default-ceiling install can be given a shell without raising every other
+// tool's ceiling beside it.
 func (layout Layout) Settings(publicBaseURL string) host.Settings {
 	if strings.TrimSpace(publicBaseURL) == "" {
 		publicBaseURL = DefaultPublicBaseURL

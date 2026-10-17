@@ -16,12 +16,12 @@ const logDir = fs.mkdtempSync(path.join(os.tmpdir(), "exec-audit-"));
 /**
  * The `exec` tool is deliberately unrestricted: no command allowlist, no
  * dangerous-pattern blocking, no workspace cwd scope — it runs a full shell
- * line anywhere on the filesystem. The ONLY boundary is an access gate, so the
- * gate is what has to hold: ADMIN_MODE permission AND the explicit operator
- * opt-in flag, which is off by default. Everything the command does is still
- * written to the command audit log, denied attempts included.
+ * line anywhere on the filesystem. The ONLY boundary is the explicit operator
+ * opt-in flag, which is off by default; the configured permission ceiling does
+ * not gate it. Everything the command does is still written to the command audit
+ * log, denied attempts included.
  */
-describe("exec: unrestricted shell behind a two-part access gate", () => {
+describe("exec: unrestricted shell behind one opt-in flag", () => {
   beforeAll(() => {
     process.env.HOOSHIX_LOG_DIR = logDir;
   });
@@ -35,7 +35,6 @@ describe("exec: unrestricted shell behind a two-part access gate", () => {
   });
 
   function enable() {
-    process.env.HOOSHIX_PERMISSION_LEVEL = "ADMIN_MODE";
     process.env.HOOSHIX_EXEC_ENABLED = "1";
   }
 
@@ -47,11 +46,15 @@ describe("exec: unrestricted shell behind a two-part access gate", () => {
       .rejects.toThrow(/exec is disabled/);
   });
 
-  it("requires ADMIN_MODE even when the flag is on", async () => {
-    process.env.HOOSHIX_PERMISSION_LEVEL = "DEVELOPER_MODE";
-    process.env.HOOSHIX_EXEC_ENABLED = "1";
-    await expect(executeUnrestrictedCommand("node --version"))
-      .rejects.toThrow(/requires ADMIN_MODE/);
+  // The gate is the flag and nothing else: an install that never raises its
+  // ceiling must still be able to run a shell it opted into, or `exec` would be
+  // reachable only by switching on every other privileged tool as well.
+  it("runs at the lowest permission ceiling when the flag is on", async () => {
+    process.env.HOOSHIX_PERMISSION_LEVEL = "READ_ONLY";
+    enable();
+    const result = await executeUnrestrictedCommand("node --version");
+    expect(result).toMatchObject({ exitCode: 0 });
+    expect(result.stdout).toMatch(/\d+\.\d+/);
   });
 
   it("runs a full shell line with pipes once the gate opens", async () => {
