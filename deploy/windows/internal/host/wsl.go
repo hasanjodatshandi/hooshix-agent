@@ -2,6 +2,7 @@ package host
 
 import (
 	"context"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"os"
@@ -10,6 +11,7 @@ import (
 	"strings"
 	"time"
 	"unicode"
+	"unicode/utf16"
 )
 
 // wslWarmupBudget bounds one launcher call. Starting a distribution that is
@@ -109,7 +111,27 @@ func (s *Supervisor) registerWslViews(ctx context.Context) {
 // describeLauncherOutput reduces whatever the launcher printed to one bounded
 // line for the service log.
 func describeLauncherOutput(output string) string {
-	return truncate(oneLine(output), wslLogOutputLimit)
+	return truncate(oneLine(decodeLauncherOutput(output)), wslLogOutputLimit)
+}
+
+// decodeLauncherOutput turns the launcher's text back into UTF-8. wsl.exe writes
+// UTF-16LE, so its own diagnosis — measured on the live service: "Running WSL as
+// local system is not supported." — reached service.log as a run of escaped NUL
+// bytes, which defeats the reason the message is logged at all. Text that already
+// reads as UTF-8 is passed through untouched.
+func decodeLauncherOutput(output string) string {
+	if !strings.ContainsRune(output, 0) {
+		return output
+	}
+	raw := []byte(output)
+	if len(raw) >= 2 && raw[0] == 0xff && raw[1] == 0xfe {
+		raw = raw[2:]
+	}
+	units := make([]uint16, 0, len(raw)/2)
+	for i := 0; i+1 < len(raw); i += 2 {
+		units = append(units, binary.LittleEndian.Uint16(raw[i:i+2]))
+	}
+	return string(utf16.Decode(units))
 }
 
 // oneLine collapses launcher output to the single line worth keeping.
