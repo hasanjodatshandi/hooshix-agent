@@ -26,6 +26,11 @@ type Settings struct {
 	WorkingDirectory string `json:"workingDirectory"`
 	// DataRoot holds data/, logs/ and secrets/ for the install.
 	DataRoot string `json:"dataRoot"`
+	// WslDistros names the Windows Subsystem for Linux distributions whose files
+	// the connector may be pointed at. Empty means the service never touches the
+	// subsystem, which is the right default: a name here is a request to make
+	// \\wsl.localhost visible in the service's own logon session.
+	WslDistros []string `json:"wslDistros"`
 	// Env carries the remaining HOOSHIX_* settings for the server process.
 	Env map[string]string `json:"env"`
 
@@ -90,6 +95,13 @@ func (settings *Settings) freeze() error {
 			return err
 		}
 	}
+	// A mistyped distribution is a configuration mistake the operator can fix in
+	// the document, so it is refused here rather than logged at every boot.
+	for _, distro := range settings.WslDistros {
+		if err := validateWslDistro(distro); err != nil {
+			return err
+		}
+	}
 	if err := settings.verifyLayout(); err != nil {
 		return err
 	}
@@ -116,7 +128,7 @@ func (settings *Settings) freeze() error {
 	settings.logDirectory = env["HOOSHIX_LOG_DIR"]
 	settings.publicBaseURL = env["HOOSHIX_PUBLIC_BASE_URL"]
 	settings.listenAddress = "http://" + env["HOOSHIX_HTTP_HOST"] + ":" + env["HOOSHIX_HTTP_PORT"]
-	settings.environment = settings.childEnvironment(env)
+	settings.environment = settings.childEnvironment(env, os.Environ())
 	settings.Env = env
 	return nil
 }
@@ -160,20 +172,49 @@ func setDefault(env map[string]string, key, value string) {
 	}
 }
 
-func (settings *Settings) childEnvironment(env map[string]string) []string {
+// inheritedOsEnvironment picks the allowlisted variables out of a raw
+// environment block. Names are matched the way Windows resolves them — without
+// regard to case — and are returned spelled as the allowlist spells them,
+// because the block a service starts with carries them as the registry does:
+// "Path", "ComSpec", "WINDIR". Matching them exactly dropped PATH from the
+// server process, and every command a client then asked for died with
+// `spawn cmd.exe ENOENT` — a missing search path wearing the costume of a
+// permission failure. Where one name appears twice, the first entry wins, which
+// is what the system reports for that name.
+func inheritedOsEnvironment(block []string) map[string]string {
+	byFoldedName := map[string]string{}
+	for _, entry := range block {
+		name, value, found := strings.Cut(entry, "=")
+		if !found {
+			continue
+		}
+		folded := strings.ToUpper(name)
+		if _, seen := byFoldedName[folded]; !seen {
+			byFoldedName[folded] = value
+		}
+	}
 	inherited := map[string]string{}
-	for _, entry := range os.Environ() {
-		key, value, found := strings.Cut(entry, "=")
-		if found {
+	for _, key := range ossEnvironmentKeys {
+		if value, ok := byFoldedName[strings.ToUpper(key)]; ok && value != "" {
 			inherited[key] = value
 		}
 	}
-	combined := map[string]string{}
-	for _, key := range ossEnvironmentKeys {
-		if value, ok := inherited[key]; ok && value != "" {
-			combined[key] = value
-		}
+	return inherited
+}
+
+// requiredChildEnvironment names the one inherited variable without which the
+// server cannot run a command at all. It is not the loader's requirement — Node
+// starts fine without it — so the absence has to be said out loud instead of
+// surfacing as an unexplained failure in a client conversation days later.
+func requiredChildEnvironment(block []string) string {
+	if value, ok := inheritedOsEnvironment(block)["PATH"]; !ok || strings.TrimSpace(value) == "" {
+		return "PATH is not in the service environment; every tool that runs a command (git, execute_command, exec, package installs) will fail to find its interpreter"
 	}
+	return ""
+}
+
+func (settings *Settings) childEnvironment(env map[string]string, block []string) []string {
+	combined := inheritedOsEnvironment(block)
 	for key, value := range env {
 		combined[key] = value
 	}

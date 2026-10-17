@@ -21,9 +21,14 @@ const helperEnv = "HOOSHIX_MCP_TEST_HELPER"
 const (
 	helperServes   = "serve"
 	helperExits    = "exit-with-code"
+	helperLauncher = "wsl-launcher-stand-in"
 	helperPortEnv  = "HOOSHIX_HTTP_PORT"
 	helperCodeEnv  = "HOOSHIX_TEST_EXIT_CODE"
 	helperNotReady = "HOOSHIX_TEST_NOT_READY"
+	// launcherExitEnv lets the stand-in launcher fail on purpose, because the
+	// real launcher fails for reasons the host must not treat as fatal.
+	launcherExitEnv    = "HOOSHIX_TEST_WSL_EXIT_CODE"
+	launcherOutputLine = "wsl stand-in reached /home/coder/workspace"
 )
 
 func TestMain(m *testing.M) {
@@ -37,6 +42,14 @@ func TestMain(m *testing.M) {
 			_, _ = fmt.Sscanf(raw, "%d", &code)
 		}
 		os.Exit(code)
+	case helperLauncher:
+		fmt.Println(launcherOutputLine)
+		if raw := os.Getenv(launcherExitEnv); raw != "" {
+			code := 0
+			_, _ = fmt.Sscanf(raw, "%d", &code)
+			os.Exit(code)
+		}
+		return
 	}
 	os.Exit(m.Run())
 }
