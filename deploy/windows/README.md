@@ -119,6 +119,7 @@ the port is a file edit:
   "entry": "C:\\Program Files\\HooshiX MCP\\app\\dist\\index-http.js",
   "workingDirectory": "C:\\Program Files\\HooshiX MCP\\app",
   "dataRoot": "C:\\ProgramData\\HooshiXMCP",
+  "wslDistros": [],
   "env": {
     "HOOSHIX_HTTP_PORT": "3001",
     "HOOSHIX_PUBLIC_BASE_URL": "https://mcp.hooshix-agent.ir"
@@ -133,7 +134,24 @@ the first spawn. The host then owns the three paths the server writes —
 defaults each under `dataRoot`, because a service starts in `System32` with no
 interactive profile. The child environment is built from this document plus a
 small OS allowlist; nothing else is inherited, so an operator's stale
-`HOOSHIX_PERMISSION_LEVEL` can never silently downgrade the assistant.
+`HOOSHIX_PERMISSION_LEVEL` can never silently downgrade the assistant. The
+allowlist matches names the way Windows resolves them, without regard to case,
+and hands the server the allowlist's own spelling: the block a service starts
+with says `Path` and `ComSpec`, and reading those names exactly left the server
+without a search path, which made every command a client asked for fail as
+`spawn cmd.exe ENOENT`. A block that still has no `PATH` is named in the service
+log at boot, because the service otherwise starts, answers health checks and
+fails only when a conversation asks it to run something.
+
+`wslDistros` is optional and empty by default. Naming a distribution asks the
+host to run `wsl.exe -d <name> -e pwd` before each spawn, because Windows only
+publishes a distribution's files under `\\wsl.localhost` once something in that
+logon session has spoken to the subsystem — a service that never asks makes every
+such path look like it does not exist. This only works when the service logs on
+as a user account: Windows refuses WSL to LocalSystem. A name that could be
+parsed as a launcher option (a leading dash, a quote, a backslash) is refused
+when the document loads, and a failed call is logged with the launcher's own
+message rather than stopping the server.
 
 ## What the supervisor does
 

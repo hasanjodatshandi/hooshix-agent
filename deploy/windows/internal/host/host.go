@@ -87,6 +87,10 @@ func (s *Supervisor) Run(ctx context.Context) error {
 	}
 	defer job.close()
 
+	if complaint := requiredChildEnvironment(os.Environ()); complaint != "" {
+		s.logger.Error("server environment incomplete", "detail", complaint)
+	}
+
 	if err := s.reserveListener(); err != nil {
 		s.recordFailure(err)
 		return err
@@ -96,6 +100,10 @@ func (s *Supervisor) Run(ctx context.Context) error {
 	for ctx.Err() == nil {
 		started := time.Now()
 		s.setPhase(PhaseStarting)
+		// Before each spawn, not once per service lifetime: the registration this
+		// costs is owned by the logon session, and a respawn can follow a session
+		// that lost the distribution view in the meantime.
+		s.registerWslViews(ctx)
 		err := s.runChild(ctx)
 		if ctx.Err() != nil {
 			s.setPhase(PhaseStopped)

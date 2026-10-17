@@ -8,7 +8,7 @@ The implementer may recommend a release candidate but must not perform public pr
 node scripts/release-preflight.mjs
 ```
 
-Never tags, commits or deploys. Checks: clean worktree (`DIRTY_WORKTREE` blocker), Node ≥24, pnpm matching the `packageManager` pin (11.24.0), and that `dist/index.js` + `dist/index-http.js` exist. Emits a JSON verdict (`NO_GO` / `LOCAL_SOURCE_GATES_PASS`) together with the HEAD sha, sha256 digests of `package.json`, `pnpm-lock.yaml`, `migrations.ts` and the dist bundles, the `@modelcontextprotocol/sdk` version, `expectedToolInventory: 53`, and the list of outstanding manual gates.
+Never tags, commits or deploys. Checks: clean worktree (`DIRTY_WORKTREE` blocker), Node ≥24, pnpm matching the `packageManager` pin (11.24.0), and that `dist/index.js` + `dist/index-http.js` exist. Emits a JSON verdict (`NO_GO` / `LOCAL_SOURCE_GATES_PASS`) together with the HEAD sha, sha256 digests of `package.json`, `pnpm-lock.yaml`, `migrations.ts` and the dist bundles, the `@modelcontextprotocol/sdk` version, `expectedToolInventory: 57` (a hand-kept figure; `tests/tools/in-process-tools.test.ts` is the gate on it), and the list of outstanding manual gates.
 
 ## 2. Gates
 

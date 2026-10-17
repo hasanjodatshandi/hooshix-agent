@@ -56,6 +56,32 @@ describe("4.9 child process env excludes sensitive credentials",()=>{
       const childEnv=buildChildProcessEnvironment({PATH:"",HOME:undefined});
       expect(Object.keys(childEnv)).toEqual([]);
     });
+    // A Windows service block spells these names as the registry does ("Path",
+    // "ComSpec") and Windows resolves them case-insensitively. Reading only the
+    // exact spelling left the server with no search path at all, and every tool
+    // that spawns a command then died with `spawn cmd.exe ENOENT`.
+    it("finds the search path when the parent spelled it the Windows way",()=>{
+      const childEnv=buildChildProcessEnvironment({
+        Path:"C:\\Windows\\system32;C:\\Program Files\\Git\\cmd",
+        ComSpec:"C:\\Windows\\system32\\cmd.exe",
+      },"win32");
+      expect(childEnv.PATH).toBe("C:\\Windows\\system32;C:\\Program Files\\Git\\cmd");
+      expect(childEnv.COMSPEC).toBe("C:\\Windows\\system32\\cmd.exe");
+    });
+    it("hands the child the allowlist spelling of a folded name",()=>{
+      const childEnv=buildChildProcessEnvironment({path:"/folded",temp:"/folded-temp"},"win32");
+      expect(Object.keys(childEnv)).toEqual(["PATH","TEMP"]);
+    });
+    it("prefers the exact spelling when a block carries both",()=>{
+      const childEnv=buildChildProcessEnvironment({PATH:"C:\\exact",Path:"C:\\folded"},"win32");
+      expect(childEnv.PATH).toBe("C:\\exact");
+    });
+    it("does not fold names on POSIX, where path and PATH are different variables",()=>{
+      const childEnv=buildChildProcessEnvironment({path:"/posix/other",PATH:"/posix/bin"},"linux");
+      expect(childEnv.PATH).toBe("/posix/bin");
+      const foldedOnly=buildChildProcessEnvironment({path:"/posix/other"},"linux");
+      expect(Object.keys(foldedOnly)).toEqual([]);
+    });
   });
 
   describe("single spawn choke point",()=>{

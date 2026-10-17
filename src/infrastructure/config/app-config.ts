@@ -212,13 +212,39 @@ const ALLOWED_CHILD_ENV_KEYS = [
 // interpreter is installed. LOCALAPPDATA is a standard Windows user path, not a
 // secret, so it is safe to hand to untrusted command code.
 
-export function buildChildProcessEnvironment(env: Readonly<Record<string, string | undefined>> = process.env): Record<string, string> {
+export function buildChildProcessEnvironment(
+  env: Readonly<Record<string, string | undefined>> = process.env,
+  platform: NodeJS.Platform = process.platform,
+): Record<string, string> {
   const childEnv: Record<string, string> = {};
   for (const key of ALLOWED_CHILD_ENV_KEYS) {
-    const value = env[key];
+    const value = resolveEnvironmentValue(env, key, platform);
     if (value !== undefined && value !== "") childEnv[key] = value;
   }
   return childEnv;
+}
+
+/**
+ * Read one allowlisted variable. Windows treats these names case-insensitively,
+ * so a parent whose block spells the search path `Path` — which is how the
+ * registry stores it — would otherwise hand the command no PATH at all, and
+ * every subprocess would die with `spawn cmd.exe ENOENT` while looking like a
+ * permission failure. POSIX names stay case-sensitive, where `path` really is a
+ * different variable.
+ */
+function resolveEnvironmentValue(
+  env: Readonly<Record<string, string | undefined>>,
+  key: string,
+  platform: NodeJS.Platform,
+): string | undefined {
+  const exact = env[key];
+  if (exact !== undefined && exact !== "") return exact;
+  if (platform !== "win32") return undefined;
+  const wanted = key.toUpperCase();
+  for (const [name, value] of Object.entries(env)) {
+    if (name.toUpperCase() === wanted) return value;
+  }
+  return undefined;
 }
 
 export function parsePermissionLevel(env: Readonly<Record<string, string | undefined>> = process.env): LegacyPermissionLevel {
@@ -246,7 +272,9 @@ export function parseDirectApprovalBypass(env: Readonly<Record<string, string | 
 /**
  * The unrestricted `exec` tool is OFF by default. It runs an arbitrary shell
  * line with none of the command-policy guards, so enabling it is a deliberate
- * operator decision; ADMIN_MODE permission is still required on top of this flag.
+ * operator decision — and this flag is the whole decision: `exec` is not gated by
+ * the permission ceiling, so an install that never raises its ceiling can still
+ * be handed a shell, on purpose and in one place.
  */
 export function parseExecEnabled(env: Readonly<Record<string, string | undefined>> = process.env): boolean {
   return env.HOOSHIX_EXEC_ENABLED === "1";
