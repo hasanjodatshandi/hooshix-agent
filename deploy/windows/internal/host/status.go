@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 )
 
@@ -52,6 +53,11 @@ const (
 	publishRetry    = 20 * time.Millisecond
 )
 
+// Publication attempts are serialized inside the service. Concurrent
+// rename-over-existing operations can contend on Windows, independently
+// of unique temporary filenames. External readers still use bounded retry.
+var statusPublishMu sync.Mutex
+
 // Write publishes the status atomically. A tray that caught a half-written
 // document would render a broken tooltip, so the file is renamed into place.
 func Write(path string, status Status) error {
@@ -86,6 +92,8 @@ func Write(path string, status Status) error {
 	// measured on this machine with a handle that shared delete, so no share mode
 	// chosen by a reader avoids it. The lock belongs to the reader and clears in
 	// milliseconds, so the publisher waits rather than reporting a fault.
+	statusPublishMu.Lock()
+	defer statusPublishMu.Unlock()
 	for attempt := 0; attempt < publishAttempts; attempt++ {
 		err = os.Rename(temporary.Name(), path)
 		if err == nil {

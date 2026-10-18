@@ -44,7 +44,7 @@ type Settings struct {
 // gets the loader inputs a Windows process needs. Nothing else is inherited:
 // an operator's shell environment once carried a stale permission level and
 // silently downgraded the assistant, so the child sees this document only.
-var ossEnvironmentKeys = []string{"SystemRoot", "windir", "PATH", "PATHEXT", "COMSPEC", "TEMP", "TMP", "USERPROFILE", "APPDATA", "LOCALAPPDATA", "ProgramData"}
+var ossEnvironmentKeys = []string{"SystemRoot", "SystemDrive", "windir", "PATH", "PATHEXT", "COMSPEC", "TEMP", "TMP", "USERPROFILE", "APPDATA", "LOCALAPPDATA", "ProgramData"}
 
 // DefaultSettingsPath is where the service looks when no -settings flag is given.
 func DefaultSettingsPath() (string, error) {
@@ -215,6 +215,15 @@ func requiredChildEnvironment(block []string) string {
 
 func (settings *Settings) childEnvironment(env map[string]string, block []string) []string {
 	combined := inheritedOsEnvironment(block)
+	// Windows API/registry paths may contain %SystemDrive%. Without it,
+	// known-folder expansion can create a literal %SystemDrive% directory in
+	// the process cwd. Derive it from the trusted system root if SCM omitted it.
+	if _, ok := combined["SystemDrive"]; !ok {
+		root := combined["SystemRoot"]
+		if len(root) >= 3 && root[1] == ':' && (root[2] == '\\' || root[2] == '/') {
+			combined["SystemDrive"] = root[:2]
+		}
+	}
 	for key, value := range env {
 		combined[key] = value
 	}

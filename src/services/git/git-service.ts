@@ -34,7 +34,8 @@ export function gitStatus(cwd: string, correlationId?: string) {
 }
 
 export function gitDiff(cwd: string, staged = false, correlationId?: string) {
-  return runGit("git_diff", ["diff", ...(staged ? ["--cached"] : []), "--"], cwd, correlationId);
+  return runGit("git_diff", ["rev-parse", "--is-inside-work-tree"], cwd, correlationId).then(() =>
+    runGit("git_diff", ["diff", ...(staged ? ["--cached"] : []), "--"], cwd, correlationId));
 }
 
 export async function gitClone(url: string, targetPath: string, correlationId?: string) {
