@@ -5,12 +5,14 @@
 package main
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
 
 	"github.com/hasanjodatshandi/hooshix-agent/deploy/windows/internal/gitworker"
+	"github.com/hasanjodatshandi/hooshix-agent/deploy/windows/internal/wslfs"
 )
 
 func main() { os.Exit(run(os.Args[1:])) }
@@ -21,6 +23,8 @@ func run(args []string) int {
 	distro := options.String("distro", "", "registered WSL distribution name")
 	linuxRoot := options.String("linux-root", "", "absolute Linux working directory pinned by WSL owner")
 	wslCommand := options.String("wsl-command", "", "shell command passed only through opted-in WSL worker proxy")
+	fsBroker := options.String("fs-broker", "", "Linux executable path selected by signed-in owner for confined file tools")
+	fsRequest := options.String("fs-request-b64", "", "Base64 JSON request for authenticated read-only WSL filesystem proxy")
 	root := options.String("root", "", "approved absolute repository root")
 	tool := options.String("tool", "", "specific governed Git tool (proxy only)")
 	if e := options.Parse(args); e != nil {
@@ -31,6 +35,55 @@ func run(args []string) int {
 		return 2
 	}
 	switch *mode {
+	case "wslfs-enroll":
+		if *distro == "" || *linuxRoot == "" || *fsBroker == "" || *fsRequest != "" || len(options.Args()) != 0 {
+			return 2
+		}
+		if err := gitworker.EnrollWSLFiles(*root, *distro, *linuxRoot, *fsBroker); err != nil {
+			fmt.Fprintln(os.Stderr, "WSLFS enrollment:", err)
+			return 1
+		}
+		fmt.Fprintln(os.Stdout, "WSL native filesystem owner worker enrolled separately")
+		return 0
+	case "wslfs-unenroll":
+		if *distro != "" || *linuxRoot != "" || *fsBroker != "" || *fsRequest != "" || len(options.Args()) != 0 {
+			return 2
+		}
+		if err := gitworker.UnenrollWSLFiles(*root); err != nil {
+			fmt.Fprintln(os.Stderr, "WSLFS revocation:", err)
+			return 1
+		}
+		fmt.Fprintln(os.Stdout, "WSL native filesystem owner worker revoked")
+		return 0
+	case "wslfs-worker":
+		if *distro == "" || *linuxRoot == "" || *fsBroker == "" || *fsRequest != "" || len(options.Args()) != 0 {
+			return 2
+		}
+		if err := gitworker.ServeWSLFiles(*root, *distro, *linuxRoot, *fsBroker); err != nil {
+			fmt.Fprintln(os.Stderr, "WSLFS owner worker:", err)
+			return 1
+		}
+		return 0
+	case "wslfs-proxy":
+		if *distro != "" || *linuxRoot != "" || *fsBroker != "" || *fsRequest == "" || len(options.Args()) != 0 {
+			return 2
+		}
+		var req wslfs.Request
+		raw, e := base64.StdEncoding.DecodeString(*fsRequest)
+		if e != nil || len(raw) > 8192 {
+			_ = json.NewEncoder(os.Stdout).Encode(wslfs.Err("invalid_wslfs_json"))
+			return 0
+		}
+		if err := json.Unmarshal(raw, &req); err != nil {
+			_ = json.NewEncoder(os.Stdout).Encode(wslfs.Err("invalid_wslfs_json"))
+			return 0
+		}
+		result, err := gitworker.ProxyWSLFiles(*root, req)
+		if err != nil {
+			result = wslfs.Err("wslfs_owner_worker_unavailable")
+		}
+		_ = json.NewEncoder(os.Stdout).Encode(result)
+		return 0
 	case "wsl-enroll":
 		if *distro == "" || *linuxRoot == "" || *wslCommand != "" || len(options.Args()) != 0 {
 			return 2

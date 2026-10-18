@@ -262,6 +262,9 @@ describe("Windows installer package invariants", () => {
     expect(buildScript).toContain('`-ldflags=${flags.join(" ")}`');
     expect(buildScript).toContain('"build", "-buildvcs=false", "-trimpath"');
     expect(buildScript).toContain('"./cmd/hooshix-git-worker"');
+    expect(buildScript).toContain('"./cmd/hooshix-wsl-fs-broker"');
+    expect(buildScript).toContain('"hooshix-wsl-fs-broker-linux-amd64"');
+    expect(buildScript).toContain('"enroll-wsl-files.ps1"');
     expect(buildScript).not.toContain('`-ldflags=-${flags.join(" -")}`');
     expect(buildScript).toContain(`"install", "--prod", "--node-linker=hoisted", "--frozen-lockfile"`);
     expect(buildScript).toContain(`"node_modules", "typescript", "bin", "tsc"`);

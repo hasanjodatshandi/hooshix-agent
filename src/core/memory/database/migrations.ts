@@ -11,7 +11,7 @@ const SAFE_IDENTIFIER = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
  * CURRENT head instead of a hardcoded version that silently rots as new
  * migrations land. If you add a migration, bump this to match it.
  */
-export const LATEST_MIGRATION_VERSION = 25;
+export const LATEST_MIGRATION_VERSION = 26;
 
 export function ensureColumn(
   db: Database.Database,
@@ -548,6 +548,20 @@ export function runMigrations(db: Database.Database): void {
     ensureColumn(db,"tasks","ownership_epoch","INTEGER");
     ensureColumn(db,"tasks","created_by_binding_id","TEXT");
     ensureColumn(db,"task_leases","context_id","TEXT");
+  });
+
+  migrate(db,26,"wsl-workspace-owner-bindings",()=>{
+    db.exec(`
+      CREATE TABLE wsl_workspace_bindings (
+        workspace_uri TEXT NOT NULL PRIMARY KEY,
+        windows_owner_anchor TEXT NOT NULL,
+        distro TEXT NOT NULL,
+        linux_root TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        FOREIGN KEY(workspace_uri) REFERENCES workspace_roots(normalized_path) ON DELETE CASCADE
+      );
+      CREATE INDEX idx_wsl_owner_anchor ON wsl_workspace_bindings(windows_owner_anchor);
+    `);
   });
 
 }

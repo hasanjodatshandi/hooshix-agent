@@ -77,6 +77,13 @@ function main() {
 		buildWindowsBinary("./cmd/hooshix-mcp-tray", path.join(payloadDir, "bin", "hooshix-mcp-tray.exe"), true);
 		// Opt-in user-session Git transport; never registered as a SYSTEM service.
 		buildWindowsBinary("./cmd/hooshix-git-worker", path.join(payloadDir, "bin", "hooshix-git-worker.exe"), false);
+		// Linux-native, shell-free, os.OpenRoot-confined WSL workspace transport.
+		// This is a Linux ELF; it runs ONLY under an explicitly enrolled WSL user.
+		buildLinuxBinary("./cmd/hooshix-wsl-fs-broker", path.join(payloadDir, "bin", "hooshix-wsl-fs-broker-linux-amd64"));
+		// Enrollment is an explicit, non-elevated user action. Package the reviewed
+		// script with the same signed payload as both broker executables.
+		fs.mkdirSync(path.join(payloadDir, "tools"), { recursive: true });
+		fs.copyFileSync(path.join(repo, "scripts", "enroll-wsl-files.ps1"), path.join(payloadDir, "tools", "enroll-wsl-files.ps1"));
 		const setup = path.join(binDir, "hooshix-mcp-setup.exe");
 		buildWindowsBinary("./cmd/hooshix-mcp-setup", setup, false);
 		const assembler = path.join(binDir, `make-setup${executableSuffix}`);
@@ -195,6 +202,13 @@ function buildWindowsBinary(pkg, output, gui) {
 		cwd: moduleDir,
 		env: { ...process.env, GOOS: "windows", GOARCH: "amd64", CGO_ENABLED: "0" },
 	});
+}
+
+function buildLinuxBinary(pkg, output) {
+ run("go", ["build", "-buildvcs=false", "-trimpath", "-ldflags=-s -w", "-o", output, pkg], {
+  cwd: moduleDir,
+  env: { ...process.env, GOOS: "linux", GOARCH: "amd64", CGO_ENABLED: "0" },
+ });
 }
 
 function buildHostBinary(pkg, output) {
