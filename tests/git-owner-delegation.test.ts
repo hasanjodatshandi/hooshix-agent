@@ -62,7 +62,21 @@ describe("cross-owner Git delegation", () => {
     const result=await gitDiff(".");
     expect(result.stdout).toBe("diff");
     expect(native).toHaveBeenCalledTimes(2);
-    expect(ownerWorker).not.toHaveBeenCalled();
+    expect(ownerWorker).toHaveBeenCalledTimes(process.platform === "win32" ? 1 : 0);
+  });
+  it("routes both stages through a SID-verified owner when native rev-parse succeeds but native diff would fail", async () => {
+    if (process.platform !== "win32") return;
+    native.mockResolvedValueOnce({
+      exitCode:0, stdout:"true\\n", stderr:"", timedOut:false,
+    } as Awaited<ReturnType<typeof spawn>>);
+    ownerWorker
+      .mockResolvedValueOnce({exitCode:0,stdout:"true",stderr:""})
+      .mockResolvedValueOnce({exitCode:0,stdout:"owner diff body",stderr:""});
+    const result = await gitDiff(".");
+    expect(result.stdout).toBe("owner diff body");
+    expect(ownerWorker).toHaveBeenNthCalledWith(1,"git_diff",["rev-parse","--is-inside-work-tree"],expect.any(String));
+    expect(ownerWorker).toHaveBeenNthCalledWith(2,"git_diff",["diff","--"],expect.any(String));
+    expect(native).toHaveBeenCalledTimes(1);
   });
   it("fails closed if the owner worker disappears between Git diff stages", async () => {
     native.mockResolvedValueOnce({

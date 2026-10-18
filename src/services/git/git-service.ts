@@ -66,12 +66,22 @@ export function gitStatus(cwd: string, correlationId?: string) {
   return runGit("git_status", ["status", "--porcelain=v1", "--branch"], cwd, correlationId);
 }
 
-export function gitDiff(cwd: string, staged = false, correlationId?: string) {
+export async function gitDiff(cwd: string, staged = false, correlationId?: string) {
   let ownerVerified = false;
-  return runGit("git_diff", ["rev-parse", "--is-inside-work-tree"], cwd, correlationId,
-    120000, { onDelegated: () => { ownerVerified = true; } }).then(() =>
-    runGit("git_diff", ["diff", ...(staged ? ["--cached"] : []), "--"], cwd, correlationId,
-      120000, { requireOwnerWorker: ownerVerified }));
+  await runGit("git_diff", ["rev-parse", "--is-inside-work-tree"], cwd, correlationId,
+    120000, { onDelegated: () => { ownerVerified = true; } });
+  if (!ownerVerified && process.platform === "win32") {
+    // Git rev-parse can succeed on a repository for which the next `git diff`
+    // is rejected as "Not a git repository" by a Windows service identity.
+    // Independently ask the owner-SID-authenticated worker for the SAME
+    // read-only preflight. Only an affirmative repository response opts in to
+    // the worker; absent/mismatched workers leave native Git unchanged.
+    const root = validateWorkspace(cwd);
+    const probe = await runOwnerWorker("git_diff", ["rev-parse", "--is-inside-work-tree"], root);
+    ownerVerified = probe?.exitCode === 0 && probe.stdout.trim() === "true";
+  }
+  return runGit("git_diff", ["diff", ...(staged ? ["--cached"] : []), "--"], cwd,
+    correlationId, 120000, { requireOwnerWorker: ownerVerified });
 }
 
 export async function gitClone(url: string, targetPath: string, correlationId?: string) {
