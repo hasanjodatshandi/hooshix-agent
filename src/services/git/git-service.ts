@@ -6,6 +6,7 @@ import { policyDecisionPoint } from "../../core/governance/policy-decision-point
 import { logCommandAction } from "../../memory/command-audit.js";
 import { resolveCorrelationId } from "../../core/runtime/correlation-id.js";
 import { assertCwdExists, describeExecaFailure } from "../execa-result.js";
+import { runOwnerWorker } from "./owner-worker-client.js";
 
 export interface GitResult { exitCode: number; stdout: string; stderr: string; correlationId: string }
 
@@ -23,10 +24,21 @@ async function runGit(tool: string, args: string[], cwd: string, correlationId?:
   // Fail fast on a non-existent cwd instead of a confusing spawn failure.
   assertCwdExists(safeCwd, "Git working directory");
   const result = await spawn("git", args, { cwd: safeCwd, shell: false, reject: false, timeout, maxBuffer: 2 * 1024 * 1024 });
-  await logCommandAction({ command: "git", args, cwd: safeCwd, exitCode: result.exitCode, status: result.timedOut ? "timeout" : result.exitCode === 0 ? "success" : "failed", correlationId: traceId });
-  if (result.timedOut) throw new Error("Git command timed out");
-  if (result.exitCode !== 0) throw new Error(result.stderr || describeExecaFailure("git", result));
-  return { exitCode: result.exitCode, stdout: result.stdout, stderr: result.stderr, correlationId: traceId };
+  // Delegate only after Git itself rejected a cross-owner repository.
+  // A packed, owner-session worker independently validates the caller,
+  // repository SID, scoped operation and argument list.
+  let outcome: { exitCode: number; stdout: string; stderr: string; timedOut?: boolean } = { ...result, exitCode: result.exitCode ?? -1 };
+  if (!result.timedOut && result.exitCode !== 0 &&
+      /dubious ownership/i.test(result.stderr) &&
+      !["git_init", "git_clone"].includes(tool)) {
+    const delegated = await runOwnerWorker(tool, args, safeCwd);
+    if (delegated) outcome = delegated;
+  }
+  await logCommandAction({ command: "git", args, cwd: safeCwd, exitCode: outcome.exitCode,
+    status: outcome.timedOut ? "timeout" : outcome.exitCode === 0 ? "success" : "failed", correlationId: traceId });
+  if (outcome.timedOut) throw new Error("Git command timed out");
+  if (outcome.exitCode !== 0) throw new Error(outcome.stderr || describeExecaFailure("git", result));
+  return { exitCode: outcome.exitCode, stdout: outcome.stdout, stderr: outcome.stderr, correlationId: traceId };
 }
 
 export function gitStatus(cwd: string, correlationId?: string) {

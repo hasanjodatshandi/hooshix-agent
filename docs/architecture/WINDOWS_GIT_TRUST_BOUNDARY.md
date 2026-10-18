@@ -17,7 +17,7 @@ HooshiX runs as an always-on Windows service, including before user logon. Works
 3. **Explicit operator-controlled exception:** after review, an administrator may approve an **exact** repository as trusted for a specific service identity. This is a security decision, not something the server silently does. Avoid `safe.directory=*` and do not turn off Git's ownership checks globally.
 
 ## Deferred architecture item (NOT implemented by the current patch)
-Implement a per-user Git worker with Windows token-aware IPC, user-session lifecycle, process isolation and an explicit operator consent flow. Until that is built, a third-party user with repositories owned by another account will receive an actionable `untrusted_owner` readiness state rather than having HooshiX secretly override Git trust. This distinction is a functional limitation and **not** a completed cross-owner Git execution solution.
+Implement an opt-in user-owned Git worker with Windows token-aware IPC, user-session lifecycle, process isolation and an explicit operator consent flow. A first implementation is included in the follow-on Git worker PR; operational enrollment and known limitations are documented in USER_OWNED_GIT_WORKER.md. Native cross-owner staging validation remains required before release. Until that is built, a third-party user with repositories owned by another account will receive an actionable `untrusted_owner` readiness state rather than having HooshiX secretly override Git trust. This distinction is a functional limitation and **not** a completed cross-owner Git execution solution.
 
 ## Regression and delivery gates
 - Windows-native Git readiness unit tests cover trusted, untrusted, non-Git and Git-absent roots.

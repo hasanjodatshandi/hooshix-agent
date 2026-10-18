@@ -261,6 +261,7 @@ describe("Windows installer package invariants", () => {
     // Build flags are passed to Go as one argument; the old --s --w was invalid.
     expect(buildScript).toContain('`-ldflags=${flags.join(" ")}`');
     expect(buildScript).toContain('"build", "-buildvcs=false", "-trimpath"');
+    expect(buildScript).toContain('"./cmd/hooshix-git-worker"');
     expect(buildScript).not.toContain('`-ldflags=-${flags.join(" -")}`');
     expect(buildScript).toContain(`"install", "--prod", "--node-linker=hoisted", "--frozen-lockfile"`);
     expect(buildScript).toContain(`"node_modules", "typescript", "bin", "tsc"`);
