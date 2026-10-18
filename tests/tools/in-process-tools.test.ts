@@ -182,9 +182,9 @@ describe("in-process MCP tool coverage", () => {
     const updated = json(await client.callTool({ name: "memory_update", arguments: { memoryId: mem.id, content: "after", kind: "progress" } }));
     expect(updated).toEqual({ id: mem.id, updated: true });
     const got = json(await client.callTool({ name: "memory_get", arguments: { memoryId: mem.id } }));
-    expect(got.content).toBe("after");
-    expect(got.kind).toBe("progress");
-    expect(got.updated_at).toBeTruthy();
+    expect(got.record.content).toBe("after");
+    expect(got.record.kind).toBe("progress");
+    expect(got.record.updated_at).toBeTruthy();
     // Still one record — update never appended a sibling.
     const listed = json(await client.callTool({ name: "memory_list", arguments: { projectId: project.id } }));
     expect(listed.items.length).toBe(1);
@@ -199,7 +199,7 @@ describe("in-process MCP tool coverage", () => {
     expect(fetched.name).toBe("P");
     const mem = json(await client.callTool({ name: "memory_add", arguments: { projectId: project.id, kind: "note", content: "x" } }));
     const got = json(await client.callTool({ name: "memory_get", arguments: { memoryId: mem.id } }));
-    expect(got.id).toBe(mem.id);
+    expect(got.record.id).toBe(mem.id);
     const listed = json(await client.callTool({ name: "memory_list", arguments: { projectId: project.id } }));
     expect(listed.items.length).toBe(1);
     // Control-plane deletes are governed high-risk operations, but they are
