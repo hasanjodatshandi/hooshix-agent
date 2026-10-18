@@ -106,11 +106,11 @@ describe("R8.02 real Task lifecycle over HTTP/OAuth transport",()=>{
         expect(memoryListed.items.map(m=>m.id)).toContain(memoryCreated.id);
         const memoryFetched=json(await client.callTool({
           name:"memory_get",arguments:{memoryId:memoryCreated.id}
-        })) as {id:number;content:string;principal_id:string};
-        expect(memoryFetched).toMatchObject({
+        })) as {record:{id:number;content:string;principal_id:string}};
+        expect(memoryFetched.record).toMatchObject({
           id:memoryCreated.id,content:"fixture-memory",kind:"http-owner-roundtrip",
         });
-        expect(memoryFetched.principal_id).toBe(memoryListed.items[0]?.principal_id);
+        expect(memoryFetched.record.principal_id).toBe(memoryListed.items[0]?.principal_id);
         const memoryDeleted=json(await client.callTool({
           name:"memory_delete",arguments:{memoryId:memoryCreated.id}
         })) as {deleted:boolean};

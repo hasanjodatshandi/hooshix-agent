@@ -177,9 +177,15 @@ export function registerTaskTools(server: McpServer) {
     assertToolPermission("memory_list"); const traceId = resolveCorrelationId(correlationId);
     return auditToolCall("memory_list", traceId, input.taskId, () => response(listMemoryItems({ ...input, principalId: currentPrincipalId() }), traceId));
   });
-  server.registerTool("memory_get", { title: "Get Memory", description: "🧠 MEMORY (read) — Fetch one memory record by id.\n\nExample: { \"memoryId\": 170 }", annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true }, inputSchema: z.object({ memoryId: z.number().int().positive(), ...traceSchema }) }, async ({ memoryId, correlationId }) => {
+  server.registerTool("memory_get", { title: "Get Memory", description: "🧠 MEMORY (read) — Fetch one owned memory by id. Success is returned as { record: {...} } to keep the record content field distinct from MCP result content. Missing or inaccessible ids return null.\n\nExample: { \"memoryId\": 170 }", annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true }, inputSchema: z.object({ memoryId: z.number().int().positive(), ...traceSchema }) }, async ({ memoryId, correlationId }) => {
     assertToolPermission("memory_list"); const traceId = resolveCorrelationId(correlationId);
-    return auditToolCall("memory_get", traceId, undefined, () => response(getMemoryItem(memoryId, currentPrincipalId()), traceId));
+    return auditToolCall("memory_get", traceId, undefined, () => {
+      const record = getMemoryItem(memoryId, currentPrincipalId());
+      // A memory record has its own "content" property. Exposing it at
+      // the JSON root is ambiguous to connectors that also use "content"
+      // for MCP ContentBlock[]; keep the record inside a stable envelope.
+      return response(record === null ? null : { record }, traceId);
+    });
   });
   server.registerTool("memory_delete", { title: "Delete Memory", description: "🧠 MEMORY — Permanently delete one memory record by id.\n\nExample: { \"memoryId\": 170 }", annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true }, inputSchema: z.object({ memoryId: z.number().int().positive(), ...traceSchema }) }, async ({ memoryId, correlationId }) => {
     assertToolPermission("memory_add"); const traceId = resolveCorrelationId(correlationId);

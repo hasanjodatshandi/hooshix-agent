@@ -30,7 +30,9 @@ describe("memory single-record lookup through a real MCP process", () => {
       const got = json(await client.callTool({
         name:"memory_get", arguments:{memoryId:added.id}
       }));
-      expect(got).toMatchObject({
+      expect(Object.prototype.hasOwnProperty.call(got,"content")).toBe(false);
+      expect(Object.keys(got)).toEqual(["record"]);
+      expect(got.record).toMatchObject({
         id:added.id,kind:"roundtrip",content:"temporary"
       });
       const removed = json(await client.callTool({
