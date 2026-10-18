@@ -2,6 +2,8 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { Client } from "@modelcontextprotocol/client";
 import { USAGE_GUIDE } from "../../src/tools/system/help.js";
 import { ALL_REGISTERED_TOOLS } from "../../src/application/services/operation-catalog.js";
+import { PACKAGE_MANAGERS } from "../../src/application/services/package-managers.js";
+import { supportedManagersFor } from "../../src/services/package/package-service.js";
 import { connectInProcessMcp } from "../helpers/in-process-mcp.js";
 
 /**
@@ -99,6 +101,17 @@ describe("help tool — the operating manual", () => {
       "restore_file",
     ]) {
       expect(USAGE_GUIDE, `guide must cover ${fact}`).toContain(fact);
+    }
+  });
+
+  it("quotes package-manager support from the service that runs it", () => {
+    // The schema enum accepts 22 names and no action implements all of them, so
+    // any hand-copied manager list in the guide is the drift this test forbids.
+    for (const action of ["install", "remove", "update"] as const) {
+      const supported = supportedManagersFor(action);
+      const missing = PACKAGE_MANAGERS.filter((manager) => !supported.includes(manager));
+      const expected = `${action}: ${supported.length} of ${PACKAGE_MANAGERS.length}${missing.length > 0 ? ` (not ${missing.join(", ")})` : ""}`;
+      expect(USAGE_GUIDE, `guide must state ${action} support`).toContain(expected);
     }
   });
 

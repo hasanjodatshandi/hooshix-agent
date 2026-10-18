@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { commandFor, managePackage, validatePackageName, verificationCommandFor } from "../src/services/package/package-service.js";
+import { commandFor, managePackage, supportedManagersFor, validatePackageName, verificationCommandFor } from "../src/services/package/package-service.js";
+import { PACKAGE_MANAGERS } from "../src/application/services/package-managers.js";
 import { runWithPolicyApproval } from "../src/core/governance/policy-decision-point.js";
 
 const original = process.env.HOOSHIX_PERMISSION_LEVEL;
@@ -55,6 +56,30 @@ describe("package service policy", () => {
   it("rejects manager/action pairs without a CLI form instead of guessing", () => {
     expect(() => commandFor("go", "remove", "golang.org/x/tools")).toThrow(/does not support "remove"/);
     expect(() => commandFor("gradle", "install", "com.google:guava")).toThrow(/does not support "install"/);
+  });
+
+  it("reports per-action support exactly as commandFor behaves", () => {
+    for (const action of ["install", "remove", "update"] as const) {
+      const supported = new Set(supportedManagersFor(action));
+      for (const manager of PACKAGE_MANAGERS) {
+        const hasCommand = (() => {
+          try {
+            commandFor(manager, action, "example-pkg");
+            return true;
+          } catch {
+            return false;
+          }
+        })();
+        expect(hasCommand, `${manager} / ${action}`).toBe(supported.has(manager));
+      }
+    }
+    // The numbers the help guide and the tool descriptions quote.
+    expect(supportedManagersFor("install").length).toBe(21);
+    expect(supportedManagersFor("remove").length).toBe(19);
+    expect(supportedManagersFor("update").length).toBe(20);
+    expect(supportedManagersFor("install")).not.toContain("gradle");
+    expect(supportedManagersFor("remove")).not.toContain("go");
+    expect(supportedManagersFor("update")).not.toContain("maven");
   });
 
   it("provides verification commands for all managers that have one", () => {
