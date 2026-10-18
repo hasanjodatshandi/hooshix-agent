@@ -116,6 +116,23 @@ jobs:
           if ((Get-Item -LiteralPath $target).Length -lt 1048576) { throw "Installer payload is unexpectedly small" }
           & $target --verify
           if ($LASTEXITCODE -ne 0) { throw "Embedded runtime CRC verification failed" }
+      - name: Exercise isolated staging extraction and rollback safeguards
+        shell: pwsh
+        working-directory: deploy/windows
+        run: |
+          $env:HOOSHIX_STAGING_INSTALLER = Join-Path $env:RUNNER_TEMP 'HooshiX-MCP-Setup-ci.exe'
+          go test ./internal/setup -run '^TestStagedInstallerPayload$' -count=1 -v
+          if ($LASTEXITCODE -ne 0) { throw "Staged installer extraction or rollback invariants failed" }
+      - name: Retain unsigned, verified staging installer
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: hooshix-windows-staging-unsigned-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/HooshiX-MCP-Setup-ci.exe
+            ${{ runner.temp }}/HooshiX-MCP-Setup-ci.exe.sha256
+          retention-days: 7
+          compression-level: 0
+          if-no-files-found: error
 
   container-smoke:
     runs-on: ubuntu-24.04
