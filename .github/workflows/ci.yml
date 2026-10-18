@@ -2,7 +2,7 @@ name: HooshiX R7 verification
 
 on:
   push:
-    branches: [main, "feature/**", "release/**"]
+    branches: [main, "feature/**", "feat/**", "fix/**", "release/**"]
   pull_request:
     branches: [main, "release/**"]
 
