@@ -135,7 +135,7 @@ or backupId an earlier step produced.
 - A step killed mid-flight has an unknown effect. \`task_reconcile\` records the evidence you independently gathered and never auto-replays; confirming an outcome requires a separate read-only verification task.
 - \`task_snapshot\` / \`task_rollback\` capture and restore the git state of the whole workspace around a risky plan.
 - \`task_link\` / \`task_links\` record why one task follows another (repair, follow_up, recovery), which is what keeps a long incident readable.
-- \`task_replay\` re-runs a copy and compares outputs; blocked unless allowMutations is set.
+- \`task_replay\` re-runs a copy and compares outputs; blocked unless allowMutations is set. The copy is born inside the workspace its source ran in (and on the same project), so it needs neither \`set_workspace\` nor a handle.
 - \`task_cancel\` cancels a task that is not currently executing and revokes its unconsumed approvals.
 
 ## 5. Memory: your durable state across conversations

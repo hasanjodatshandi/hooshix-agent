@@ -1,5 +1,7 @@
 import type { TaskRuntimeService } from "../runtime/task-runtime-service.js";
 import { TOOL_CAPABILITIES, selectTool } from "../../application/services/legacy-tool-orchestrator.js";
+import { runWithWorkspaceScope } from "../../security/workspace-guard.js";
+import { resolveTaskWorkspace } from "../../security/task-workspace.js";
 
 export type ReplayMode = "readonly" | "sandbox" | "live";
 
@@ -81,9 +83,18 @@ export class ReplayExecutor {
       };
     }
 
-    const replay = this.runtime.create({
+    // A replay is a copy of THAT run, so it must inherit the root the source was
+    // authorized for rather than the caller's current selection: task_replay is a
+    // control-plane call and carries no project handle, so re-deriving the root
+    // from live state produced a replay born with workspace:null while its source
+    // ran in an authorized root. resolveTaskWorkspace is the same check the Task
+    // runtime applies before any side effect, so a removed or vanished root
+    // refuses the replay instead of silently widening it to another project.
+    const sourceWorkspace = source.executionContext?.workspace ?? null;
+    const createReplay = () => this.runtime.create({
       title: `Replay: ${source.task}`,
       description: `Execution replay of ${source.id} (mode=${mode})`,
+      projectId: source.projectId,
       steps: source.steps.map((step) => ({
         action: step.action,
         tool: step.tool,
@@ -97,6 +108,9 @@ export class ReplayExecutor {
         dependsOn: [...(step.dependsOn ?? [])]
       }))
     });
+    const replay = sourceWorkspace
+      ? runWithWorkspaceScope(resolveTaskWorkspace(source.executionContext).workspace, createReplay)
+      : createReplay();
     const result = await this.runtime.run(replay.id, 0);
     // A step that consumes another step's output but has no persisted
     // templateArguments replays with stale resolved values. The replay

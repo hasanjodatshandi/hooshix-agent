@@ -3,7 +3,8 @@ import fs from "node:fs";
 import fsAsync from "node:fs/promises";
 import path from "node:path";
 import { createTaskRuntimeService } from "../../src/core/runtime/composition-root.js";
-import { setActiveWorkspace, addWorkspaceRoots, setUnrestrictedMode, __seedUnrestrictedModeForTests } from "../../src/security/workspace-guard.js";
+import { ReplayExecutor } from "../../src/core/trace/replay-executor.js";
+import { setActiveWorkspace, addWorkspaceRoots, runWithWorkspaceScope, setUnrestrictedMode, __seedUnrestrictedModeForTests } from "../../src/security/workspace-guard.js";
 import { runWithPolicyApproval } from "../../src/core/governance/policy-decision-point.js";
 import { saveProject, getProject, archiveProject, listProjects, saveMemoryItem, listMemoryItems } from "../../src/core/memory/task-repository.js";
 import { auditToolCall } from "../../src/core/memory/tool-audit.js";
@@ -826,7 +827,6 @@ describe("Stage 19 dynamic data flow", () => {
     runWithPolicyApproval("set_workspace", async () => {
       __seedUnrestrictedModeForTests(false);
     });
-    const { ReplayExecutor } = await import("../../src/core/trace/replay-executor.js");
     const runtime = createTaskRuntimeService();
 
     // Create a task with template variables
@@ -858,6 +858,70 @@ describe("Stage 19 dynamic data flow", () => {
       if (replayStep2?.templateArguments) {
         expect(JSON.stringify(replayStep2.templateArguments)).toContain("{{step1.output.platform}}");
       }
+    }
+  });
+
+  it("replay inherits the source Task's workspace and project, not the live selection", async () => {
+    // task_replay is a control-plane call: it carries no project handle, so its
+    // dispatch arrives with NO active root while the Task it replays ran inside
+    // an authorized one. A replay is a copy of THAT run, so re-deriving the root
+    // from live state produced a Task born with workspace:null whose every step
+    // then died on "no active workspace".
+    const fixture = createDisposableFixture("replay-inherit");
+    addWorkspaceRoots([fixture.root]);
+    setActiveWorkspace(fixture.root);
+    try {
+      fs.writeFileSync(path.join(fixture.root, "replay-src.txt"), "REPLAY-MARKER");
+      const runtime = createTaskRuntimeService();
+      const projectId = saveProject({ name: "Replay inherit project", path: fixture.root });
+      const source = runtime.create({
+        title: "replay-inherit",
+        projectId,
+        steps: [{ action: "read", tool: "read_file", arguments: { path: "replay-src.txt" } }],
+      });
+      expect((await runtime.run(source.id, 0)).status).toBe("completed");
+
+      const replayed = await runWithWorkspaceScope(null, () => new ReplayExecutor(runtime).replay(source.id));
+      if (!("replayTaskId" in replayed)) throw new Error(`replay returned ${JSON.stringify(replayed)}`);
+      const plan = runtime.get(replayed.replayTaskId)!;
+      expect(plan.executionContext?.workspace).toBe(source.executionContext?.workspace);
+      expect(plan.projectId).toBe(projectId);
+      // The step runs where the source ran, so the file resolves — no
+      // SECURITY_POLICY block and no workspace:null.
+      expect(plan.steps[0].status).toBe("completed");
+      expect(String(plan.steps[0].output)).toContain("REPLAY-MARKER");
+    } finally {
+      // The pool refuses to drop the ACTIVE root, so select the repo root first.
+      addWorkspaceRoots([path.resolve(".")]); setActiveWorkspace(path.resolve("."));
+      removeWorkspaceRoot(fixture.root);
+      fixture.cleanup();
+    }
+  });
+
+  it("replay refuses a source workspace that is no longer an allowed root", async () => {
+    // Inheriting a captured root must not resurrect access to a project the pool
+    // dropped: the same check the Task runtime applies before every side effect
+    // runs first, so the caller gets a typed refusal instead of a silent widening
+    // to whatever root this connection currently has selected.
+    const fixture = createDisposableFixture("replay-expired");
+    addWorkspaceRoots([fixture.root]);
+    setActiveWorkspace(fixture.root);
+    try {
+      const runtime = createTaskRuntimeService();
+      const source = runtime.create({
+        title: "replay-expired",
+        steps: [{ action: "info", tool: "get_system_info", arguments: {} }],
+      });
+      expect((await runtime.run(source.id, 0)).status).toBe("completed");
+      // Drop the project from the pool while another root stays selected: the
+      // replay's caller now has a live root that is NOT the source's.
+      addWorkspaceRoots([path.resolve(".")]); setActiveWorkspace(path.resolve("."));
+      removeWorkspaceRoot(fixture.root);
+      await expect(new ReplayExecutor(runtime).replay(source.id))
+        .rejects.toThrow(/ROOT_NO_LONGER_ALLOWED/);
+    } finally {
+      removeWorkspaceRoot(fixture.root);
+      fixture.cleanup();
     }
   });
 
