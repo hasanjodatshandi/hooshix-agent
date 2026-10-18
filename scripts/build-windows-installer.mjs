@@ -75,6 +75,8 @@ function main() {
 		fs.mkdirSync(path.join(payloadDir, "bin"), { recursive: true });
 		buildWindowsBinary("./cmd/hooshix-mcp-service", path.join(payloadDir, "bin", "hooshix-mcp-service.exe"), false);
 		buildWindowsBinary("./cmd/hooshix-mcp-tray", path.join(payloadDir, "bin", "hooshix-mcp-tray.exe"), true);
+		// Opt-in user-session Git transport; never registered as a SYSTEM service.
+		buildWindowsBinary("./cmd/hooshix-git-worker", path.join(payloadDir, "bin", "hooshix-git-worker.exe"), false);
 		const setup = path.join(binDir, "hooshix-mcp-setup.exe");
 		buildWindowsBinary("./cmd/hooshix-mcp-setup", setup, false);
 		const assembler = path.join(binDir, `make-setup${executableSuffix}`);
