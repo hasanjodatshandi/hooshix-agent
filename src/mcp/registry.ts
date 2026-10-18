@@ -30,6 +30,7 @@ import { registerAgentMetricsTool } from "../tools/system/agent-metrics.js";
 import { registerChatIsolationProbeTool } from "../tools/system/chat-isolation-probe.js";
 import { registerHelpTool } from "../tools/system/help.js";
 import { registerWorkspaceTools } from "../tools/system/workspace.js";
+import { inspectGitReadiness } from "../services/git/git-readiness.js";
 
 /**
  * ChatGPT (and other MCP clients) render `annotations.title` as the action
@@ -186,7 +187,7 @@ export function registerTools(server: McpServer){
   // that has not granted a folder yet is precisely the one that needs to be
   // told the order things happen in.
   registerHelpTool(server);
-  registerWorkspaceTools(server);
+  registerWorkspaceTools(server, inspectGitReadiness);
 
   registerReadFileTool(server);
   registerWriteFileTool(server);

@@ -6,14 +6,18 @@ import { getTrustedInboundIdentity } from "../../core/runtime/r2-trusted-inbound
 import { saveDecisionWithContext } from "../../core/memory/context-memory.js";
 import { assertToolPermission } from "../../security/permission.js";
 import { closeProjectHandle, mintProjectHandle, resolveProjectSelector } from "../../security/project-handles.js";
-import { inspectGitReadiness } from "../../services/git/git-readiness.js";
+// Project Git diagnostics are provided by the composition root; this inbound
+// registrar must not import concrete Git/process services directly.
 
 function response(value: unknown, correlationId: string) {
   return { content: [{ type: "text" as const, text: JSON.stringify(value, null, 2) }], _meta: { correlationId } };
 }
 
 /** Schema-only registrations. Workspace state changes occur behind R2 gateway. */
-export function registerWorkspaceTools(server: McpServer): void {
+export function registerWorkspaceTools(
+  server: McpServer,
+  inspectGitReadiness: (root: string) => Promise<{ status: string; advice?: string }>,
+): void {
   server.registerTool(
     "set_workspace",
     {
