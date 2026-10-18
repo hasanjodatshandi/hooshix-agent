@@ -14,10 +14,11 @@ export interface OwnerWorkerResult {
  */
 export function packagedOwnerWorkerPath(executablePath: string, platform = process.platform): string | null {
   if (platform !== "win32") return null;
-  const runtimeDir = path.dirname(executablePath);
-  if (path.basename(runtimeDir).toLowerCase() !== "runtime") return null;
-  if (path.basename(executablePath).toLowerCase() !== "node.exe") return null;
-  return path.resolve(runtimeDir, "..", "bin", "hooshix-git-worker.exe");
+  const winPath = path.win32;
+  const runtimeDir = winPath.dirname(executablePath);
+  if (winPath.basename(runtimeDir).toLowerCase() !== "runtime") return null;
+  if (winPath.basename(executablePath).toLowerCase() !== "node.exe") return null;
+  return winPath.resolve(runtimeDir, "..", "bin", "hooshix-git-worker.exe");
 }
 
 export async function runOwnerWorker(

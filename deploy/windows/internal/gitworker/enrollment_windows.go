@@ -79,7 +79,8 @@ func Enroll(root string) error {
 	process.Stdout = nil
 	process.Stderr = nil
 	if err = process.Start(); err != nil {
-		return fmt.Errorf("startup registered but worker could not start: %w", err)
+		_ = key.DeleteValue(startupValue(canonical))
+		return fmt.Errorf("worker could not start; user startup registration rolled back: %w", err)
 	}
 	return process.Process.Release()
 }
@@ -87,9 +88,14 @@ func Enroll(root string) error {
 // Unenroll removes only the exact HKCU entry and asks the owner worker to
 // stop now. A missing worker is already a revoked capability.
 func Unenroll(root string) error {
-	canonical, err := CheckOwner(root)
+	// Revocation belongs to the current user's HKCU entry even after a
+	// repository was moved, deleted or its owner changed.
+	if !filepath.IsAbs(root) {
+		return errors.New("absolute enrolled root required")
+	}
+	canonical, err := CanonicalRoot(root)
 	if err != nil {
-		return err
+		canonical = filepath.Clean(root)
 	}
 	key, err := registry.OpenKey(registry.CURRENT_USER, loginRunKey, registry.SET_VALUE)
 	if err != nil {

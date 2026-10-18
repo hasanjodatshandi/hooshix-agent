@@ -137,6 +137,33 @@ func Serve(root string) error {
 		}
 	}
 }
+
+// boundedCapture limits memory while Git is still running. Returning len(p)
+// prevents a writer error from stalling the Git process's output pipe.
+type boundedCapture struct {
+	bytes    []byte
+	max      int
+	overflow bool
+}
+
+func (b *boundedCapture) Write(p []byte) (int, error) {
+	n := len(p)
+	available := b.max - len(b.bytes)
+	if available < 0 {
+		available = 0
+	}
+	if available > n {
+		available = n
+	}
+	if available > 0 {
+		b.bytes = append(b.bytes, p[:available]...)
+	}
+	if available < n {
+		b.overflow = true
+	}
+	return n, nil
+}
+func (b *boundedCapture) String() string { return string(b.bytes) }
 func execute(req Request, root string) Response {
 	if err := Validate(req, root); err != nil {
 		return Response{ExitCode: 126, Stderr: "Git operation denied by owner worker"}
@@ -146,29 +173,28 @@ func execute(req Request, root string) Response {
 	command := exec.CommandContext(ctx, "git", req.Args...)
 	command.Dir = root
 	command.Env = filteredUserEnv()
-	output, err := command.Output()
-	var response Response
-	response.Stdout = limitedText(output, MaxResponseBytes/2)
+	stdout := &boundedCapture{max: MaxResponseBytes / 2}
+	stderr := &boundedCapture{max: MaxResponseBytes / 2}
+	command.Stdout = stdout
+	command.Stderr = stderr
+	err := command.Run()
 	if ctx.Err() != nil {
 		return Response{ExitCode: 124, Stderr: "Git operation timed out"}
 	}
+	if stdout.overflow || stderr.overflow {
+		return Response{ExitCode: 125, Stderr: "Git worker output limit exceeded"}
+	}
+	result := Response{ExitCode: 0, Stdout: stdout.String(), Stderr: stderr.String()}
 	if err == nil {
-		return response
+		return result
 	}
-	response.ExitCode = 1
 	if exit, ok := err.(*exec.ExitError); ok {
-		response.ExitCode = exit.ExitCode()
-		response.Stderr = limitedText(exit.Stderr, MaxResponseBytes/2)
+		result.ExitCode = exit.ExitCode()
 	} else {
-		response.Stderr = "Git executable unavailable"
+		result.ExitCode = 127
+		result.Stderr = "Git executable unavailable"
 	}
-	return response
-}
-func limitedText(buf []byte, limit int) string {
-	if len(buf) > limit {
-		return string(buf[:limit]) + "\n[truncated]"
-	}
-	return string(buf)
+	return result
 }
 func filteredUserEnv() []string {
 	allowed := map[string]bool{"PATH": true, "PATHEXT": true, "SYSTEMROOT": true, "SYSTEMDRIVE": true,
