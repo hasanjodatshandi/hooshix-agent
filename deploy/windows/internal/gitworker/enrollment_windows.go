@@ -42,7 +42,8 @@ func startupValue(root string) string {
 	return "HooshiXGitWorker-" + digest[len(digest)-24:]
 }
 func startupCommand(executable, root string) (string, error) {
-	if strings.ContainsAny(executable, `"\x00`) || strings.ContainsAny(root, `"\x00`) {
+	if strings.ContainsAny(executable, "\"\r\n") || strings.ContainsRune(executable, '\x00') ||
+		strings.ContainsAny(root, "\"\r\n") || strings.ContainsRune(root, '\x00') {
 		return "", errors.New("unsafe path for user startup")
 	}
 	return fmt.Sprintf(`"%s" -mode worker -root "%s"`, executable, root), nil
