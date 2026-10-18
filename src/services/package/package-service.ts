@@ -15,8 +15,8 @@ import { assertCwdExists, describeExecaFailure } from "../execa-result.js";
  * tools/package/index.ts and core/executor/handlers/package-handler.ts are
  * derived from this tuple so the registry can never drift from the service.
  */
-import type { PackageManager } from "../../application/services/package-managers.js";
-export { PACKAGE_MANAGERS, type PackageManager } from "../../application/services/package-managers.js";
+import { PACKAGE_MANAGERS, type PackageManager } from "../../application/services/package-managers.js";
+export { PACKAGE_MANAGERS, type PackageManager };
 export type PackageAction = "install" | "remove" | "update";
 
 /** Managers that install OS-wide software and therefore require ADMIN_MODE. */
@@ -287,6 +287,15 @@ export function commandFor(manager: PackageManager, action: PackageAction, packa
   const build = COMMANDS[manager]?.[action];
   if (!build) throw new Error(`Package manager "${manager}" does not support "${action}" via CLI (manage it declaratively instead)`);
   return build(packageName);
+}
+
+/**
+ * The managers this service can actually run for one action. The schema enum
+ * accepts every name, so support has to be stated from here rather than from the
+ * enum: gradle has no CLI form at all, go has no uninstall, maven installs only.
+ */
+export function supportedManagersFor(action: PackageAction): PackageManager[] {
+  return PACKAGE_MANAGERS.filter((manager) => COMMANDS[manager][action] !== undefined);
 }
 
 // JS-ecosystem managers share the name@version convention.

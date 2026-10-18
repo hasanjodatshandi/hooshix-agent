@@ -1,8 +1,21 @@
 import { z } from "zod";
 import type { McpServer } from "../../adapters/inbound/mcp/legacy-sdk-bridge.js";
+import { PACKAGE_MANAGERS, supportedManagersFor } from "../../services/package/package-service.js";
 import { auditToolCall } from "../../core/memory/tool-audit.js";
 import { resolveCorrelationId } from "../../core/runtime/correlation-id.js";
 import { assertToolPermission } from "../../security/permission.js";
+
+/**
+ * Package support quoted from the service that runs the commands, not from the
+ * schema enum: the enum accepts 22 names, and no action supports all of them.
+ */
+const PACKAGE_SUPPORT = (["install", "remove", "update"] as const)
+  .map((action) => {
+    const supported = supportedManagersFor(action);
+    const missing = PACKAGE_MANAGERS.filter((manager) => !supported.includes(manager));
+    return `${action}: ${supported.length} of ${PACKAGE_MANAGERS.length}${missing.length > 0 ? ` (not ${missing.join(", ")})` : ""}`;
+  })
+  .join(" · ");
 
 /**
  * The operating manual every assistant gets from `help`.
@@ -282,9 +295,15 @@ Execute & Git
 - \`task_rollback\` — reset to a snapshot; destructive.
 
 Packages
-- \`install_package\` — npm, pnpm, pip, winget or choco install.
-- \`remove_package\` — uninstall through the same managers.
-- \`update_package\` — upgrade through the same managers.
+- \`install_package\` — install one package with the manager you name; always needs approval.
+- \`remove_package\` — uninstall one package with the manager you name; always needs approval.
+- \`update_package\` — upgrade one package with the manager you name; always needs approval.
+
+  Support per action, read from the service that builds the command line — ${PACKAGE_SUPPORT}.
+  A name the action has no command for is refused before anything runs, with "does not
+  support ... via CLI". This list says the connector knows the invocation, not that the
+  tool is on this machine — an absent binary still fails at spawn. winget, choco, apt,
+  dnf, pacman and zypper install machine-wide and are refused unless the operator set ADMIN_MODE.
 
 Task Engine
 - \`task_create\` — persist a multi-step plan (and its permanent workspace).
