@@ -93,7 +93,16 @@ export function gitLog(cwd: string, limit = 20, correlationId?: string) {
   // directly. Coerce to a safe integer so no caller can smuggle extra argv
   // through the `--max-count=${limit}` template.
   const safeLimit = Math.min(Math.max(Math.trunc(Number(limit) || 20), 1), 100);
-  return runGit("git_log", ["log", `--max-count=${safeLimit}`, "--oneline", "--decorate"], cwd, correlationId);
+  return runGit("git_log", ["log", `--max-count=${safeLimit}`, "--oneline", "--decorate"], cwd, correlationId)
+    .catch((error: unknown) => {
+      // An initialized, trusted repository with an unborn branch has an empty
+      // history, not a broken Git installation. Do not disguise repository
+      // trust errors, missing Git executables, or other failures as no commits.
+      if (error instanceof Error && /your current branch '.+' does not have any commits yet/.test(error.message)) {
+        return { exitCode: 0, stdout: "", stderr: "", correlationId: resolveCorrelationId(correlationId) };
+      }
+      throw error;
+    });
 }
 
 export async function gitHasIdentity(cwd: string): Promise<boolean> {

@@ -69,8 +69,14 @@ self-grantable through exactly this path — there is no manual seeding step.
 
 Paths must exist AND be visible to the account running the server. A
 \`\\\\wsl.localhost\` or network-share path that the service account cannot see is
-reported as *not existing*, not as *denied*: that is a host configuration gap,
-re-approving will not fix it, and the human has to change the service.
+reported as *not existing*, not as *denied*: that is a host configuration gap.
+
+Re-approving the same inaccessible WSL path cannot fix it; a host configuration change is required.
+
+A separately enrolled WSL owner worker supports exec with shell wsl and a registered Windows anchor directory. It runs under the signed-in Windows owner, not LocalSystem. Native file tools still require a Windows-accessible project root.
+
+
+
 
 \`set_workspace\` selects the ACTIVE root from the pool. It never adds one.
 
@@ -106,7 +112,7 @@ needs an approved task step. Arguments travel as an ARRAY, so shell quoting is
 not your problem — do not build one big command string.
 
 \`exec\` is the wide-open door. It runs one arbitrary command line through the
-platform shell (cmd.exe by default on Windows; powershell, pwsh, bash or sh via
+platform shell (cmd.exe by default on Windows; powershell, pwsh, bash, sh or the explicitly enrolled WSL worker via
 the \`shell\` argument) with pipes, redirects, builtins and chaining, in ANY
 directory — not just the workspace. Its only gate is the operator flag
 \`HOOSHIX_EXEC_ENABLED=1\`: no permission ceiling and no workspace scope stands in

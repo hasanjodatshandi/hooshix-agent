@@ -85,7 +85,7 @@ jobs:
         run: |
           corepack pnpm run typecheck
           corepack pnpm run build
-          corepack pnpm exec vitest run tests/ci/ci-g6-project-handle.test.ts tests/git-diff-trust-preflight.test.ts tests/git-readiness.test.ts tests/git-owner-delegation.test.ts tests/security/r4-child-env-excludes-secrets.test.ts tests/tools/in-process-tools.test.ts tests/windows-service-deployment.test.ts --maxWorkers=1 --no-file-parallelism
+          corepack pnpm exec vitest run tests/ci/ci-g6-project-handle.test.ts tests/git-diff-trust-preflight.test.ts tests/git-readiness.test.ts tests/git-owner-delegation.test.ts tests/security/r4-child-env-excludes-secrets.test.ts tests/tools/in-process-tools.test.ts tests/windows-service-deployment.test.ts tests/shell/exec-service.test.ts tests/git-empty-history.test.ts --maxWorkers=1 --no-file-parallelism
       - name: Set up pinned Go toolchain
         uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
         with:
@@ -96,8 +96,10 @@ jobs:
         working-directory: deploy/windows
         run: |
           $env:HOOSHIX_REQUIRE_GIT_WORKER_E2E = "1"
+          $env:HOOSHIX_REQUIRE_WSL_BROKER_E2E = "1"
           go test ./... -count=1
           Remove-Item Env:\HOOSHIX_REQUIRE_GIT_WORKER_E2E
+          Remove-Item Env:\HOOSHIX_REQUIRE_WSL_BROKER_E2E
           go test ./internal/host -run TestStatusWriteSurvivesConcurrentPublishers -count=100
           go vet ./...
           go build ./...

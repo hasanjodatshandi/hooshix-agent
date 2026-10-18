@@ -17,7 +17,10 @@ func main() { os.Exit(run(os.Args[1:])) }
 func run(args []string) int {
 	options := flag.NewFlagSet("hooshix-git-worker", flag.ContinueOnError)
 	options.SetOutput(os.Stderr)
-	mode := options.String("mode", "", "worker, proxy, enroll or unenroll")
+	mode := options.String("mode", "", "worker, proxy, enroll, unenroll or wsl-worker|wsl-proxy|wsl-enroll|wsl-unenroll")
+	distro := options.String("distro", "", "registered WSL distribution name")
+	linuxRoot := options.String("linux-root", "", "absolute Linux working directory pinned by WSL owner")
+	wslCommand := options.String("wsl-command", "", "shell command passed only through opted-in WSL worker proxy")
 	root := options.String("root", "", "approved absolute repository root")
 	tool := options.String("tool", "", "specific governed Git tool (proxy only)")
 	if e := options.Parse(args); e != nil {
@@ -28,6 +31,45 @@ func run(args []string) int {
 		return 2
 	}
 	switch *mode {
+	case "wsl-enroll":
+		if *distro == "" || *linuxRoot == "" || *wslCommand != "" || len(options.Args()) != 0 {
+			return 2
+		}
+		if err := gitworker.EnrollWSL(*root, *distro, *linuxRoot); err != nil {
+			fmt.Fprintln(os.Stderr, "WSL enrollment:", err)
+			return 1
+		}
+		fmt.Fprintln(os.Stdout, "WSL owner worker enrolled for this Windows user and Linux root")
+		return 0
+	case "wsl-unenroll":
+		if *distro != "" || *linuxRoot != "" || *wslCommand != "" || len(options.Args()) != 0 {
+			return 2
+		}
+		if err := gitworker.UnenrollWSL(*root); err != nil {
+			fmt.Fprintln(os.Stderr, "WSL unenrollment:", err)
+			return 1
+		}
+		fmt.Fprintln(os.Stdout, "WSL owner worker revoked")
+		return 0
+	case "wsl-worker":
+		if *distro == "" || *linuxRoot == "" || *wslCommand != "" || len(options.Args()) != 0 {
+			return 2
+		}
+		if err := gitworker.ServeWSL(*root, *distro, *linuxRoot); err != nil {
+			fmt.Fprintln(os.Stderr, "WSL owner worker:", err)
+			return 1
+		}
+		return 0
+	case "wsl-proxy":
+		if *wslCommand == "" || *distro != "" || *linuxRoot != "" || len(options.Args()) != 0 {
+			return 2
+		}
+		result, err := gitworker.ProxyWSL(*root, *wslCommand)
+		if err != nil {
+			result = gitworker.Response{ExitCode: 126, Stderr: err.Error()}
+		}
+		_ = json.NewEncoder(os.Stdout).Encode(result)
+		return 0
 	case "enroll":
 		if *tool != "" || len(options.Args()) != 0 {
 			return 2
