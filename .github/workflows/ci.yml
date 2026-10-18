@@ -60,6 +60,60 @@ jobs:
       - name: Source integrity preflight
         run: pnpm run release:preflight
 
+  windows-native:
+    # Exercise the actual Windows filesystem, SCM-adjacent packages and
+    # concurrent rename semantics: Linux runners cannot detect these races.
+    runs-on: windows-2022
+    timeout-minutes: 45
+    steps:
+      - name: Checkout immutable source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Set up pinned Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "24.18.0"
+      - name: Validate pnpm pin and install from lockfile
+        shell: pwsh
+        run: |
+          corepack pnpm --version
+          if ((corepack pnpm --version).Trim() -ne "11.24.0") { throw "pnpm pin mismatch" }
+          corepack pnpm install --frozen-lockfile
+      - name: Compile and test project handle isolation on Windows
+        shell: pwsh
+        run: |
+          corepack pnpm run typecheck
+          corepack pnpm run build
+          corepack pnpm exec vitest run tests/ci/ci-g6-project-handle.test.ts tests/git-diff-trust-preflight.test.ts tests/git-readiness.test.ts tests/security/r4-child-env-excludes-secrets.test.ts tests/tools/in-process-tools.test.ts tests/windows-service-deployment.test.ts --maxWorkers=1 --no-file-parallelism
+      - name: Set up pinned Go toolchain
+        uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+        with:
+          go-version: "1.27.1"
+          cache-dependency-path: deploy/windows/go.sum
+      - name: Go unit tests and Windows status-publisher stress
+        shell: pwsh
+        working-directory: deploy/windows
+        run: |
+          go test ./... -count=1
+          go test ./internal/host -run TestStatusWriteSurvivesConcurrentPublishers -count=100
+          go vet ./...
+          go build ./...
+      - name: Build and checksum a fresh Windows installer
+        shell: pwsh
+        run: |
+          $target = Join-Path $env:RUNNER_TEMP 'HooshiX-MCP-Setup-ci.exe'
+          node scripts/build-windows-installer.mjs --skip-build --out $target
+          if ($LASTEXITCODE -ne 0) { throw "Windows installer build failed" }
+          if (-not (Test-Path -LiteralPath $target -PathType Leaf)) { throw "Installer is missing" }
+          $actual = (Get-FileHash -LiteralPath $target -Algorithm SHA256).Hash.ToLowerInvariant()
+          $manifest = Get-Content -LiteralPath ($target + '.sha256') -Raw
+          $expected = ($manifest.Trim() -split '\s+')[0].ToLowerInvariant()
+          if ($actual -ne $expected) { throw "Installer checksum mismatch" }
+          if ((Get-Item -LiteralPath $target).Length -lt 1048576) { throw "Installer payload is unexpectedly small" }
+          & $target --verify
+          if ($LASTEXITCODE -ne 0) { throw "Embedded runtime CRC verification failed" }
+
   container-smoke:
     runs-on: ubuntu-24.04
     timeout-minutes: 25

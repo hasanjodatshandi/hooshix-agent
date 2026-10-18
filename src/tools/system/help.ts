@@ -140,7 +140,7 @@ Template variables pass output between steps — {{step1.output.field}},
 {{step1.output}}, {{step1.status}}, {{step1.error}} — so a plan can read the id
 or backupId an earlier step produced.
 
-- \`task_step_risks\` is a dry run: it tells you which steps will pause for approval. Use it to batch the gated steps together instead of interrupting the human four times.
+- \`task_step_risks\` is a dry run: it tells you which steps will pause for approval. Use it to batch the gated steps together instead of interrupting the human four times. Pass the same \`project\` handle you would pass to \`task_create\` — the preview judges each path inside THAT project, so its verdicts are the ones execution will give.
 - \`task_run\` executes the next unfinished steps; re-running a FAILED task continues it, re-running a completed or cancelled one is a no-op.
 - \`task_get\` returns raw steps with their outputs (that is where a step's backupId or created id lives); \`task_report\` returns the unified execution/recovery timeline.
 - Transient failures (timeout, network) retry with backoff inside \`retryPolicy\` bounds; a definitive failure stops so you can fix the cause.

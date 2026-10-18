@@ -64,7 +64,12 @@ function withAnnotationsTitle(server: McpServer): void {
  * THROUGH that snapshot — is confined to it. Without the handle at creation the
  * plan captures no root and every step is then denied for
  * `workspace_missing_or_ungranted`, so the failure must surface here, where it
- * is still fixable. `task_run`/`task_append_steps` are deliberately NOT listed:
+ * is still fixable. `task_step_risks` joins it for the same reason: it takes raw
+ * steps, not a plan, and classifies their paths through the CALLER's scope, so
+ * without a handle it judged every step against the process selection and told
+ * the client "no active workspace" about a step its own handle would run
+ * successfully — a preview that contradicts the plan it previews.
+ * `task_run`/`task_append_steps` are deliberately NOT listed:
  * the plan's own captured root governs them, and asking for a handle that could
  * not change the outcome would only suggest that it could.
  */
@@ -74,7 +79,7 @@ const PROJECT_SCOPED_TOOLS: ReadonlySet<string> = new Set([
   "git_status", "git_diff", "git_clone", "git_commit", "git_branch",
   "git_checkout", "git_add", "git_init", "git_log",
   "install_package", "remove_package", "update_package",
-  "task_snapshot", "task_rollback", "task_create",
+  "task_snapshot", "task_rollback", "task_create", "task_step_risks",
 ]);
 
 const PROJECT_ARGUMENT = z.string().min(1).optional().describe(

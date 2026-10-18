@@ -76,6 +76,20 @@ describe("4.9 child process env excludes sensitive credentials",()=>{
       const childEnv=buildChildProcessEnvironment({PATH:"C:\\exact",Path:"C:\\folded"},"win32");
       expect(childEnv.PATH).toBe("C:\\exact");
     });
+    it("preserves Windows volume paths without exposing HooshiX secrets",()=>{
+      const childEnv=buildChildProcessEnvironment({
+        SystemDrive:"D:",
+        ProgramData:"D:\\ProgramData",
+        HOOSHIX_BOOTSTRAP_TOKEN:"redacted",
+      },"win32");
+      expect(childEnv.SystemDrive).toBe("D:");
+      expect(childEnv.ProgramData).toBe("D:\\ProgramData");
+      expect(childEnv).not.toHaveProperty("HOOSHIX_BOOTSTRAP_TOKEN");
+    });
+    it("derives a missing SystemDrive from SystemRoot on Windows only",()=>{
+      expect(buildChildProcessEnvironment({SystemRoot:"C:\\Windows"},"win32").SystemDrive).toBe("C:");
+      expect(buildChildProcessEnvironment({SystemRoot:"C:\\Windows"},"linux").SystemDrive).toBeUndefined();
+    });
     it("does not fold names on POSIX, where path and PATH are different variables",()=>{
       const childEnv=buildChildProcessEnvironment({path:"/posix/other",PATH:"/posix/bin"},"linux");
       expect(childEnv.PATH).toBe("/posix/bin");
@@ -167,6 +181,23 @@ describe("4.9 child process env excludes sensitive credentials",()=>{
 
   describe("Windows packaged-app activation",()=>{
 
+    it("passes the Windows volume root into a real isolated child",async()=>{
+      if(process.platform!=="win32") return;
+      const fixture=createDisposableFixture("r4-win-volume-env");
+      try {
+        const result=await spawn("node",["-e",
+          'process.stdout.write(process.env.SystemDrive ?? "MISSING_SYSTEMDRIVE")'
+        ],{cwd:fixture.root,timeout:10000,reject:false});
+        expect(result.exitCode,result.stderr).toBe(0);
+        const root=process.env.SystemRoot ?? process.env.WINDIR ?? "";
+        const expected=process.env.SystemDrive || /^([A-Za-z]:)[\\/]/.exec(root)?.[1];
+        if(expected) expect(result.stdout).toBe(expected);
+        else expect(result.stdout).toBe("MISSING_SYSTEMDRIVE");
+      } finally {
+        fixture.cleanup();
+      }
+    });
+
     it("forwards LOCALAPPDATA so the Windows Python launcher resolves instead of hanging",()=>{
       // Regression for the 2026-10-02 retest: python/py resolve to Microsoft
       // App Execution Alias stubs that activate the Windows Python Install
@@ -183,7 +214,7 @@ describe("4.9 child process env excludes sensitive credentials",()=>{
       expect(childEnv.LOCALAPPDATA).toBe("C:\\Users\\probe\\AppData\\Local");
     });
 
-    it("python --version resolves through the governed spawn choke point",async()=>{
+    it("Python either resolves or reports that it is absent without hanging",async()=>{
       if(process.platform!=="win32") return;
       // End-to-end proof through the only spawn path: before LOCALAPPDATA was
       // allowlisted this hung until the tool timed out (pymanager self-update);
@@ -192,6 +223,11 @@ describe("4.9 child process env excludes sensitive credentials",()=>{
       try{
         const result=await spawn("python",["--version"],{cwd:fixture.root,timeout:20000,reject:false});
         expect(result.timedOut,"python --version timed out — LOCALAPPDATA likely missing from the child env").toBe(false);
+        if (result.exitCode !== 0 && /(?:not recognized as an internal|not found|ENOENT)/i.test(result.stderr)) {
+          // Python is optional on third-party Windows hosts. A fast and clear
+          // missing-executable result is not a broken MCP subprocess launcher.
+          return;
+        }
         expect(result.exitCode,result.stderr).toBe(0);
         expect(result.stdout.trim()).toMatch(/^Python /);
       }finally{

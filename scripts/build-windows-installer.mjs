@@ -186,14 +186,17 @@ function compileApplication(nodeRuntime) {
 function buildWindowsBinary(pkg, output, gui) {
 	const flags = ["-s", "-w"];
 	if (gui) flags.push("-H=windowsgui");
-	run("go", ["build", "-trimpath", `-ldflags=-${flags.join(" -")}`, "-o", output, pkg], {
+	// Installer provenance is verified by release preflight + SHA-256 manifest.
+	// Building from a read-only or separately owned source checkout must not
+	// depend on Git stamping inside the Go toolchain.
+	run("go", ["build", "-buildvcs=false", "-trimpath", `-ldflags=${flags.join(" ")}`, "-o", output, pkg], {
 		cwd: moduleDir,
 		env: { ...process.env, GOOS: "windows", GOARCH: "amd64", CGO_ENABLED: "0" },
 	});
 }
 
 function buildHostBinary(pkg, output) {
-	run("go", ["build", "-trimpath", "-o", output, pkg], {
+	run("go", ["build", "-buildvcs=false", "-trimpath", "-o", output, pkg], {
 		cwd: moduleDir,
 		env: { ...process.env, CGO_ENABLED: "0" },
 	});
@@ -279,5 +282,7 @@ function quoteToken(token) {
  * program and no shell is involved.
  */
 function runPackageManager(args, { cwd, env }) {
-	run("pnpm", args, { cwd, env, shell: process.platform === "win32" });
+	// Corepack reads the exact pnpm pin from package.json. A machine-wide
+	// pnpm shim is not required for the Windows LocalSystem build account.
+	run("corepack", ["pnpm", ...args], { cwd, env, shell: process.platform === "win32" });
 }

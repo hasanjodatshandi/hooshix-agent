@@ -2,7 +2,7 @@ import type { TaskStep } from "../../application/dto/legacy-task-plan.js";
 import { policyDecisionPoint } from "./policy-decision-point.js";
 import { selectTool, type ToolName } from "../../application/services/legacy-tool-orchestrator.js";
 import { evaluateAction } from "../../application/services/legacy-action-governance.js";
-import { validateWorkspace, classifyCommandCwd, getWorkspaceRoot } from "../../security/workspace-guard.js";
+import { validateWorkspace, classifyCommandCwd, getActiveWorkspace } from "../../security/workspace-guard.js";
 
 /** File tools whose `path` argument is hard-scoped to the active workspace. */
 const FILE_PATH_TOOLS = new Set<ToolName>([
@@ -65,7 +65,10 @@ export function checkStepGovernance(step: TaskStep | string, effectiveCwd?: stri
       return {
         decision: "blocked" as const,
         risk: "high" as const,
-        reason: `Access denied: cwd outside workspace. Allowed: ${getWorkspaceRoot() ?? "(none active)"}.`,
+        // The EFFECTIVE root, not the process selection: under a conversation
+        // project handle the two differ, and naming the wrong one here tells the
+        // client its cwd is outside a folder it never addressed.
+        reason: `Access denied: cwd outside workspace. Allowed: ${getActiveWorkspace() ?? "(none active)"}.`,
       };
     }
   }

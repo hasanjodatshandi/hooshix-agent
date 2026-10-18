@@ -13,6 +13,7 @@ import (
 // ENOENT`.
 var serviceEnvironment = []string{
 	"SystemRoot=C:\\Windows",
+	"SystemDrive=C:",
 	"WINDIR=C:\\Windows",
 	"Path=C:\\Windows\\system32;C:\\Program Files\\Git\\cmd",
 	"PATHEXT=.COM;.EXE;.BAT;.CMD;.VBS;.JS;.MSC",
@@ -36,8 +37,9 @@ func TestRegistrySpelledNamesStillReachTheServer(t *testing.T) {
 	got := environmentValues((&Settings{}).childEnvironment(map[string]string{}, serviceEnvironment))
 
 	for name, want := range map[string]string{
-		"PATH":    "C:\\Windows\\system32;C:\\Program Files\\Git\\cmd",
-		"COMSPEC": "C:\\Windows\\system32\\cmd.exe",
+		"PATH":        "C:\\Windows\\system32;C:\\Program Files\\Git\\cmd",
+		"SystemDrive": "C:",
+		"COMSPEC":     "C:\\Windows\\system32\\cmd.exe",
 		// The allowlist spells this one lowercase, and the distribution
 		// launcher in wsl.go reads it by that exact name.
 		"windir": "C:\\Windows",
@@ -72,8 +74,17 @@ func TestFirstSpellingOfANameIsTheOneWindowsReports(t *testing.T) {
 	}
 }
 
+func TestSystemDriveIsDerivedWhenTheWindowsServiceBlockOmitsIt(t *testing.T) {
+	block := []string{"SystemRoot=C:\\Windows", "Path=C:\\Windows\\system32"}
+	got := environmentValues((&Settings{}).childEnvironment(map[string]string{}, block))
+	if got["SystemDrive"] != "C:" {
+		t.Errorf("SystemDrive = %q, want C: from SystemRoot", got["SystemDrive"])
+	}
+}
+
 func TestEmptyInheritedNamesAreNotHandedDown(t *testing.T) {
-	block := []string{"SystemRoot=C:\\Windows", "Path=", "TEMP=C:\\Windows\\TEMP"}
+	block := []string{"SystemRoot=C:\\Windows",
+		"SystemDrive=C:", "Path=", "TEMP=C:\\Windows\\TEMP"}
 
 	got := environmentValues((&Settings{}).childEnvironment(map[string]string{}, block))
 
@@ -121,7 +132,8 @@ func TestMissingSearchPathIsNamedAtBoot(t *testing.T) {
 		t.Errorf("complaint %q does not name PATH, which is what an operator has to fix", complaint)
 	}
 
-	if complaint := requiredChildEnvironment([]string{"SystemRoot=C:\\Windows", "Path=   "}); complaint == "" {
+	if complaint := requiredChildEnvironment([]string{"SystemRoot=C:\\Windows",
+		"SystemDrive=C:", "Path=   "}); complaint == "" {
 		t.Error("a whitespace-only Path was accepted as a search path")
 	}
 }

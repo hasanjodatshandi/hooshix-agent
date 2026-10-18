@@ -257,6 +257,11 @@ describe("Windows installer package invariants", () => {
     // installer produces a server that dies on the first request, and a dev
     // dependency in the payload is tens of megabytes of nothing.
     expect(buildScript).toContain("verify-runtime-versions.mjs");
+    expect(buildScript).toContain('run("corepack", ["pnpm", ...args]');
+    // Build flags are passed to Go as one argument; the old --s --w was invalid.
+    expect(buildScript).toContain('`-ldflags=${flags.join(" ")}`');
+    expect(buildScript).toContain('"build", "-buildvcs=false", "-trimpath"');
+    expect(buildScript).not.toContain('`-ldflags=-${flags.join(" -")}`');
     expect(buildScript).toContain(`"install", "--prod", "--node-linker=hoisted", "--frozen-lockfile"`);
     expect(buildScript).toContain(`"node_modules", "typescript", "bin", "tsc"`);
     // A package manager that re-resolves the tree before running a script is

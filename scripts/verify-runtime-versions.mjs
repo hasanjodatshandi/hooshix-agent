@@ -50,7 +50,23 @@ function detectedPnpmVersion() {
       stdio: ["ignore", "pipe", "pipe"],
     });
   } catch (error) {
-    if (error && (error.code === "ENOENT" || error.status === 127)) return undefined;
+    const missing = error?.code === "ENOENT" || error?.status === 127 ||
+      (process.platform === "win32" && /(?:not recognized as an internal|could not find)/i.test(String(error?.stderr ?? "")));
+    if (missing) {
+      // The Windows service may have Corepack but no user-level pnpm shim.
+      // Corepack resolves exactly the version pinned by packageManager.
+      try {
+        return execFileSync("corepack", ["pnpm", "--version"], {
+          encoding: "utf8", shell: process.platform === "win32",
+          stdio: ["ignore", "pipe", "pipe"],
+        }).trim();
+      } catch (fallbackError) {
+        const corepackMissing = fallbackError?.code === "ENOENT" || fallbackError?.status === 127 ||
+          (process.platform === "win32" && /not recognized as an internal/i.test(String(fallbackError?.stderr ?? "")));
+        if (corepackMissing) return undefined;
+        throw fallbackError;
+      }
+    }
     throw error;
   }
   return stdout.trim();
