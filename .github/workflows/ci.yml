@@ -103,6 +103,13 @@ jobs:
           go test ./internal/host -run TestStatusWriteSurvivesConcurrentPublishers -count=100
           go vet ./...
           go build ./...
+      - name: Validate owner-session WSL smoke script syntax
+        shell: pwsh
+        run: |
+          $tokens = $null
+          $parseErrors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile((Join-Path $PWD 'scripts/test-owner-wsl.ps1'), [ref]$tokens, [ref]$parseErrors) | Out-Null
+          if ($parseErrors.Count -ne 0) { throw "Owner WSL smoke script has parse errors" }
       - name: Build and checksum a fresh Windows installer
         shell: pwsh
         run: |

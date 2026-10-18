@@ -7,7 +7,16 @@ HooshiX therefore supports `exec` with `shell: "wsl"` only through an **explicit
 
 ## One-time user enrollment (ordinary Windows PowerShell, NOT elevated)
 
-For source validation before release, build the worker from the source repo in the owner's shell:
+For source validation before release, run the disposable smoke harness under the signed-in Windows owner (not elevated):
+
+```powershell
+Set-Location 'D:\workspace\hooshix-agent'
+.\scripts\test-owner-wsl.ps1 -Distro 'Ubuntu' -LinuxRoot '/home/coder/workspace/Hooshix'
+```
+
+It creates a temporary Windows enrollment anchor, checks owner SID, compiles the source worker, runs real WSL, revokes the HKCU Run entry and deletes only its own temporary directory. It never installs or restarts the MCP service.
+
+For manual inspection or permanent enrollment after a signed release, build the worker from the source repo in the owner's shell:
 
 ```powershell
 Set-Location 'D:\workspace\hooshix-agent\deploy\windows'
