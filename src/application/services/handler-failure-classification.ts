@@ -74,21 +74,32 @@ export function classifyHandlerFailure(error: unknown): string {
   // to tool_handler_failure made clients blind-retry a granted-looking path.
   if (message.includes("Workspace path does not exist")) return "workspace_path_not_found";
 
+  // Git service (src/services/git/git-service.ts) re-throws the subprocess
+  // stderr, so a plain `tool_handler_failure` here told the caller nothing about
+  // the two Git failures that are both common and self-explanatory: the handle's
+  // root is not a repository, and the repository belongs to another account so
+  // Git refuses to trust it (a service running as one user over a developer's
+  // checkout). Matched BEFORE the heuristics below, because the usage block Git
+  // prints for a non-repository contains phrases like "targets exceeds given
+  // limit", which a loose substring rule read as a file-size failure and sent a
+  // completely wrong fix to the client. Case-insensitive: Git says "fatal: not a
+  // git repository" but "warning: Not a git repository". The stderr itself is
+  // never interpolated into the label.
+  if (/not a git repository/i.test(message)) return "not_a_git_repository";
+  if (/dubious ownership/i.test(message)) return "git_ownership_untrusted";
+
   // Filesystem service guards (src/services/filesystem/filesystem-service.ts).
   if (message.includes("sensitive-file denylist")) return "sensitive_file_rejected";
-  if (message.includes("exceeds") && message.includes("limit")) return "size_limit_exceeded";
+  // Anchored on the tails our own guards throw ("… exceeds 1048576 byte limit",
+  // "… exceeds the 8 MiB limit", "Search exceeds 5000 ms time budget"), never on
+  // the bare words: a subprocess may use them in prose that means something else.
+  // `.` does not cross newlines, so only a single-line message can match.
+  if (/exceeds .*\b(byte limit|entry limit|file limit|result limit|time budget|byte budget|\w*B limit)\b/.test(message)) return "size_limit_exceeded";
   if (message.includes("Target is not a file")) return "not_a_file";
   if (message.includes("Target already exists")) return "target_already_exists";
   if (message.includes("Target text was not found")) return "search_text_not_found";
   // Optimistic-concurrency precondition (write_file/modify_file ifMatchSha256).
   if (message.includes("STALE_WRITE")) return "stale_write";
-
-  // Git service (src/services/git/git-service.ts) re-throws the subprocess
-  // stderr, so a plain `tool_handler_failure` here told the caller nothing about
-  // the one Git failure that is both common and self-explanatory: the handle's
-  // root is not a repository. Matched as a fixed string; the stderr itself is
-  // never interpolated into the label.
-  if (message.includes("not a git repository")) return "not_a_git_repository";
 
   // Project/memory record guards.
   if (message.includes("already registered to project")) return "duplicate_project_record";

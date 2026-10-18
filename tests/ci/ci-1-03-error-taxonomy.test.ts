@@ -110,6 +110,34 @@ describe("CI-1.03 / error taxonomy", () => {
     expect(classifyHandlerFailure(new Error("something completely novel"))).toBe("tool_handler_failure");
   });
 
+  it("labels the two Git ownership/repository failures the live connector actually hit", () => {
+    // Both strings are verbatim from the service log of a real session. Git rethrows
+    // the child's stderr, so these are the messages a client would otherwise receive
+    // as an opaque tool_handler_failure — the ownership one is the failure a service
+    // account meets on any developer-owned checkout, and it needs an operator action
+    // (safe.directory) that no retry can substitute.
+    expect(classifyHandlerFailure(new Error(
+      "fatal: detected dubious ownership in repository at 'D:/uni'\n" +
+      "'D:/uni' is owned by:\n" +
+      "\tQUANTUM/Coder (S-1-5-21-658255295-1689772290-3021597102-1001)\n" +
+      "but the current user is:\n" +
+      "\tNT AUTHORITY/SYSTEM (S-1-5-18)\n" +
+      "To add an exception for this directory, call:\n" +
+      "\n\tgit config --global --add safe.directory D:/uni"
+    ))).toBe("git_ownership_untrusted");
+    // The size/budget rule must not read Git's own usage text as a file-size
+    // complaint: this is the exact mislabel a client was served, which then went
+    // looking for a large file instead of a missing repository.
+    expect(classifyHandlerFailure(new Error(
+      "warning: Not a git repository. Use --no-index to compare two paths outside a working tree\n" +
+      "usage: git diff --no-index [<options>] <path> <path>\n" +
+      "    -l <n>                prevent rename/copy detection if the number of rename/copy targets exceeds given limit\n"
+    ))).toBe("not_a_git_repository");
+    // Our own budget refusals still classify as a size limit.
+    expect(classifyHandlerFailure(new Error("Search exceeds 5000000 aggregate byte budget"))).toBe("size_limit_exceeded");
+    expect(classifyHandlerFailure(new Error("Task plan exceeds the 8 MiB limit"))).toBe("size_limit_exceeded");
+  });
+
   it("does not classify isolation refusals as transient/retryable", () => {
     // Retrying a CONTEXT_NOT_BOUND forever would never succeed; it needs a
     // binding, not a retry. Only TIMEOUT/NETWORK are transient.
