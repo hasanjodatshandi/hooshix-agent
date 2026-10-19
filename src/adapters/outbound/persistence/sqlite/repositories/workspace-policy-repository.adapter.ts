@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import {isWSLWorkspaceURI} from "../../../../../security/wsl-workspace-uri.js";
 import { withAgentDatabase } from "../../../../../core/memory/database/index.js";
 
 export interface PersistedWorkspaceRoot {
@@ -9,6 +10,7 @@ export interface PersistedWorkspaceRoot {
 }
 
 export function canonicalizeWorkspacePath(input: string): string {
+  if(isWSLWorkspaceURI(input))return input;
   const resolved = path.resolve(input);
   try {
     return fs.realpathSync(resolved);
@@ -19,7 +21,7 @@ export function canonicalizeWorkspacePath(input: string): string {
 
 export function workspaceIdentity(input: string): string {
   const canonical = canonicalizeWorkspacePath(input);
-  return process.platform === "win32" ? canonical.toLowerCase() : canonical;
+  return isWSLWorkspaceURI(canonical) ? canonical : process.platform === "win32" ? canonical.toLowerCase() : canonical;
 }
 
 export function listPersistedWorkspaceRoots(): PersistedWorkspaceRoot[] {
