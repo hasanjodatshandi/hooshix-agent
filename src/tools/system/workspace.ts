@@ -6,6 +6,7 @@ import { getTrustedInboundIdentity } from "../../core/runtime/r2-trusted-inbound
 import { saveDecisionWithContext } from "../../core/memory/context-memory.js";
 import { assertToolPermission } from "../../security/permission.js";
 import { closeProjectHandle, mintProjectHandle, resolveProjectSelector } from "../../security/project-handles.js";
+import {isWSLWorkspaceURI} from "../../security/wsl-workspace-uri.js";
 // Project Git diagnostics are provided by the composition root; this inbound
 // registrar must not import concrete Git/process services directly.
 
@@ -47,10 +48,11 @@ export function registerWorkspaceTools(
     "add_workspace_roots",
     {
       title: "Add Workspace Roots",
-      description: "📂 WORKSPACE — Add one or more directories to the persistent allowed workspace roots pool (idempotent). Roots must exist on disk AND be reachable by the account running this server. A \\\\wsl.localhost or network-share path is grantable only when the operator runs the service under an account that can see it (Windows refuses WSL to the built-in local system account, and a service must be told which distributions to open); otherwise that path reports as not existing rather than as denied — it is a host setup gap, so retrying the approval will not help. Allowed roots survive service restarts; the active workspace is session state and may reset to null after restart. Does NOT switch the active workspace — use set_workspace for that. One exception: when the pool is empty (fresh install or all roots removed) the first added root also becomes the active workspace, since file tools are denied with no active root.\n\nGOVERNED — a direct call is always refused. Put this tool in a Task and approve that one step: task_create → task_run (returns approvalId) → task_approve → task_resume. Approval works with no active workspace, so a client can grant its own first project.\n\nExample: { \"paths\": [\"D:/Projects/app-a\", \"D:/Projects/app-b\"] }",
+      description: "📂 WORKSPACE — Add one or more directories to the persistent allowed workspace roots pool (idempotent). Windows roots must exist on disk and be reachable by this server. WSL roots use a virtual wsl://Distro/absolute/Linux/root identity. Standard WSL UNC selectors are normalized to that identity, NEVER opened by Windows LocalSystem. Granting requires a separately user-enrolled SID-verified WSLFS broker and a matching wslBindings entry in this SAME approved Task; a missing worker fails closed. Arbitrary UNC/network shares are not WSL roots and cannot bypass Windows filesystem checks. Native WSL file tools currently support read/list/search only, with Linux-root and sensitive-file restrictions; writes and Linux Git require separately reviewed capabilities. Allowed roots survive service restarts; the active workspace is session state and may reset to null after restart. Does NOT switch the active workspace — use set_workspace for that. One exception: when the pool is empty (fresh install or all roots removed) the first added root also becomes the active workspace, since file tools are denied with no active root.\n\nGOVERNED — a direct call is always refused. Put this tool in a Task and approve that one step: task_create → task_run (returns approvalId) → task_approve → task_resume. Approval works with no active workspace, so a client can grant its own first project.\n\nExample: { \"paths\": [\"D:/Projects/app-a\", \"D:/Projects/app-b\"] }",
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
       inputSchema: z.object({
-        paths: z.array(z.string().min(1)).min(1).max(50).describe("Absolute directory paths to allow."),
+        paths: z.array(z.string().min(1)).min(1).max(50).describe("Windows paths or wsl://Distro/absolute/Linux/root identifiers."),
+        wslBindings: z.array(z.object({path:z.string().min(1),ownerWindowsRoot:z.string().min(3)})).optional().describe("Explicit Windows owner anchor for each WSL root; user must separately enroll the WSLFS owner worker."),
         correlationId: z.string().min(1).optional(),
       }),
     },
@@ -93,11 +95,15 @@ export function registerWorkspaceTools(
         });
         return response({
           project: resolved.label,
-          gitReadiness: await inspectGitReadiness(resolved.root),
+          gitReadiness: isWSLWorkspaceURI(resolved.root)
+            ? {status:"wsl_linux_workspace",advice:"Native Windows Git cannot run in a Linux workspace. Linux Git routing must be independently enrolled and implemented; only confined file read/list/search operations are currently supported."}
+            : await inspectGitReadiness(resolved.root),
           root: resolved.root,
           handle: minted.handle,
           expiresAt: new Date(minted.expiresAt).toISOString(),
-          instruction: `Project "${resolved.label}" is now open for THIS conversation only. From now on include project: "${minted.handle}" on every file, exec and git call in this conversation. Never reuse this handle in another conversation.`,
+          instruction: isWSLWorkspaceURI(resolved.root)
+            ? `WSL project "${resolved.label}" is open for THIS conversation. Use project: "${minted.handle}" only for read_file, list_directory and search_files (Linux-root confined). Do not call native Git, exec or file mutation tools on this WSL root: those capabilities are not implemented by this provider. Never reuse this handle across conversations.`
+            : `Project "${resolved.label}" is now open for THIS conversation only. From now on include project: "${minted.handle}" on every file, exec and git call in this conversation. Never reuse this handle in another conversation.`,
         }, traceId);
       });
     },
