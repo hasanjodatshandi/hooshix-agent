@@ -19,8 +19,8 @@ describe("3.2 the v1 monolithic SDK has no remaining import",()=>{
     const deps={...pkg.dependencies,...pkg.devDependencies};
     expect(deps["@modelcontextprotocol/sdk"],"v1 monolith is still a dependency").toBeUndefined();
     // The v2 split packages must all still be present.
-    expect(deps["@modelcontextprotocol/server"]).toBe("2.0.0");
-    expect(deps["@modelcontextprotocol/node"]).toBe("2.0.0");
+    expect(deps["@modelcontextprotocol/server"]).toBe("2.3.0");
+    expect(deps["@modelcontextprotocol/node"]).toBe("2.1.1");
     expect(deps["@modelcontextprotocol/client"]).toBe("2.0.0");
   });
 
