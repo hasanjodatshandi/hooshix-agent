@@ -36,6 +36,9 @@ import { createDisposableFixture, reserveEphemeralLoopbackPort } from "../helper
  *      and a failed call persists its classified label — not a bare "failed" —
  *      so a live failure can be triaged after the fact, while the raw message
  *      stays on the server side instead of reaching the client.
+ *   9. `task_step_risks` previews inside the handle's project: it claims to use
+ *      the same governance engine as execution, and a preview that judges paths
+ *      against the server selection instead would contradict the plan it previews.
  */
 interface G6Context {
   readonly base: string;
@@ -175,6 +178,7 @@ async function callTool(resource: string, accessToken: string, name: string, arg
 
 interface OpenProjectResponse {
   project: string; root: string; handle: string; expiresAt: string; instruction: string;
+  gitReadiness: { status: string; advice?: string };
 }
 function parseOpenProject(text: string): OpenProjectResponse {
   return JSON.parse(text) as OpenProjectResponse;
@@ -216,6 +220,8 @@ describe("CI-G6 / conversation-scoped project handles on the live path", () => {
       const hA = parseOpenProject(opened.text);
       expect(hA.handle).toMatch(/^ph_[A-Za-z0-9_-]{16}$/);
       expect(hA.project).toBe("ProjectAlpha");
+      // Project discovery must surface Git readiness without changing trust.
+      expect(hA.gitReadiness.status).toBe("not_repository");
       expect(fs.realpathSync(hA.root)).toBe(fs.realpathSync(dirA));
       expect(hA.instruction).toContain(hA.handle);
 
@@ -383,6 +389,51 @@ describe("CI-G6 / conversation-scoped project handles on the live path", () => {
         expect((JSON.parse(escaped.text) as { status: string }).status).toBe("failed");
         expect(escaped.text).toMatch(/outside workspace/i);
         expect(escaped.text).not.toContain("BETA-MARKER");
+      },
+    );
+  }, 180_000);
+
+  it("previews step risks inside the handle's project, not the server selection", async () => {
+    // task_step_risks advertises that its verdicts match execution. It classifies
+    // file paths through validateWorkspace, which reads the CALLER's scope — so
+    // without the handle it judged them against the process selection, and on a
+    // connector that holds no selection it reported "no active workspace" for a
+    // perfectly valid create_file step while the same handle created the plan
+    // successfully. The preview must agree with the plan it previews.
+    await withG6Server(
+      {
+        tag: "riskpreview", mode: "OFF", pool: "both",
+        extraEnv: { HOOSHIX_PERMISSION_LEVEL: "DEVELOPER_MODE" },
+      },
+      async ({ base, bootstrap, dirA, dirB }) => {
+        const resource = base + "/mcp";
+        const token = await obtainToken(base, resource, bootstrap, "offline_access hooshix:read hooshix:task:manage");
+        const opened = await callTool(resource, token, "open_project", { path: dirA });
+        expect(opened.ok, JSON.stringify(opened)).toBe(true);
+        const hA = parseOpenProject(opened.text).handle;
+        const steps = [
+          { tool: "create_file", arguments: { path: "notes.txt", content: "NOTE" } },
+          { tool: "read_file", arguments: { path: path.posix.join("..", path.basename(dirB), "beta.txt") } },
+        ];
+
+        // Like task_create, an untargeted preview has no root to judge against.
+        const untargeted = await callTool(resource, token, "task_step_risks", { steps });
+        expect(untargeted.ok, JSON.stringify(untargeted)).toBe(false);
+        expect(untargeted.text).toMatch(/project_required/);
+
+        const preview = await callTool(resource, token, "task_step_risks", { steps, project: hA });
+        expect(preview.ok, JSON.stringify(preview)).toBe(true);
+        const rows = JSON.parse(preview.text) as Array<{ stepId: number; blocked: boolean; reason: string }>;
+        expect(rows).toHaveLength(2);
+        // The inside step is a real verdict about the step, not an artifact of a
+        // missing selection.
+        expect(rows[0].blocked, JSON.stringify(rows[0])).toBe(false);
+        expect(rows[0].reason).not.toMatch(/no active workspace/i);
+        // The escape step is blocked for the ONLY reason that matters: it leaves
+        // this project — which is what execution will also do.
+        expect(rows[1].blocked).toBe(true);
+        expect(rows[1].reason).toMatch(/outside workspace/i);
+        expect(rows[1].reason).not.toMatch(/no active workspace/i);
       },
     );
   }, 180_000);

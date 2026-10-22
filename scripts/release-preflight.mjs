@@ -40,7 +40,7 @@ let pnpmVersion = null;
 try {
   // On Windows pnpm is often a .cmd shim; execFileSync cannot launch it directly.
   pnpmVersion = process.platform === "win32"
-    ? execFileSync("cmd.exe", ["/d", "/s", "/c", "pnpm --version"], { cwd: repo, encoding: "utf8" }).trim()
+    ? execFileSync("cmd.exe", ["/d", "/s", "/c", "corepack pnpm --version"], { cwd: repo, encoding: "utf8" }).trim()
     : execFileSync("pnpm", ["--version"], { cwd: repo, encoding: "utf8" }).trim();
 } catch { blockers.push("PNPM_NOT_AVAILABLE"); }
 const pinnedPnpm = pkg.packageManager?.match(/^pnpm@(.+)$/)?.[1] ?? null;

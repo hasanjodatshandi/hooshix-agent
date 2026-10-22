@@ -39,9 +39,26 @@ func main() {
 		baseURL   = flag.String("base-url", "", fmt.Sprintf("the HTTPS origin ChatGPT reaches this connector on (default: %s)", setup.DefaultPublicBaseURL))
 		uninstall = flag.Bool("uninstall", false, "remove the service, the startup entry and the installed files")
 		purgeData = flag.Bool("purge-data", false, "with --uninstall: also delete the data root, which holds the database, the logs and the settings document")
+		verify    = flag.Bool("verify", false, "verify the embedded runtime payload without installing anything or requesting elevation")
 	)
 	flag.Usage = usage
 	flag.Parse()
+
+	if *verify {
+		if *uninstall || *purgeData {
+			fmt.Fprintln(os.Stderr, "setup: --verify cannot be combined with uninstall options")
+			os.Exit(2)
+		}
+		self, err := os.Executable()
+		if err == nil {
+			err = verifyInstaller(self, os.Stdout)
+		}
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "setup: verify:", err)
+			os.Exit(1)
+		}
+		return
+	}
 
 	proceed, err := ensureElevated(os.Args[1:])
 	if err != nil {
@@ -71,6 +88,22 @@ func main() {
 	}
 	fmt.Println(summary)
 	notify(setup.AppName, summary, false)
+}
+
+// verifyInstaller proves an installer has an intact payload, without elevated
+// privileges, SCM changes, registry access, or file extraction.
+func verifyInstaller(filename string, out io.Writer) error {
+	file, err := os.Open(filename)
+	if err != nil {
+		return fmt.Errorf("open installer: %w", err)
+	}
+	defer file.Close()
+	payload, err := setup.Locate(file)
+	if err != nil {
+		return err
+	}
+	_, err = fmt.Fprintf(out, "verified runtime payload: %d bytes (CRC32 0x%08x)\n", payload.Size, payload.Checksum)
+	return err
 }
 
 // run does the work for both modes and returns the sentence for the dialog. It
@@ -116,6 +149,12 @@ func runInstall(layout setup.Layout, self, baseURL string, out io.Writer) error 
 	fmt.Fprintf(out, "installing %s into %s\n", setup.AppName, layout.InstallDir)
 	fmt.Fprintf(out, "runtime verified: %s (%d bytes) at offset %d\n",
 		setup.HumanBytes(payload.Size), payload.Size, payload.Offset)
+
+	// Refuse a stale dev-checkout runtime BEFORE unregistering a healthy service.
+	// Existing operator environment and permissions must be preserved.
+	if err := layout.CheckExistingSettingsRuntime(); err != nil {
+		return err
+	}
 
 	// The previous registration is removed before anything is overwritten,
 	// because a running host keeps the service binary, node.exe and the port

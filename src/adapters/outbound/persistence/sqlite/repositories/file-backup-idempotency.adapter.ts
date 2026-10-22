@@ -1,6 +1,7 @@
 import { withAgentDatabase } from "../../../../../core/memory/database/index.js";
 import {createHash} from "node:crypto";
 import path from "node:path";
+import { parseWSLWorkspaceURI } from "../../../../../security/wsl-workspace-uri.js";
 
 /** SQLite-only persistence for legacy filesystem backup/idempotency operations. */
 /** R4.01 immutable snapshot; restore attempts are NOT the snapshot type. */
@@ -19,6 +20,12 @@ export interface StoredFileBackup {
   readonly legacy_unversioned:number;
 }
 function requireAbsolute(target:string):void {
+  // Virtual Linux targets remain canonical WSL identities, not Windows paths.
+  const virtual = parseWSLWorkspaceURI(target);
+  if(virtual){
+    if(virtual.uri!==target)throw new Error("backup_target_must_be_canonical_absolute_path");
+    return;
+  }
   if(!path.isAbsolute(target)||path.normalize(target)!==target)
     throw new Error("backup_target_must_be_canonical_absolute_path");
 }

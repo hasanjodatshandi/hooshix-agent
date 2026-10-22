@@ -95,6 +95,27 @@ describe("R8.02 real Task lifecycle over HTTP/OAuth transport",()=>{
         const workspace=await client.callTool({name:"get_workspace",arguments:{}});
         expect(workspace.isError).not.toBe(true);
 
+        // Memory GET must match LIST under a real OAuth principal. This
+        // transport check catches bugs invisible to stdio/in-process tests.
+        const memoryCreated=json(await client.callTool({
+          name:"memory_add",arguments:{kind:"http-owner-roundtrip",content:"fixture-memory"}
+        })) as {id:number};
+        const memoryListed=json(await client.callTool({
+          name:"memory_list",arguments:{kind:"http-owner-roundtrip",limit:10}
+        })) as {items:Array<{id:number;principal_id:string}>};
+        expect(memoryListed.items.map(m=>m.id)).toContain(memoryCreated.id);
+        const memoryFetched=json(await client.callTool({
+          name:"memory_get",arguments:{memoryId:memoryCreated.id}
+        })) as {record:{id:number;content:string;principal_id:string}};
+        expect(memoryFetched.record).toMatchObject({
+          id:memoryCreated.id,content:"fixture-memory",kind:"http-owner-roundtrip",
+        });
+        expect(memoryFetched.record.principal_id).toBe(memoryListed.items[0]?.principal_id);
+        const memoryDeleted=json(await client.callTool({
+          name:"memory_delete",arguments:{memoryId:memoryCreated.id}
+        })) as {deleted:boolean};
+        expect(memoryDeleted.deleted).toBe(true);
+
         // Full Task lifecycle exactly as a remote integrator drives it. Paths
         // resolve against the workspace root (the fixture directory).
         const created=json(await client.callTool({name:"task_create",arguments:{

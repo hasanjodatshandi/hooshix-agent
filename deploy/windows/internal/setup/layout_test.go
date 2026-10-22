@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/hasanjodatshandi/hooshix-agent/deploy/windows/internal/host"
 )
 
 func TestLayoutSettingsPointAtTheInstalledRuntime(t *testing.T) {
@@ -66,6 +68,71 @@ func TestWriteSettingsNeverOverwritesAnExistingDocument(t *testing.T) {
 	}
 	if string(after) != string(raw) {
 		t.Error("re-running setup rewrote the settings document")
+	}
+}
+
+func TestCheckExistingSettingsRuntimeFailsClosedBeforeInstallerMutatesService(t *testing.T) {
+	layout := Layout{
+		DataRoot:   t.TempDir(),
+		AppDir:     filepath.Join(t.TempDir(), "installed-app"),
+		RuntimeDir: filepath.Join(t.TempDir(), "installed-runtime"),
+	}
+	// No previous installation is safe. An existing packaged-runtime settings
+	// document is safe, regardless of operator-owned URL or environment values.
+	if err := layout.CheckExistingSettingsRuntime(); err != nil {
+		t.Fatalf("fresh install was blocked: %v", err)
+	}
+	settings := layout.Settings("https://operator.example")
+	settings.Env["HOOSHIX_EXEC_ENABLED"] = "1"
+	raw, err := SettingsJSON(settings)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(layout.SettingsFile(), raw, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := layout.CheckExistingSettingsRuntime(); err != nil {
+		t.Fatalf("valid preserved settings were refused: %v", err)
+	}
+
+	scenarios := []struct {
+		name   string
+		change func(*host.Settings)
+	}{
+		{"old development entry", func(s *host.Settings) { s.Entry = filepath.Join(t.TempDir(), "dist", "index-http.js") }},
+		{"old development cwd", func(s *host.Settings) { s.WorkingDirectory = t.TempDir() }},
+		{"unexpected node", func(s *host.Settings) { s.Node = filepath.Join(t.TempDir(), "node.exe") }},
+		{"unexpected state root", func(s *host.Settings) { s.DataRoot = t.TempDir() }},
+	}
+	for _, tc := range scenarios {
+		t.Run(tc.name, func(t *testing.T) {
+			altered := settings
+			altered.Env = map[string]string{"HOOSHIX_EXEC_ENABLED": "1", "HOOSHIX_PUBLIC_BASE_URL": "https://operator.example"}
+			tc.change(&altered)
+			prior, err := SettingsJSON(altered)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err = os.WriteFile(layout.SettingsFile(), prior, 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if err = layout.CheckExistingSettingsRuntime(); err == nil || !strings.Contains(err.Error(), "upgrade refused before service shutdown") {
+				t.Fatalf("unsafe runtime was allowed or warning missing: %v", err)
+			}
+			after, err := os.ReadFile(layout.SettingsFile())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if string(after) != string(prior) {
+				t.Fatal("guard rewrote operator settings")
+			}
+		})
+	}
+	if err := os.WriteFile(layout.SettingsFile(), []byte("{ invalid JSON"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := layout.CheckExistingSettingsRuntime(); err == nil || !strings.Contains(err.Error(), "upgrade refused before service shutdown") {
+		t.Fatalf("corrupted settings were accepted: %v", err)
 	}
 }
 

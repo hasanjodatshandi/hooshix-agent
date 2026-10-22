@@ -69,8 +69,14 @@ self-grantable through exactly this path — there is no manual seeding step.
 
 Paths must exist AND be visible to the account running the server. A
 \`\\\\wsl.localhost\` or network-share path that the service account cannot see is
-reported as *not existing*, not as *denied*: that is a host configuration gap,
-re-approving will not fix it, and the human has to change the service.
+reported as *not existing*, not as *denied*: that is a host configuration gap.
+
+Re-approving the same inaccessible WSL path cannot fix it; a host configuration change is required.
+
+Native WSL projects use a virtual wsl://Distro/absolute/Linux/root identity, approved through add_workspace_roots with an enrolled Windows-owner anchor; they do not require UNC or LocalSystem filesystem access. The owner read worker supplies confined read/list/search and Git status/diff/log. Independently enrolled file-write and Git-write workers support snapshot-backed file mutations and governed Git add/branch/commit/checkout. Git init/clone and execute_command are not supported on virtual WSL projects. exec with shell wsl is an independent unrestricted owner command channel and must never be used to bypass Task approvals.
+
+
+
 
 \`set_workspace\` selects the ACTIVE root from the pool. It never adds one.
 
@@ -106,7 +112,7 @@ needs an approved task step. Arguments travel as an ARRAY, so shell quoting is
 not your problem — do not build one big command string.
 
 \`exec\` is the wide-open door. It runs one arbitrary command line through the
-platform shell (cmd.exe by default on Windows; powershell, pwsh, bash or sh via
+platform shell (cmd.exe by default on Windows; powershell, pwsh, bash, sh or the explicitly enrolled WSL worker via
 the \`shell\` argument) with pipes, redirects, builtins and chaining, in ANY
 directory — not just the workspace. Its only gate is the operator flag
 \`HOOSHIX_EXEC_ENABLED=1\`: no permission ceiling and no workspace scope stands in
@@ -140,7 +146,7 @@ Template variables pass output between steps — {{step1.output.field}},
 {{step1.output}}, {{step1.status}}, {{step1.error}} — so a plan can read the id
 or backupId an earlier step produced.
 
-- \`task_step_risks\` is a dry run: it tells you which steps will pause for approval. Use it to batch the gated steps together instead of interrupting the human four times.
+- \`task_step_risks\` is a dry run: it tells you which steps will pause for approval. Use it to batch the gated steps together instead of interrupting the human four times. Pass the same \`project\` handle you would pass to \`task_create\` — the preview judges each path inside THAT project, so its verdicts are the ones execution will give.
 - \`task_run\` executes the next unfinished steps; re-running a FAILED task continues it, re-running a completed or cancelled one is a no-op.
 - \`task_get\` returns raw steps with their outputs (that is where a step's backupId or created id lives); \`task_report\` returns the unified execution/recovery timeline.
 - Transient failures (timeout, network) retry with backoff inside \`retryPolicy\` bounds; a definitive failure stops so you can fix the cause.

@@ -235,6 +235,38 @@ func SettingsJSON(settings host.Settings) ([]byte, error) {
 	return append(raw, '\n'), nil
 }
 
+// CheckExistingSettingsRuntime is a read-only upgrade guard. An existing
+// settings file pointing into a development checkout must never silently make
+// a newly installed package run mutable code outside Program Files.
+// Refuse unsafe upgrades BEFORE stopping the service or extracting files.
+// Preserve operator-owned origin, port, permissions and credentials untouched.
+func (layout Layout) CheckExistingSettingsRuntime() error {
+	raw, err := os.ReadFile(layout.SettingsFile())
+	if os.IsNotExist(err) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("read existing settings before upgrade: %w", err)
+	}
+
+	var existing host.Settings
+	if err := json.Unmarshal(raw, &existing); err != nil {
+		return fmt.Errorf("existing settings.json is invalid; upgrade refused before service shutdown: %w", err)
+	}
+	expected := layout.Settings("")
+	for _, item := range []struct{ name, got, want string }{
+		{"node", existing.Node, expected.Node},
+		{"entry", existing.Entry, expected.Entry},
+		{"workingDirectory", existing.WorkingDirectory, expected.WorkingDirectory},
+		{"dataRoot", existing.DataRoot, expected.DataRoot},
+	} {
+		if item.got == "" || !strings.EqualFold(filepath.Clean(item.got), filepath.Clean(item.want)) {
+			return fmt.Errorf("existing settings.json %s points outside the packaged runtime (got %q, expected %q); upgrade refused before service shutdown. Back up and review settings.json; no operator options were rewritten", item.name, item.got, item.want)
+		}
+	}
+	return nil
+}
+
 // WriteSettings creates the settings document, refusing to overwrite an
 // existing one. A re-run of setup.exe upgrades the program files and must not
 // quietly reset the URL, port or permission level the operator edited.

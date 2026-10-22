@@ -1,5 +1,10 @@
 import { z } from "zod";
 import path from "node:path";
+import {isWSLWorkspaceURI} from "../../../security/wsl-workspace-uri.js";
+import {getActiveWorkspace} from "../../../security/workspace-guard.js";
+import {invokeWSLFileOperation} from "../../../security/wsl-workspace-client.js";
+import {mutateWSLFile} from "../../../security/wsl-mutation-service.js";
+import { policyDecisionPoint } from "../../governance/policy-decision-point.js";
 import type { ToolHandler, ToolHandlerContext } from "./tool-handler.js";
 import type { ToolName } from "../../../application/services/legacy-tool-orchestrator.js";
 import {
@@ -42,6 +47,32 @@ export class FileToolHandler implements ToolHandler {
 
   async handle({ tool, input, correlationId, executionContext }: ToolHandlerContext): Promise<unknown> {
     const data = object.parse(input);
+    const root=executionContext?.workspace ?? getActiveWorkspace();
+    if(root && isWSLWorkspaceURI(root)){
+      // The owner-session broker is the only access path for Linux files.
+      // Preserve the same PDP tool authorization as native Windows file IO.
+      policyDecisionPoint.assertAllowed({tool,arguments:input,correlationId});
+      // Mutations fail closed until secure remote backup/idempotency exists.
+      if(tool==="read_file"){
+        const value=z.object({path:z.string(),includeSha256:z.boolean().optional()}).parse(data);
+        const result=await invokeWSLFileOperation(root,"read",value.path,{includeSHA256:value.includeSha256});
+        return value.includeSha256?{content:result.content??"",sha256:result.sha256??""}:result.content??"";
+      }
+      if(tool==="list_directory"){
+        const value=z.object({path:z.string().default(".")}).parse(data);
+        const result=await invokeWSLFileOperation(root,"list",value.path);
+        return (result.detailedEntries??[]).map(entry=>`${entry.type==="directory"?"[DIR]":"[FILE]"} ${entry.name}`);
+      }
+      if(tool==="search_files"){
+        const value=z.object({path:z.string().default("."),query:z.string().min(1)}).parse(data);
+        const result=await invokeWSLFileOperation(root,"search",value.path,{query:value.query});
+        return {query:value.query,root:root+"/"+value.path,matches:result.matches??[],totalMatches:result.matches?.length??0,truncated:result.truncated??false};
+      }
+      if(tool==="create_file"||tool==="write_file"||tool==="modify_file"||
+         tool==="delete_file"||tool==="restore_file")
+        return mutateWSLFile(root,tool,data,correlationId);
+      throw new Error("wsl_workspace_file_tool_not_supported");
+    }
     switch (tool) {
       case "read_file": {
         const value = z.object({ path: z.string(), includeSha256: z.boolean().optional() }).parse(data);

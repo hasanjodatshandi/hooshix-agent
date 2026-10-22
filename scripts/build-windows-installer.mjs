@@ -75,6 +75,22 @@ function main() {
 		fs.mkdirSync(path.join(payloadDir, "bin"), { recursive: true });
 		buildWindowsBinary("./cmd/hooshix-mcp-service", path.join(payloadDir, "bin", "hooshix-mcp-service.exe"), false);
 		buildWindowsBinary("./cmd/hooshix-mcp-tray", path.join(payloadDir, "bin", "hooshix-mcp-tray.exe"), true);
+		// Opt-in user-session Git transport; never registered as a SYSTEM service.
+		buildWindowsBinary("./cmd/hooshix-git-worker", path.join(payloadDir, "bin", "hooshix-git-worker.exe"), false);
+		// Linux-native, shell-free, os.OpenRoot-confined WSL workspace transport.
+		// This is a Linux ELF; it runs ONLY under an explicitly enrolled WSL user.
+		buildLinuxBinary("./cmd/hooshix-wsl-fs-broker", path.join(payloadDir, "bin", "hooshix-wsl-fs-broker-linux-amd64"));
+		// Enrollment is an explicit, non-elevated user action. Package the reviewed
+		// script with the same signed payload as both broker executables.
+		fs.mkdirSync(path.join(payloadDir, "tools"), { recursive: true });
+		for (const script of [
+			"enroll-wsl-files.ps1",
+			"enroll-wsl-file-writes.ps1",
+			"enroll-wsl-git-writes.ps1",
+			"preflight-wsl-enrollment.ps1",
+		]) {
+			fs.copyFileSync(path.join(repo, "scripts", script), path.join(payloadDir, "tools", script));
+		}
 		const setup = path.join(binDir, "hooshix-mcp-setup.exe");
 		buildWindowsBinary("./cmd/hooshix-mcp-setup", setup, false);
 		const assembler = path.join(binDir, `make-setup${executableSuffix}`);
@@ -153,7 +169,10 @@ function installProductionDependencies(appDir, scratch, runtime) {
 		fs.copyFileSync(path.join(repo, file), path.join(project, file));
 	}
 	step("installing production dependencies");
-	runPackageManager(["install", "--prod", "--node-linker=hoisted", "--frozen-lockfile"], { cwd: project, ...runtime });
+	runPackageManager([
+		"install", "--prod", "--node-linker=hoisted", "--frozen-lockfile",
+		...(options.registry ? [`--registry=${options.registry}`] : []),
+	], { cwd: project, ...runtime });
 	fs.cpSync(path.join(project, "node_modules"), path.join(appDir, "node_modules"), { recursive: true });
 }
 
@@ -186,14 +205,24 @@ function compileApplication(nodeRuntime) {
 function buildWindowsBinary(pkg, output, gui) {
 	const flags = ["-s", "-w"];
 	if (gui) flags.push("-H=windowsgui");
-	run("go", ["build", "-trimpath", `-ldflags=-${flags.join(" -")}`, "-o", output, pkg], {
+	// Installer provenance is verified by release preflight + SHA-256 manifest.
+	// Building from a read-only or separately owned source checkout must not
+	// depend on Git stamping inside the Go toolchain.
+	run("go", ["build", "-buildvcs=false", "-trimpath", `-ldflags=${flags.join(" ")}`, "-o", output, pkg], {
 		cwd: moduleDir,
 		env: { ...process.env, GOOS: "windows", GOARCH: "amd64", CGO_ENABLED: "0" },
 	});
 }
 
+function buildLinuxBinary(pkg, output) {
+ run("go", ["build", "-buildvcs=false", "-trimpath", "-ldflags=-s -w", "-o", output, pkg], {
+  cwd: moduleDir,
+  env: { ...process.env, GOOS: "linux", GOARCH: "amd64", CGO_ENABLED: "0" },
+ });
+}
+
 function buildHostBinary(pkg, output) {
-	run("go", ["build", "-trimpath", "-o", output, pkg], {
+	run("go", ["build", "-buildvcs=false", "-trimpath", "-o", output, pkg], {
 		cwd: moduleDir,
 		env: { ...process.env, CGO_ENABLED: "0" },
 	});
@@ -233,8 +262,15 @@ function parseArguments(argv) {
 		if (argument === "--skip-build") parsed.skipBuild = true;
 		else if (argument === "--node") parsed.node = value(argv, ++index, argument);
 		else if (argument === "--out") parsed.out = value(argv, ++index, argument);
+		else if (argument === "--registry") {
+			const registry = value(argv, ++index, argument);
+			if (registry !== "https://registry.npmjs.org/") {
+				throw new Error("--registry currently supports only the official npm registry over HTTPS");
+			}
+			parsed.registry = registry;
+		}
 		else if (argument === "-h" || argument === "--help") {
-			console.log("usage: build-windows-installer.mjs [--skip-build] [--node <node.exe>] [--out <file>]");
+			console.log("usage: build-windows-installer.mjs [--skip-build] [--node <node.exe>] [--out <file>] [--registry https://registry.npmjs.org/]");
 			process.exit(0);
 		} else throw new Error(`unknown argument ${argument}`);
 	}
@@ -279,5 +315,7 @@ function quoteToken(token) {
  * program and no shell is involved.
  */
 function runPackageManager(args, { cwd, env }) {
-	run("pnpm", args, { cwd, env, shell: process.platform === "win32" });
+	// Corepack reads the exact pnpm pin from package.json. A machine-wide
+	// pnpm shim is not required for the Windows LocalSystem build account.
+	run("corepack", ["pnpm", ...args], { cwd, env, shell: process.platform === "win32" });
 }
