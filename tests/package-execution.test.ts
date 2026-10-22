@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const { execaMock } = vi.hoisted(() => ({ execaMock: vi.fn() }));
-vi.mock("execa", () => ({ execa: execaMock }));
+vi.mock("../src/services/spawn.js", () => ({ spawn: execaMock }));
 
 import { managePackage } from "../src/services/package/package-service.js";
 import fs from "node:fs/promises";

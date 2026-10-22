@@ -20,7 +20,7 @@ describe("R7.08 runtime toolchain gate", () => {
     const nvmrc = fs.readFileSync(path.resolve(".nvmrc"), "utf8").trim();
     const pkg = JSON.parse(fs.readFileSync(path.resolve("package.json"), "utf8"));
     expect(nvmrc).toBe("24.18.0");
-    expect(String(pkg.packageManager)).toBe("pnpm@11.24.0");
+    expect(String(pkg.packageManager)).toBe("pnpm@12.14.0");
   });
   it("passes on the current development toolchain", () => {
     const result = run({});
@@ -45,7 +45,7 @@ describe("R7.08 runtime toolchain gate", () => {
   it("fails when the pnpm version does not match the pinned contract", () => {
     const result = run({ HOOSHIX_PREFLIGHT_PNPM_VERSION: "11.23.0" });
     expect(result.status).not.toBe(0);
-    expect(result.stderr).toContain("requires pnpm 11.24.0");
+    expect(result.stderr).toContain("requires pnpm 12.14.0");
   });
   it("fails on an unparseable Node version", () => {
     const result = run({ HOOSHIX_PREFLIGHT_NODE_VERSION: "not-a-version" });

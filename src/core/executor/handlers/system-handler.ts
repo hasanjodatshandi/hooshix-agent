@@ -1,4 +1,5 @@
 import os from "node:os";
+import {z} from "zod";
 import type { ToolHandler, ToolHandlerContext } from "./tool-handler.js";
 import type { ToolName } from "../../../application/services/legacy-tool-orchestrator.js";
 import { policyDecisionPoint } from "../../governance/policy-decision-point.js";
@@ -50,8 +51,9 @@ export class SystemToolHandler implements ToolHandler {
         if (!Array.isArray(paths) || paths.length<1 || paths.length>50 ||
             !paths.every(p=>typeof p==="string" && p.length>0))
           throw new Error("add_workspace_roots requires nonempty paths");
-        policyDecisionPoint.assertAllowed({tool,arguments:{paths}});
-        return {results:addWorkspaceRoots(paths as string[]),active:getWorkspaceRoot(),roots:listWorkspaceRoots()};
+        const wslBindings=z.array(z.object({path:z.string(),ownerWindowsRoot:z.string()})).optional().parse(input.wslBindings) ?? [];
+        policyDecisionPoint.assertAllowed({tool,arguments:{paths,wslBindings}});
+        return {results:addWorkspaceRoots(paths as string[],wslBindings),active:getWorkspaceRoot(),roots:listWorkspaceRoots()};
       }
       case "remove_workspace_root": {
         const candidate=input.path;

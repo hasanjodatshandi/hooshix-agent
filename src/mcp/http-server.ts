@@ -128,7 +128,7 @@ const sessions = new Map<string, SessionEntry>();
  * bounded, authenticated principal+client context, NOT an MCP session ID. */
 const modernContexts=new HttpPrincipalContexts<SessionWorkspaceContext>(undefined,
   APP_CONFIG.session.idleMs,APP_CONFIG.session.absoluteMs,APP_CONFIG.session.contextCap);
-const modernHandler=toNodeHandler(createMcpHandler(()=>createServer(),{legacy:"reject"}));
+const modernHandler=toNodeHandler(createMcpHandler(()=>createServer(),{legacy:"reject",maxRequestBodySize:MAX_MCP_BODY_BYTES}));
 
 // The diagnostic log belongs to the configured log directory, not a
 // CWD-relative "logs": the shipped container runs as the non-root `node` user

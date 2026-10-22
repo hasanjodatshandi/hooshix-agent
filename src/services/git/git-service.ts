@@ -6,6 +6,7 @@ import { policyDecisionPoint } from "../../core/governance/policy-decision-point
 import { logCommandAction } from "../../memory/command-audit.js";
 import { resolveCorrelationId } from "../../core/runtime/correlation-id.js";
 import { assertCwdExists, describeExecaFailure } from "../execa-result.js";
+import { runOwnerWorker } from "./owner-worker-client.js";
 
 export interface GitResult { exitCode: number; stdout: string; stderr: string; correlationId: string }
 
@@ -16,25 +17,71 @@ function validateRef(ref: string): string {
   return ref;
 }
 
-async function runGit(tool: string, args: string[], cwd: string, correlationId?: string, timeout = 120000): Promise<GitResult> {
+interface OwnerFallbackOptions {
+  /** Set only when native Git proves cross-owner rejection and delegation succeeds. */
+  onDelegated?: () => void;
+  /** Reuse the same trusted owner worker after successful preflight. */
+  requireOwnerWorker?: boolean;
+}
+
+async function runGit(tool: string, args: string[], cwd: string, correlationId?: string,
+  timeout = 120000, ownerFallback: OwnerFallbackOptions = {}): Promise<GitResult> {
   policyDecisionPoint.assertAllowed({ tool, arguments: { args, cwd }, correlationId });
   const traceId = resolveCorrelationId(correlationId);
   const safeCwd = validateWorkspace(cwd);
   // Fail fast on a non-existent cwd instead of a confusing spawn failure.
   assertCwdExists(safeCwd, "Git working directory");
-  const result = await spawn("git", args, { cwd: safeCwd, shell: false, reject: false, timeout, maxBuffer: 2 * 1024 * 1024 });
-  await logCommandAction({ command: "git", args, cwd: safeCwd, exitCode: result.exitCode, status: result.timedOut ? "timeout" : result.exitCode === 0 ? "success" : "failed", correlationId: traceId });
-  if (result.timedOut) throw new Error("Git command timed out");
-  if (result.exitCode !== 0) throw new Error(result.stderr || describeExecaFailure("git", result));
-  return { exitCode: result.exitCode, stdout: result.stdout, stderr: result.stderr, correlationId: traceId };
+  const result = ownerFallback.requireOwnerWorker ? null :
+    await spawn("git", args, { cwd: safeCwd, shell: false, reject: false, timeout, maxBuffer: 2 * 1024 * 1024 });
+  let outcome: { exitCode: number; stdout: string; stderr: string; timedOut?: boolean };
+  if (ownerFallback.requireOwnerWorker) {
+    // The preceding rev-parse was rejected by native Git for ownership,
+    // then passed the worker's independent SID and command checks.
+    // Do not retry native Git: 'git diff' reports exit 129 "not a repository"
+    // for an untrusted checkout instead of the original ownership error.
+    const delegated = await runOwnerWorker(tool, args, safeCwd);
+    if (!delegated) throw new Error("owner_git_worker_unavailable_after_preflight");
+    outcome = delegated;
+  } else {
+    if (!result) throw new Error("native_git_result_missing");
+    outcome = { ...result, exitCode: result.exitCode ?? -1 };
+    if (!result.timedOut && result.exitCode !== 0 &&
+        /dubious ownership/i.test(result.stderr) &&
+        !["git_init", "git_clone"].includes(tool)) {
+      const delegated = await runOwnerWorker(tool, args, safeCwd);
+      if (delegated) {
+        outcome = delegated;
+        ownerFallback.onDelegated?.();
+      }
+    }
+  }
+  await logCommandAction({ command: "git", args, cwd: safeCwd, exitCode: outcome.exitCode,
+    status: outcome.timedOut ? "timeout" : outcome.exitCode === 0 ? "success" : "failed", correlationId: traceId });
+  if (outcome.timedOut) throw new Error("Git command timed out");
+  if (outcome.exitCode !== 0) throw new Error(outcome.stderr || (result ? describeExecaFailure("git", result) : "owner_git_worker_operation_failed"));
+  return { exitCode: outcome.exitCode, stdout: outcome.stdout, stderr: outcome.stderr, correlationId: traceId };
 }
 
 export function gitStatus(cwd: string, correlationId?: string) {
   return runGit("git_status", ["status", "--porcelain=v1", "--branch"], cwd, correlationId);
 }
 
-export function gitDiff(cwd: string, staged = false, correlationId?: string) {
-  return runGit("git_diff", ["diff", ...(staged ? ["--cached"] : []), "--"], cwd, correlationId);
+export async function gitDiff(cwd: string, staged = false, correlationId?: string) {
+  let ownerVerified = false;
+  await runGit("git_diff", ["rev-parse", "--is-inside-work-tree"], cwd, correlationId,
+    120000, { onDelegated: () => { ownerVerified = true; } });
+  if (!ownerVerified && process.platform === "win32") {
+    // Git rev-parse can succeed on a repository for which the next `git diff`
+    // is rejected as "Not a git repository" by a Windows service identity.
+    // Independently ask the owner-SID-authenticated worker for the SAME
+    // read-only preflight. Only an affirmative repository response opts in to
+    // the worker; absent/mismatched workers leave native Git unchanged.
+    const root = validateWorkspace(cwd);
+    const probe = await runOwnerWorker("git_diff", ["rev-parse", "--is-inside-work-tree"], root);
+    ownerVerified = probe?.exitCode === 0 && probe.stdout.trim() === "true";
+  }
+  return runGit("git_diff", ["diff", ...(staged ? ["--cached"] : []), "--"], cwd,
+    correlationId, 120000, { requireOwnerWorker: ownerVerified });
 }
 
 export async function gitClone(url: string, targetPath: string, correlationId?: string) {
@@ -80,7 +127,16 @@ export function gitLog(cwd: string, limit = 20, correlationId?: string) {
   // directly. Coerce to a safe integer so no caller can smuggle extra argv
   // through the `--max-count=${limit}` template.
   const safeLimit = Math.min(Math.max(Math.trunc(Number(limit) || 20), 1), 100);
-  return runGit("git_log", ["log", `--max-count=${safeLimit}`, "--oneline", "--decorate"], cwd, correlationId);
+  return runGit("git_log", ["log", `--max-count=${safeLimit}`, "--oneline", "--decorate"], cwd, correlationId)
+    .catch((error: unknown) => {
+      // An initialized, trusted repository with an unborn branch has an empty
+      // history, not a broken Git installation. Do not disguise repository
+      // trust errors, missing Git executables, or other failures as no commits.
+      if (error instanceof Error && /your current branch '.+' does not have any commits yet/.test(error.message)) {
+        return { exitCode: 0, stdout: "", stderr: "", correlationId: resolveCorrelationId(correlationId) };
+      }
+      throw error;
+    });
 }
 
 export async function gitHasIdentity(cwd: string): Promise<boolean> {

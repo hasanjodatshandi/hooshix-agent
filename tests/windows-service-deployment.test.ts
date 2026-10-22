@@ -257,12 +257,21 @@ describe("Windows installer package invariants", () => {
     // installer produces a server that dies on the first request, and a dev
     // dependency in the payload is tens of megabytes of nothing.
     expect(buildScript).toContain("verify-runtime-versions.mjs");
+    expect(buildScript).toContain('run("corepack", ["pnpm", ...args]');
+    // Build flags are passed to Go as one argument; the old --s --w was invalid.
+    expect(buildScript).toContain('`-ldflags=${flags.join(" ")}`');
+    expect(buildScript).toContain('"build", "-buildvcs=false", "-trimpath"');
+    expect(buildScript).toContain('"./cmd/hooshix-git-worker"');
+    expect(buildScript).toContain('"./cmd/hooshix-wsl-fs-broker"');
+    expect(buildScript).toContain('"hooshix-wsl-fs-broker-linux-amd64"');
+    expect(buildScript).toContain('"enroll-wsl-files.ps1"');
+    expect(buildScript).not.toContain('`-ldflags=-${flags.join(" -")}`');
     expect(buildScript).toContain(`"install", "--prod", "--node-linker=hoisted", "--frozen-lockfile"`);
     expect(buildScript).toContain(`"node_modules", "typescript", "bin", "tsc"`);
     // A package manager that re-resolves the tree before running a script is
     // free to prune it, and doing that to a live checkout takes down the server.
     // The only verb the build is allowed to ask of pnpm is the install above.
-    expect(buildScript.match(/runPackageManager\(\["[a-z]+"/g)).toEqual(['runPackageManager(["install"']);
+    expect([...buildScript.matchAll(/runPackageManager\(\s*\[\s*"([a-z]+)"/g)].map((match) => match[1])).toEqual(["install"]);
     expect(JSON.parse(fs.readFileSync(path.join(repo, "package.json"), "utf8")).scripts["installer:windows"]).toContain("build-windows-installer.mjs");
     // The artifact is the size of a Node distribution: it belongs on a share,
     // never in git.

@@ -104,6 +104,17 @@ describe("exec: unrestricted shell behind one opt-in flag", () => {
     expect(result.stderr).toContain("exec-err-marker");
   });
 
+  it("never routes WSL via LocalSystem or the Windows bash fallback", async () => {
+    delete process.env.HOOSHIX_EXEC_ENABLED;
+    await expect(executeUnrestrictedCommand("id", { shell: "wsl", cwd: os.tmpdir() }))
+      .rejects.toThrow(/exec is disabled/);
+    enable();
+    await expect(executeUnrestrictedCommand("id", { shell: "wsl" }))
+      .rejects.toThrow(/wsl_owner_worker_requires_windows_anchor_cwd/);
+    await expect(executeUnrestrictedCommand("id", { shell: "wsl", cwd: os.tmpdir() }))
+      .rejects.toThrow(/wsl_owner_worker/);
+  });
+
   it("audits every attempt, including denied ones", async () => {
     process.env.HOOSHIX_PERMISSION_LEVEL = "ADMIN_MODE";
     delete process.env.HOOSHIX_EXEC_ENABLED;

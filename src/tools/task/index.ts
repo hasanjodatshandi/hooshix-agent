@@ -177,9 +177,15 @@ export function registerTaskTools(server: McpServer) {
     assertToolPermission("memory_list"); const traceId = resolveCorrelationId(correlationId);
     return auditToolCall("memory_list", traceId, input.taskId, () => response(listMemoryItems({ ...input, principalId: currentPrincipalId() }), traceId));
   });
-  server.registerTool("memory_get", { title: "Get Memory", description: "🧠 MEMORY (read) — Fetch one memory record by id.\n\nExample: { \"memoryId\": 170 }", annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true }, inputSchema: z.object({ memoryId: z.number().int().positive(), ...traceSchema }) }, async ({ memoryId, correlationId }) => {
+  server.registerTool("memory_get", { title: "Get Memory", description: "🧠 MEMORY (read) — Fetch one owned memory by id. Success is returned as { record: {...} } to keep the record content field distinct from MCP result content. Missing or inaccessible ids return null.\n\nExample: { \"memoryId\": 170 }", annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true }, inputSchema: z.object({ memoryId: z.number().int().positive(), ...traceSchema }) }, async ({ memoryId, correlationId }) => {
     assertToolPermission("memory_list"); const traceId = resolveCorrelationId(correlationId);
-    return auditToolCall("memory_get", traceId, undefined, () => response(getMemoryItem(memoryId, currentPrincipalId()), traceId));
+    return auditToolCall("memory_get", traceId, undefined, () => {
+      const record = getMemoryItem(memoryId, currentPrincipalId());
+      // A memory record has its own "content" property. Exposing it at
+      // the JSON root is ambiguous to connectors that also use "content"
+      // for MCP ContentBlock[]; keep the record inside a stable envelope.
+      return response(record === null ? null : { record }, traceId);
+    });
   });
   server.registerTool("memory_delete", { title: "Delete Memory", description: "🧠 MEMORY — Permanently delete one memory record by id.\n\nExample: { \"memoryId\": 170 }", annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true }, inputSchema: z.object({ memoryId: z.number().int().positive(), ...traceSchema }) }, async ({ memoryId, correlationId }) => {
     assertToolPermission("memory_add"); const traceId = resolveCorrelationId(correlationId);
@@ -246,7 +252,7 @@ export function registerTaskTools(server: McpServer) {
   });
 
   // ---- Task Step Risk Preview ----
-  server.registerTool("task_step_risks", { title: "Preview Step Risks", description: "🗂️ TASK (read) — Dry-run risk analysis: which planned steps will require approval before execution.\n\nClassifies the full policy posture per step: command permissions, OUTSIDE-WORKSPACE cwd (requires approval), mutating tools, destructive commands. Uses the same governance engine as task_run, so its verdicts match execution.\n\nExample: { \"steps\": [{ \"tool\": \"execute_command\", \"arguments\": { \"command\": \"git\", \"args\": [\"status\"], \"cwd\": \"D:/other/repo\" } }] }", annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true }, inputSchema: z.object({ steps: z.array(z.object({ tool: z.string(), arguments: z.record(z.string(), z.unknown()).default({}) })), ...traceSchema }) }, async ({ steps, correlationId }) => {
+  server.registerTool("task_step_risks", { title: "Preview Step Risks", description: "🗂️ TASK (read) — Dry-run risk analysis: which planned steps will require approval before execution.\n\nClassifies the full policy posture per step: command permissions, OUTSIDE-WORKSPACE cwd (requires approval), mutating tools, destructive commands. Uses the same governance engine as task_run, so its verdicts match execution.\n\nPass project=<handle> exactly as you would for task_create: steps are judged against THAT project. On a server with more than one allowed project an untargeted preview is refused, because judging paths against no root would report every step as outside a workspace.\n\nExample: { \"steps\": [{ \"tool\": \"execute_command\", \"arguments\": { \"command\": \"git\", \"args\": [\"status\"], \"cwd\": \"D:/other/repo\" } }] }", annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true }, inputSchema: z.object({ steps: z.array(z.object({ tool: z.string(), arguments: z.record(z.string(), z.unknown()).default({}) })), ...traceSchema }) }, async ({ steps, correlationId }) => {
     assertToolPermission("task_list"); const traceId = resolveCorrelationId(correlationId);
     return auditToolCall("task_step_risks", traceId, undefined, async () => {
       const results = steps.map((s, i) => {

@@ -81,7 +81,8 @@ describe("CI-2.01 / control-plane schema migration 23", () => {
         runMigrations(db);
         // Simulate a live deployment at head 22 that never had the CI tables.
         for (const table of CONTROL_TABLES) db.exec(`DROP TABLE IF EXISTS ${table}`);
-        db.prepare("DELETE FROM schema_migrations WHERE version IN (23, 24, 25)").run();
+        db.exec("DROP TABLE IF EXISTS wsl_file_backup_owners; DROP TABLE IF EXISTS wsl_workspace_bindings;");
+        db.prepare("DELETE FROM schema_migrations WHERE version >= 23").run();
         expect(
           (db.prepare("SELECT MAX(version) AS v FROM schema_migrations").get() as { v: number }).v,
         ).toBe(22);

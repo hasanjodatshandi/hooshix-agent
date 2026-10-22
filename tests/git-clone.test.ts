@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 const { execaMock } = vi.hoisted(() => ({
   execaMock: vi.fn().mockResolvedValue({ exitCode: 0, stdout: "cloned", stderr: "", timedOut: false })
 }));
-vi.mock("execa", () => ({ execa: execaMock }));
+vi.mock("../src/services/spawn.js", () => ({ spawn: execaMock }));
 
 import { gitClone } from "../src/services/git/git-service.js";
 import { runWithPolicyApproval } from "../src/core/governance/policy-decision-point.js";

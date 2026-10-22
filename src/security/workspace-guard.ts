@@ -1,5 +1,8 @@
 import fs from "node:fs";
 import path from "node:path";
+import { isWSLWorkspaceURI, parseWSLWorkspaceURI } from "./wsl-workspace-uri.js";
+import { getWSLWorkspaceBinding, persistWSLWorkspaceBinding, revokeWSLWorkspaceBinding } from "./wsl-workspace-binding.js";
+import { probeWSLWorkspace } from "./wsl-workspace-client.js";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { readLegacyWorkspaceBootstrapSettings } from "../infrastructure/config/legacy-workspace-bootstrap.js";
 import { policyDecisionPoint } from "../core/governance/policy-decision-point.js";
@@ -41,6 +44,7 @@ export function hasSessionWorkspaceContext(): boolean { return sessionWorkspace.
  * casing, where differing case means two genuinely different directories.
  */
 function canonicalRootIdentity(p: string): string {
+  if(isWSLWorkspaceURI(p))return parseWSLWorkspaceURI(p)!.uri;
   const real = (() => {
     try {
       return fs.realpathSync(path.resolve(p));
@@ -83,7 +87,8 @@ function initWorkspaceRoots(): string[] {
   // However, when only one root exists (from env seed or DB), auto-select it
   // so the MCP server has an active workspace without requiring an explicit
   // set_workspace call from the client on every startup.
-  if (activeWorkspace === null && workspaceRoots.length === 1) {
+  if (activeWorkspace === null && workspaceRoots.length === 1 &&
+      (!isWSLWorkspaceURI(workspaceRoots[0]) || getWSLWorkspaceBinding(workspaceRoots[0]) !== null)) {
     activeWorkspace = workspaceRoots[0];
   }
   // HOOSHIX_UNRESTRICTED is a server ALLOW ceiling, never an implicit grant.
@@ -102,7 +107,8 @@ export function getWorkspaceRoot(): string | null {
   const session = sessionWorkspace.getStore();
   const selected = session ? session.activeRoot : activeWorkspace;
   // Root removal immediately invalidates existing session selections.
-  return selected && workspaceRoots.some(root => sameRootIdentity(root, selected)) ? selected : null;
+  return selected && workspaceRoots.some(root => sameRootIdentity(root, selected)) &&
+    (!isWSLWorkspaceURI(selected) || getWSLWorkspaceBinding(selected) !== null) ? selected : null;
 }
 
 /** Run an operation with a validated task workspace, without changing global state. */
@@ -129,11 +135,13 @@ export function getActiveWorkspace(): string | null {
  */
 export function setActiveWorkspace(rootPath: string): { resolved: string; previous: string | null } {
   initWorkspaceRoots();
-  const resolved = path.resolve(rootPath);
-  if (!fs.existsSync(resolved)) {
+  const virtual=parseWSLWorkspaceURI(rootPath);
+  const resolved=virtual ? virtual.uri : path.resolve(rootPath);
+  if(virtual){const binding=getWSLWorkspaceBinding(resolved);if(!binding||!probeWSLWorkspace(binding))throw new Error("wslfs_workspace_unavailable");}
+  if (!virtual && !fs.existsSync(resolved)) {
     throw new Error(`Workspace path does not exist: ${resolved}`);
   }
-  const real = fs.realpathSync(resolved);
+  const real = virtual ? virtual.uri : fs.realpathSync(resolved);
   if (!workspaceRoots.some((r) => sameRootIdentity(r, real))) {
     throw new Error(
       `Access denied: ${real} is not an allowed workspace root. ` +
@@ -154,9 +162,11 @@ export function setActiveWorkspace(rootPath: string): { resolved: string; previo
 export function listWorkspaceRoots(): Array<{ path: string; exists: boolean; active: boolean; persistent: boolean }> {
   initWorkspaceRoots();
   const active = getWorkspaceRoot();
-  return workspaceRoots.map((root) => ({
+  return workspaceRoots.filter(root => !isWSLWorkspaceURI(root) || getWSLWorkspaceBinding(root) !== null).map((root) => ({
     path: root,
-    exists: fs.existsSync(root),
+    exists: isWSLWorkspaceURI(root)
+      ? (()=>{const binding=getWSLWorkspaceBinding(root);return Boolean(binding&&probeWSLWorkspace(binding));})()
+      : fs.existsSync(root),
     active: active !== null && sameRootIdentity(root, active),
     persistent: true,
   }));
@@ -175,8 +185,9 @@ export function removeWorkspaceRoot(rootPath: string): boolean {
     throw new Error("Cannot remove the active workspace — use set_workspace to select another allowed root first.");
   }
   const index = workspaceRoots.findIndex((r) => sameRootIdentity(r, rootPath));
-  if (index === -1) return false;
-  removePersistedWorkspaceRoot(rootPath);
+  if (index === -1 || (isWSLWorkspaceURI(rootPath) && !getWSLWorkspaceBinding(rootPath))) return false;
+  if(isWSLWorkspaceURI(rootPath))revokeWSLWorkspaceBinding(parseWSLWorkspaceURI(rootPath)!.uri);
+  else removePersistedWorkspaceRoot(rootPath);
   workspaceRoots.splice(index, 1);
   return true;
 }
@@ -186,11 +197,23 @@ export function removeWorkspaceRoot(rootPath: string): boolean {
  * roots resolve to added:false). Roots must exist. When the pool was empty
  * before this call, the first root also becomes the active workspace.
  */
-export function addWorkspaceRoots(paths: string[]): Array<{ path: string; added: boolean }> {
+export function addWorkspaceRoots(paths: string[], wslBindings: Array<{path:string;ownerWindowsRoot:string}> = []): Array<{ path: string; added: boolean }> {
   initWorkspaceRoots();
   const wasEmpty = workspaceRoots.length === 0;
   const results: Array<{ path: string; added: boolean }> = [];
   for (const p of paths) {
+    const virtual=parseWSLWorkspaceURI(p);
+    if(virtual){
+      const claimed=wslBindings.find(b=>parseWSLWorkspaceURI(b.path)?.uri===virtual.uri);
+      if(!claimed)throw new Error("wslfs_explicit_owner_binding_required");
+      const binding={...virtual,ownerWindowsRoot:claimed.ownerWindowsRoot};
+      if(!probeWSLWorkspace(binding))throw new Error("wslfs_owner_attestation_failed");
+      const existing=workspaceRoots.some(root=>sameRootIdentity(root,virtual.uri));
+      persistWSLWorkspaceBinding(binding);
+      if(!existing)workspaceRoots.push(virtual.uri);
+      results.push({path:virtual.uri,added:!existing});
+      continue;
+    }
     const resolved = path.resolve(p);
     if (!fs.existsSync(resolved)) {
       throw new Error(`Workspace path does not exist: ${resolved}`);

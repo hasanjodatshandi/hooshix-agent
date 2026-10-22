@@ -189,6 +189,8 @@ const ALLOWED_CHILD_ENV_KEYS = [
   "PATHEXT",        // Windows executable-resolution suffixes
   "LOCALAPPDATA",   // Windows user-local app data (see the note below)
   "SystemRoot",     // Windows: where the system DLLs live
+  "SystemDrive",    // Windows: %SystemDrive% path expansion in system APIs
+  "ProgramData",    // Windows: machine-wide cache/config path
   "WINDIR",
   "COMSPEC",        // Windows default command interpreter
   "PSModulePath",   // PowerShell module discovery
@@ -220,6 +222,13 @@ export function buildChildProcessEnvironment(
   for (const key of ALLOWED_CHILD_ENV_KEYS) {
     const value = resolveEnvironmentValue(env, key, platform);
     if (value !== undefined && value !== "") childEnv[key] = value;
+  }
+  if (platform === "win32" && childEnv.SystemDrive === undefined) {
+    // Windows known-folder paths can contain %SystemDrive%. Without that
+    // key a system API may create a literal relative folder beneath cwd.
+    const root = childEnv.SystemRoot ?? childEnv.WINDIR ?? "";
+    const drive = /^([A-Za-z]:)[\\/]/.exec(root);
+    if (drive) childEnv.SystemDrive = drive[1]!;
   }
   return childEnv;
 }

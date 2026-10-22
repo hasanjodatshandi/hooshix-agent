@@ -71,6 +71,12 @@ function decorate<T extends ExecaResultLike>(result: T, timedOut: boolean): T {
 
 export async function spawn(command: string, args: string[], options: SpawnOptions = {}): Promise<SpawnResult> {
   const rest = { ...options };
+  // Large broker requests travel over stdin, never the Windows command line.
+  // Retain the single allowlisted spawn path so service secrets stay excluded.
+  const input = typeof rest.input === "string" ? rest.input : undefined;
+  if(input !== undefined && Buffer.byteLength(input, "utf8") > 2 * 1024 * 1024)
+    throw new Error("spawn_input_size_limit");
+  delete rest.input;
   const timeout = typeof rest.timeout === "number" && rest.timeout > 0 ? rest.timeout : undefined;
   const cancelSignal = rest.cancelSignal instanceof AbortSignal ? rest.cancelSignal : undefined;
   delete rest.env;
@@ -104,6 +110,10 @@ export async function spawn(command: string, args: string[], options: SpawnOptio
       env: buildChildProcessEnvironment(), cancelSignal: controller.signal,
     } as Options);
     if (typeof subprocess.pid === "number" && subprocess.pid > 0) pidHolder.pid = subprocess.pid;
+    if(input !== undefined){
+      if(!subprocess.stdin) throw new Error("spawn_stdin_unavailable");
+      subprocess.stdin.end(input);
+    }
     // A caller may hand over an already-aborted signal. Abort only AFTER the pid
     // is known, otherwise the tree-kill above would have nothing to target.
     if (alreadyAborted) controller.abort();

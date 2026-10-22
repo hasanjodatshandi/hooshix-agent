@@ -1,5 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import { execFileSync } from "node:child_process";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { connectInProcessMcp, json } from "../helpers/in-process-mcp.js";
 import type { Client } from "@modelcontextprotocol/client";
@@ -8,6 +9,14 @@ import { addWorkspaceRoots, removeWorkspaceRoot, setActiveWorkspace, getWorkspac
 const root = path.resolve("tests/tool-coverage");
 let client: Client;
 let close: () => Promise<void>;
+
+function configureFixtureGitIdentity(): void {
+  // Real child Git processes intentionally do not inherit GIT_AUTHOR_* env.
+  // A portable test must configure its own disposable repository, not rely
+  // on the developer or Windows service account having a global identity.
+  execFileSync("git", ["config", "--local", "user.name", "HooshiX Test"], { cwd: root });
+  execFileSync("git", ["config", "--local", "user.email", "hooshix-test@example.invalid"], { cwd: root });
+}
 
 beforeEach(async () => {
   await fs.rm(root, { recursive: true, force: true });
@@ -71,8 +80,8 @@ describe("in-process MCP tool coverage", () => {
 
   it("git tools: init, add, commit, status, diff, branch, checkout, log", async () => {
     const cwd = "tests/tool-coverage";
-    // A commit needs a git identity from the environment (repo or global config),
-    // like any operator machine; GIT_* env set here would never reach the child
+    // A commit needs a Git identity configured in this disposable repository,
+    // not a machine-global identity; GIT_* env would never reach the child
     // because subprocesses get only the allowlisted environment.
     // git_init is approval-gated like other git mutations — run through a task.
     // The init task pauses for approval (git_init ∈ APPROVAL_TOOLS), so drive
@@ -87,6 +96,7 @@ describe("in-process MCP tool coverage", () => {
       initRun = json(await client.callTool({ name: "task_resume", arguments: { approvalId: initRun.approvalId } }));
     }
     expect(initRun.status).toBe("completed");
+    configureFixtureGitIdentity();
     await fs.writeFile(path.join(root, "f.txt"), "content", "utf8");
 
     // Direct git_init calls are refused (approval-gated, no approval context):
@@ -172,9 +182,9 @@ describe("in-process MCP tool coverage", () => {
     const updated = json(await client.callTool({ name: "memory_update", arguments: { memoryId: mem.id, content: "after", kind: "progress" } }));
     expect(updated).toEqual({ id: mem.id, updated: true });
     const got = json(await client.callTool({ name: "memory_get", arguments: { memoryId: mem.id } }));
-    expect(got.content).toBe("after");
-    expect(got.kind).toBe("progress");
-    expect(got.updated_at).toBeTruthy();
+    expect(got.record.content).toBe("after");
+    expect(got.record.kind).toBe("progress");
+    expect(got.record.updated_at).toBeTruthy();
     // Still one record — update never appended a sibling.
     const listed = json(await client.callTool({ name: "memory_list", arguments: { projectId: project.id } }));
     expect(listed.items.length).toBe(1);
@@ -189,7 +199,7 @@ describe("in-process MCP tool coverage", () => {
     expect(fetched.name).toBe("P");
     const mem = json(await client.callTool({ name: "memory_add", arguments: { projectId: project.id, kind: "note", content: "x" } }));
     const got = json(await client.callTool({ name: "memory_get", arguments: { memoryId: mem.id } }));
-    expect(got.id).toBe(mem.id);
+    expect(got.record.id).toBe(mem.id);
     const listed = json(await client.callTool({ name: "memory_list", arguments: { projectId: project.id } }));
     expect(listed.items.length).toBe(1);
     // Control-plane deletes are governed high-risk operations, but they are
@@ -274,10 +284,10 @@ describe("in-process MCP tool coverage", () => {
 
   it("task_snapshot and task_rollback round-trip in a git repo", async () => {
     const cwd = "tests/tool-coverage";
-    process.env.GIT_AUTHOR_NAME ??= "Test User";
-    process.env.GIT_AUTHOR_EMAIL ??= "test@example.com";
-    process.env.GIT_COMMITTER_NAME ??= "Test User";
-    process.env.GIT_COMMITTER_EMAIL ??= "test@example.com";
+
+
+
+
     // git_init is approval-gated — run the init through the approval cycle.
     const initTask = json(await client.callTool({ name: "task_create", arguments: {
       title: "init repo",
@@ -289,6 +299,7 @@ describe("in-process MCP tool coverage", () => {
       initRun = json(await client.callTool({ name: "task_resume", arguments: { approvalId: initRun.approvalId } }));
     }
     expect(initRun.status).toBe("completed");
+    configureFixtureGitIdentity();
     await fs.writeFile(path.join(root, "s.txt"), "v1", "utf8");
 
     const task = json(await client.callTool({ name: "task_create", arguments: {

@@ -16,7 +16,7 @@ export function createMetricsServer(
   options: { name: string; version: string },
   registerTools: (server: McpServer) => void,
 ): McpServer {
-  const server = new McpServer(options);
+  const server = new McpServer(options, { maxToolInputElements: 10_000 });
 
   // Capture the real registrar before replacing it, then install a wrapper
   // that times every handler and records success/failure.
