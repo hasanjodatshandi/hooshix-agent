@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"strings"
 	"time"
 	"unsafe"
 
@@ -182,6 +183,58 @@ func Install(execPath string) error {
 		return fmt.Errorf("grant start/stop rights: %w", err)
 	}
 	return nil
+}
+
+// PrepareForUpgrade preserves an existing SCM registration, including its
+// configured logon account, service DACL, recovery actions and dependencies.
+// It refuses registrations pointing outside the packaged path BEFORE stopping
+// the service. Returning false means no service was registered (fresh install).
+func PrepareForUpgrade(expectedBinary string) (bool, error) {
+	manager, err := mgr.Connect()
+	if err != nil {
+		return false, fmt.Errorf("connect service manager: %w", err)
+	}
+	defer manager.Disconnect()
+	service, err := manager.OpenService(ServiceName)
+	if errors.Is(err, windows.ERROR_SERVICE_DOES_NOT_EXIST) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("open existing service: %w", err)
+	}
+	defer service.Close()
+	config, err := service.Config()
+	if err != nil {
+		return false, fmt.Errorf("read existing service configuration: %w", err)
+	}
+	// A development or foreign registration is never safe to overwrite.
+	expected := `"` + expectedBinary + `" service run-service`
+	if !matchesExpectedServiceImage(config.BinaryPathName, expectedBinary) {
+		return false, fmt.Errorf("existing service executable does not match the packaged runtime; upgrade refused before stop (got %q, want %q)", config.BinaryPathName, expected)
+	}
+	status, err := service.Query()
+	if err != nil {
+		return false, fmt.Errorf("query existing service: %w", err)
+	}
+	if status.State != svc.Stopped {
+		if _, err := service.Control(svc.Stop); err != nil &&
+			!errors.Is(err, windows.ERROR_SERVICE_NOT_ACTIVE) {
+			return true, fmt.Errorf("stop existing service for upgrade: %w", err)
+		}
+		waitStopped(service, 30*time.Second)
+		status, err = service.Query()
+		if err != nil || status.State != svc.Stopped {
+			return true, fmt.Errorf("existing service did not stop safely: %v", err)
+		}
+	}
+	return true, nil
+}
+
+// matchesExpectedServiceImage fails closed for foreign or development SCM paths.
+// No unquoted spaces, altered arguments or executable outside Program Files.
+func matchesExpectedServiceImage(actual, expectedBinary string) bool {
+	expected := `"` + expectedBinary + `" service run-service`
+	return strings.EqualFold(strings.TrimSpace(actual), expected)
 }
 
 // Uninstall stops and removes the service. An unregistered name is a valid

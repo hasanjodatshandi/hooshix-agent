@@ -29,6 +29,8 @@ foreach ($p in @($install, $data)) {
   if (-not (Test-Path -LiteralPath $p -PathType Container)) { throw "Missing existing installation directory: $p" }
 }
 $svc = Get-Service -Name $serviceName -ErrorAction Stop
+$serviceAccount = (Get-CimInstance Win32_Service -Filter "Name='HooshiXMCP'" -ErrorAction Stop).StartName
+if ([string]::IsNullOrWhiteSpace($serviceAccount)) { throw 'Service logon identity unavailable; no backup or service change.' }
 if ($svc.Status -ne [ServiceProcess.ServiceControllerStatus]::Running) {
   throw "Expected a running $serviceName service; currently $($svc.Status). No action taken."
 }
@@ -87,6 +89,7 @@ try {
 if (-not $copySucceeded) { throw 'Backup did not complete; do not run installer.' }
 $record = [ordered]@{
   service = $serviceName
+  serviceAccount = $serviceAccount
   capturedAt = (Get-Date).ToString('o')
   backupPath = $destination
   originalBinarySha256 = $originalHash

@@ -16,6 +16,27 @@ import (
 // that is still exiting. Treating any open failure as "gone" recreates the
 // service while it is still marked for deletion, SCM refuses with the same code,
 // and the upgrade rolls back onto a registration it already destroyed.
+func TestPackagedServiceImageMustMatchBeforeOwnerUpgrade(t *testing.T) {
+	expected := `C:\Program Files\HooshiX MCP\bin\hooshix-mcp-service.exe`
+	cases := []struct {
+		name, actual string
+		want         bool
+	}{
+		{"normal owner registration", `"C:\Program Files\HooshiX MCP\bin\hooshix-mcp-service.exe" service run-service`, true},
+		{"case variation", `"c:\program files\hooshix mcp\BIN\hooshix-mcp-service.exe" service run-service`, true},
+		{"old development binary", `"D:\workspace\hooshix-agent\deploy\windows\build\hooshix-mcp-service.exe" service run-service`, false},
+		{"foreign arguments", `"C:\Program Files\HooshiX MCP\bin\hooshix-mcp-service.exe" service run-service -settings D:\secrets`, false},
+		{"unquoted path", `C:\Program Files\HooshiX MCP\bin\hooshix-mcp-service.exe service run-service`, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := matchesExpectedServiceImage(tc.actual, expected); got != tc.want {
+				t.Fatalf("expected guard %v for %q, got %v", tc.want, tc.actual, got)
+			}
+		})
+	}
+}
+
 func TestServiceRemovedOnlyMeansTheNameIsFree(t *testing.T) {
 	tests := []struct {
 		name     string
