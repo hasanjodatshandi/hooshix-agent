@@ -32,7 +32,8 @@ describe("R6 file-idempotency table upgrade for pre-existing databases", () => {
           "security_audit", "handoff_intent", "ownership_lease",
           "workspace_grant", "context_binding", "context_registry",
         ]) db.exec(`DROP TABLE IF EXISTS ${table}`);
-        db.prepare("DELETE FROM schema_migrations WHERE version IN (22, 23, 24, 25)").run();
+        db.exec("DROP TABLE IF EXISTS wsl_file_backup_owners; DROP TABLE IF EXISTS wsl_workspace_bindings;");
+        db.prepare("DELETE FROM schema_migrations WHERE version >= 22").run();
         expect(
           db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='idempotency_responses'").get(),
         ).toBeUndefined();
@@ -78,7 +79,8 @@ describe("R6 file-idempotency table upgrade for pre-existing databases", () => {
           "security_audit", "handoff_intent", "ownership_lease",
           "workspace_grant", "context_binding", "context_registry",
         ]) seed.exec(`DROP TABLE IF EXISTS ${table}`);
-        seed.prepare("DELETE FROM schema_migrations WHERE version IN (22, 23, 24)").run();
+        seed.exec("DROP TABLE IF EXISTS wsl_file_backup_owners; DROP TABLE IF EXISTS wsl_workspace_bindings;");
+        seed.prepare("DELETE FROM schema_migrations WHERE version >= 22").run();
       } finally {
         seed.close();
       }

@@ -6,6 +6,7 @@ import { spawn } from "../services/spawn.js";
 import { packagedOwnerWorkerPath } from "../services/git/owner-worker-client.js";
 import { getWSLWorkspaceBinding, type WSLWorkspaceBinding } from "./wsl-workspace-binding.js";
 import { wslRelativePath } from "./wsl-workspace-uri.js";
+import { permittedWSLOwnerChildEnv } from "../infrastructure/config/wsl-owner-child-env.js";
 
 export type WSLFileOperation = "probe" | "read" | "list" | "search" | "stat" | "git_status" | "git_diff" | "git_log" | "git_commit_reconcile";
 export type WSLMutationOperation = "create" | "write_existing" | "modify_existing" | "delete_existing" | "restore_created" | "restore_deleted" | "restore_modified";
@@ -37,12 +38,7 @@ export interface WSLFileResponse {
  distro?: string;
  linuxRoot?: string;
 }
-function permittedChildEnv(): NodeJS.ProcessEnv {
- const vars=["PATH","PATHEXT","SystemRoot","SystemDrive","WINDIR","TEMP","TMP","USERPROFILE","APPDATA","LOCALAPPDATA","ProgramData"];
- const env:NodeJS.ProcessEnv={};
- for(const key of vars){if(process.env[key])env[key]=process.env[key];}
- return env;
-}
+
 function workerBinary():string{
  const exe=packagedOwnerWorkerPath(process.execPath);
  if(!exe || process.platform!=="win32" || !fs.existsSync(exe))throw new Error("wslfs_owner_worker_not_packaged");
@@ -115,7 +111,7 @@ export function probeWSLWorkspace(binding:WSLWorkspaceBinding): boolean {
  try {
   const child=spawnSync(workerBinary(),workerArgs(binding,"probe","."),{
    cwd:binding.ownerWindowsRoot,timeout:35000,encoding:"utf8",windowsHide:true,
-   maxBuffer:2*1024*1024,env:permittedChildEnv(),shell:false,
+   maxBuffer:2*1024*1024,env:permittedWSLOwnerChildEnv(),shell:false,
   });
   if(child.error||child.status!==0)return false;
   return validateWSLFileResponse(child.stdout,binding,"probe").ok;

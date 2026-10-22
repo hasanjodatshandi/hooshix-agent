@@ -6,7 +6,7 @@ import {addWorkspaceRoots,removeWorkspaceRoot,setActiveWorkspace} from "../../sr
 import {runWithPolicyApproval} from "../../src/core/governance/policy-decision-point.js";
 
 const {execaMock}=vi.hoisted(()=>({execaMock:vi.fn()}));
-vi.mock("execa",()=>({execa:execaMock}));
+vi.mock("../../src/services/spawn.js",()=>({spawn:execaMock}));
 import {managePackage} from "../../src/services/package/package-service.js";
 
 let fixture:DisposableFixture|undefined;

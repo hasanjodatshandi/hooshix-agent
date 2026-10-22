@@ -1,9 +1,10 @@
 import { createHash, randomUUID } from "node:crypto";
-import { withAgentDatabase } from "../core/memory/database/index.js";
 import { getTrustedInboundIdentity } from "../core/runtime/r2-trusted-inbound-identity.js";
 import {
-  persistAbsentFileBackup, persistFileBackup, getStoredFileBackup,
+  getStoredFileBackup,
   recordFileBackupPostcondition, type StoredFileBackup,
+  persistWSLFileSnapshotForPrincipal, isWSLFileSnapshotOwned,
+  findWSLFileSnapshotOwnerRoot,
 } from "../adapters/outbound/persistence/sqlite/repositories/file-backup-idempotency.adapter.js";
 import { getWSLWorkspaceBinding } from "./wsl-workspace-binding.js";
 import { parseWSLWorkspaceURI, wslRelativePath } from "./wsl-workspace-uri.js";
@@ -58,12 +59,9 @@ export function stageWSLFileSnapshot(
   const principal = String(getTrustedInboundIdentity().principal.id);
   // Snapshot and principal ownership are persisted atomically. An aborted
   // transaction never leaves a cross-principal usable restoration token.
-  withAgentDatabase(db => db.transaction(() => {
-    if (bytes === null) persistAbsentFileBackup(backupId, correlationId, target);
-    else persistFileBackup(backupId, correlationId, target, bytes, digest!);
-    db.prepare("INSERT INTO wsl_file_backup_owners(backup_id,principal_id,workspace_uri) VALUES (?,?,?)")
-      .run(backupId, principal, root);
-  })());
+  persistWSLFileSnapshotForPrincipal(
+    backupId, correlationId, target, root, principal, bytes, digest,
+  );
   return { backupId, target, previousRevision: digest };
 }
 
@@ -78,9 +76,7 @@ export function confirmWSLFilePostcondition(
   const target = canonicalWSLBackupTarget(root, relative);
   authorizedRoot(root);
   const principal = String(getTrustedInboundIdentity().principal.id);
-  const owns = withAgentDatabase(db => db.prepare(
-    "SELECT 1 FROM wsl_file_backup_owners WHERE backup_id=? AND principal_id=? AND workspace_uri=?"
-  ).get(backupId, principal, root));
+  const owns = isWSLFileSnapshotOwned(backupId, principal, root);
   const backup = owns ? getStoredFileBackup(backupId) : undefined;
   if (!backup || backup.path !== target || backup.target_canonical_path !== target)
     throw new Error("wsl_backup_target_mismatch");
@@ -103,17 +99,15 @@ export interface WSLRestorePreflight {
  */
 export function validateWSLRestoreSnapshot(backupId: string): WSLRestorePreflight {
   const principal = String(getTrustedInboundIdentity().principal.id);
-  const owner = withAgentDatabase(db => db.prepare(
-    "SELECT workspace_uri AS root FROM wsl_file_backup_owners WHERE backup_id=? AND principal_id=?"
-  ).get(backupId, principal) as {root:string}|undefined);
-  if (!owner) throw new Error("wsl_backup_not_found_or_not_owned");
+  const ownerRoot = findWSLFileSnapshotOwnerRoot(backupId, principal);
+  if (!ownerRoot) throw new Error("wsl_backup_not_found_or_not_owned");
   const backup = getStoredFileBackup(backupId);
   if (!backup) throw new Error("wsl_backup_not_found");
   const candidate = parseWSLWorkspaceURI(backup.path);
   if (!candidate || candidate.uri !== backup.path ||
       backup.target_canonical_path !== backup.path)
     throw new Error("wsl_backup_invalid_target");
-  const root = owner.root;
+  const root = ownerRoot;
   if (!listWorkspaceRoots().some(entry => entry.path === root) ||
       !backup.path.startsWith(root + "/") ||
       !getWSLWorkspaceBinding(root))
