@@ -160,8 +160,11 @@ func runInstall(layout setup.Layout, self, baseURL string, out io.Writer) error 
 	// because a running host keeps the service binary, node.exe and the port
 	// locked. Unregistering a service that is not there is not an error, so a
 	// fresh install pays nothing for this.
-	if err := svc.Uninstall(); err != nil {
-		return fmt.Errorf("stop the service from the previous install: %w", err)
+	// Retain existing SCM account/DACL/recovery settings during upgrades.
+	// Recreating the service would reset owner-session WSL enrollment.
+	existingService, err := svc.PrepareForUpgrade(layout.ServiceBinary())
+	if err != nil {
+		return err
 	}
 	if err := setup.WaitListenerFree(setup.DefaultPort, listenerReleaseTimeout); err != nil {
 		return err
@@ -197,8 +200,10 @@ func runInstall(layout setup.Layout, self, baseURL string, out io.Writer) error 
 	if err := registerInstall(layout, layout.ReadAppVersion()); err != nil {
 		return err
 	}
-	if err := svc.Install(layout.ServiceBinary()); err != nil {
-		return fmt.Errorf("register the service with the service control manager: %w", err)
+	if !existingService {
+		if err := svc.Install(layout.ServiceBinary()); err != nil {
+			return fmt.Errorf("register the service with the service control manager: %w", err)
+		}
 	}
 	if err := svc.Start(); err != nil {
 		return fmt.Errorf("%s is installed but did not start: %w\n\nRead %s, then start it from the tray icon or from services.msc.",

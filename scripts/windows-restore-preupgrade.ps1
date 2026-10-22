@@ -39,6 +39,13 @@ if (-not (Test-Path -LiteralPath $oldExe -PathType Leaf) -or
     -not (Test-Path -LiteralPath $sourceData -PathType Container)) {
   throw 'Recovery snapshot missing old service binary or data.'
 }
+$svc=Get-Service -Name HooshiXMCP -ErrorAction SilentlyContinue
+if (-not $svc) { throw 'Original SCM service missing. Do not re-register with default LocalSystem; restore its configured account independently before rollback.' }
+$currentAccount=(Get-CimInstance Win32_Service -Filter "Name='HooshiXMCP'" -ErrorAction Stop).StartName
+if ([string]::IsNullOrWhiteSpace($manifest.serviceAccount) -or
+    -not [string]::Equals($currentAccount,[string]$manifest.serviceAccount,[StringComparison]::OrdinalIgnoreCase)) {
+  throw 'Service logon account differs from recovery snapshot. Refuse rollback before changing files or registration.'
+}
 $hash=(Get-FileHash -LiteralPath $oldExe -Algorithm SHA256).Hash
 if ($hash -ne $manifest.originalBinarySha256) { throw 'Recovery service binary SHA-256 mismatch.' }
 function Copy-Tree([string]$source,[string]$dest,[bool]$mirror) {
@@ -50,22 +57,18 @@ function Copy-Tree([string]$source,[string]$dest,[bool]$mirror) {
 }
 Write-Warning "ROLLBACK: This overwrites the installed service AND database/settings from $backup."
 # Existing SCM service may be absent after a failed update; either is allowed.
-$svc=Get-Service HooshiXMCP -ErrorAction SilentlyContinue
-if ($svc -and $svc.Status -ne [ServiceProcess.ServiceControllerStatus]::Stopped) {
+if ($svc.Status -ne [ServiceProcess.ServiceControllerStatus]::Stopped) {
   Stop-Service HooshiXMCP -ErrorAction Stop
   (Get-Service HooshiXMCP).WaitForStatus(
      [ServiceProcess.ServiceControllerStatus]::Stopped,[TimeSpan]::FromSeconds(60))
 }
 Copy-Tree $sourceInstall $install $true
-Copy-Tree $sourceData $data $false
+Copy-Tree $sourceData $data $true
 $restoredExe=Join-Path $install 'bin\hooshix-mcp-service.exe'
 if ((Get-FileHash $restoredExe -Algorithm SHA256).Hash -ne $manifest.originalBinarySha256) {
   throw 'Restored binary failed SHA-256 check.'
 }
-& $restoredExe service install
-if ($LASTEXITCODE -ne 0) { throw 'Old SCM service registration failed; inspect independent console.' }
-& $restoredExe service start
-if ($LASTEXITCODE -ne 0) { throw 'Old SCM service start failed; inspect independent console.' }
+Start-Service -Name HooshiXMCP -ErrorAction Stop
 (Get-Service HooshiXMCP).WaitForStatus([ServiceProcess.ServiceControllerStatus]::Running,
    [TimeSpan]::FromSeconds(60))
 Write-Output "HOOSHIX_ROLLBACK_SERVICE_RUNNING=True"
