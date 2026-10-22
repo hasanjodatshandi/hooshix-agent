@@ -10,7 +10,7 @@ export async function startMcpServer():Promise<void>{
   // on termination rather than relying on the default signal action.
   installGracefulShutdown(undefined,{onShutdown:closeAgentDatabase});
   await serveStdio(()=>{
-    const server=new McpServer({name:"hooshix-agent",version:"0.1.0"},{capabilities:{tools:{}}});
+    const server=new McpServer({name:"hooshix-agent",version:"0.1.0"},{capabilities:{tools:{}},maxToolInputElements:10_000});
     registerTools(server);
     return server;
   });
