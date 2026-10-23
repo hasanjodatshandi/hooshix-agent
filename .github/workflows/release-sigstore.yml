@@ -1,0 +1,161 @@
+name: HooshiX open-source Sigstore draft release
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "New release tag (for example v0.1.0-rc.1). Creates a draft only."
+        required: true
+        type: string
+
+permissions: {}
+
+concurrency:
+  group: hooshix-sigstore-draft
+  cancel-in-progress: false
+
+jobs:
+  build-sign-draft:
+    # Explicitly disallow running this release workflow from a PR or branch.
+    if: github.ref == 'refs/heads/main'
+    runs-on: windows-2022
+    timeout-minutes: 60
+    permissions:
+      contents: write
+      id-token: write
+    env:
+      RELEASE_TAG: ${{ inputs.tag }}
+    steps:
+      - name: Checkout the exact public main commit
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Guard release identity and immutable source
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ($env:GITHUB_REF -ne 'refs/heads/main') { throw 'Release must be dispatched on main.' }
+          if ($env:RELEASE_TAG -notmatch '^v[0-9]+[.][0-9]+[.][0-9]+(-rc[.][0-9]+)?$') {
+            throw 'Tag must be a release version, for example v0.1.0-rc.1.'
+          }
+          $head = (git rev-parse HEAD).Trim()
+          if ($head -ne $env:GITHUB_SHA) { throw 'Runner HEAD mismatch.' }
+          $upstream = (git ls-remote origin refs/heads/main) -split '\s+'
+          if ($upstream[0] -ne $head) { throw 'Main advanced since the run was dispatched.' }
+          if (git ls-remote origin "refs/tags/$env:RELEASE_TAG") {
+            throw 'Tag already exists. Refusing to overwrite any release.'
+          }
+          if (git status --porcelain) { throw 'Source tree is dirty.' }
+          "Source: $head"
+
+      - name: Configure pinned Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '24.18.0'
+
+      - name: Configure pinned Go
+        uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+        with:
+          go-version: '1.27.1'
+          cache-dependency-path: deploy/windows/go.sum
+
+      - name: Install exact dependencies and compile
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          corepack pnpm install --frozen-lockfile --registry=https://registry.npmjs.org/
+          if ($LASTEXITCODE -ne 0) { throw 'Frozen pnpm install failed.' }
+          corepack pnpm run typecheck
+          if ($LASTEXITCODE -ne 0) { throw 'TypeScript typecheck failed.' }
+          corepack pnpm run build
+          if ($LASTEXITCODE -ne 0) { throw 'TypeScript build failed.' }
+          node scripts/release-preflight.mjs
+          if ($LASTEXITCODE -ne 0) { throw 'Source preflight failed.' }
+
+      - name: Validate native tests and release source
+        shell: pwsh
+        working-directory: deploy/windows
+        run: |
+          $ErrorActionPreference = 'Stop'
+          go test ./internal/setup ./internal/svc ./cmd/hooshix-mcp-setup -count=1 -timeout 3m
+          if ($LASTEXITCODE -ne 0) { throw 'Installer and service regression tests failed.' }
+
+      - name: Assemble unsigned installer, license and checksums
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $installer = Join-Path $env:RUNNER_TEMP "HooshiX-MCP-$env:RELEASE_TAG-unsigned.exe"
+          node scripts/build-windows-installer.mjs --skip-build --out $installer --registry https://registry.npmjs.org/
+          if ($LASTEXITCODE -ne 0) { throw 'Installer build failed.' }
+          if (-not (Test-Path -LiteralPath 'deploy/windows/build/payload/app/LICENSE')) {
+            throw 'Apache-2.0 license missing from Windows binary distribution.'
+          }
+          & $installer --verify
+          if ($LASTEXITCODE -ne 0) { throw 'Embedded runtime payload verification failed.' }
+          $actual = (Get-FileHash -LiteralPath $installer -Algorithm SHA256).Hash.ToLowerInvariant()
+          $expected = ((Get-Content -LiteralPath ($installer + '.sha256') -Raw).Trim() -split '\s+')[0].ToLowerInvariant()
+          if ($actual -ne $expected) { throw 'Installer SHA-256 mismatch.' }
+          node scripts/audit-wsl-release-candidate.mjs --installer $installer
+          if ($LASTEXITCODE -ne 0) { throw 'Installer provenance audit failed.' }
+          "RELEASE_INSTALLER=$installer" >> $env:GITHUB_ENV
+
+      - name: Test the exact installer in an isolated rollback fixture
+        shell: pwsh
+        working-directory: deploy/windows
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $env:HOOSHIX_STAGING_INSTALLER = $env:RELEASE_INSTALLER
+          go test ./internal/setup -run '^TestStagedInstaller(Payload|UpgradeAndRollbackContents)$' -count=1 -v -timeout 3m
+          if ($LASTEXITCODE -ne 0) { throw 'Staging/rollback test failed.' }
+
+      - name: Install pinned Sigstore Cosign
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+
+      - name: Sign and independently verify with GitHub Actions identity
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $bundle = "$env:RELEASE_INSTALLER.sigstore.json"
+          cosign sign-blob --yes --bundle $bundle $env:RELEASE_INSTALLER
+          if ($LASTEXITCODE -ne 0) { throw 'Sigstore signing failed.' }
+          $identity = "https://github.com/$env:GITHUB_REPOSITORY/.github/workflows/release-sigstore.yml@refs/heads/main"
+          cosign verify-blob --bundle $bundle --certificate-identity $identity --certificate-oidc-issuer https://token.actions.githubusercontent.com $env:RELEASE_INSTALLER
+          if ($LASTEXITCODE -ne 0) { throw 'Sigstore verification failed.' }
+          if (-not (Test-Path -LiteralPath $bundle)) { throw 'Missing Sigstore transparency bundle.' }
+
+      - name: Prepare explicit open-source release notes
+        shell: pwsh
+        run: |
+          $notes = Join-Path $env:RUNNER_TEMP 'release-notes.md'
+          @(
+            "# HooshiX MCP $env:RELEASE_TAG"
+            ""
+            "Source commit: $env:GITHUB_SHA"
+            ""
+            "License: Apache License 2.0. The installer includes LICENSE."
+            "The supplied .exe is **NOT Authenticode signed** and may trigger Windows SmartScreen."
+            "SHA-256 checksum and a Sigstore keyless signature bundle are attached."
+            "The signature binds this exact executable to the official GitHub Actions workflow."
+            ""
+            "Verify the hash against the .sha256 file and the bundle with:"
+            'cosign verify-blob <installer.exe> --bundle <installer.exe.sigstore.json> --certificate-identity https://github.com/__REPO__/.github/workflows/release-sigstore.yml@refs/heads/main --certificate-oidc-issuer https://token.actions.githubusercontent.com'
+            ""
+            "Release is initially DRAFT. Publishing and any live SCM upgrade require explicit operator approval."
+          ) -replace '__REPO__', $env:GITHUB_REPOSITORY | Set-Content -LiteralPath $notes -Encoding utf8
+          "RELEASE_NOTES=$notes" >> $env:GITHUB_ENV
+
+      - name: Create a draft GitHub Release (never auto-publish)
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $files = @(
+            $env:RELEASE_INSTALLER,
+            "$env:RELEASE_INSTALLER.sha256",
+            "$env:RELEASE_INSTALLER.sigstore.json"
+          )
+          foreach ($file in $files) { if (-not (Test-Path -LiteralPath $file)) { throw "Missing release asset $file" } }
+          gh release create $env:RELEASE_TAG @files --target $env:GITHUB_SHA --draft --latest=false --title "HooshiX MCP $env:RELEASE_TAG (unsigned, Sigstore verified)" --notes-file $env:RELEASE_NOTES
+          if ($LASTEXITCODE -ne 0) { throw 'Draft release creation failed.' }

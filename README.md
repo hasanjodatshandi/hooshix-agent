@@ -4,6 +4,12 @@ HooshiX یک MCP server محلی و یک runtime قطعی برای اجرای wo
 
 > **مستندات:** نقشهٔ کامل سلسله‌مراتب مستندات و اینکه کدام فایل authoritative است در `docs/INDEX.md` است (Architecture، Security، Operations، Tools و...). اگر مستندی با تست‌های executable در تضاد باشد، تست‌ها ملاک هستند.
 
+## Open-source license
+
+The HooshiX Agent source code is distributed under the **Apache License, Version 2.0**. See [LICENSE](LICENSE) for the official terms. Commercial use, modifications and redistribution are permitted subject to the license. The names and logos of the project are **not** licensed as trademarks by Apache-2.0. Third-party dependencies retain their own licenses.
+
+The Windows installer contains a copy of the Apache-2.0 license at `app/LICENSE`. GitHub Releases use SHA-256 checksums plus a free Sigstore keyless signature, **not** Windows Authenticode; Windows SmartScreen warnings may still occur. Refer to [release and verification instructions](docs/RELEASE_SIGSTORE.md).
+
 ## کنترل پیش از انتشار
 
 برای بررسی غیرمخرب وضعیت Source/Build از `pnpm run release:preflight` و برای تمرین مهاجرت پایگاه داده **فقط روی نسخهٔ پشتیبان** از `pnpm run release:db-rehearsal` استفاده کنید. گزارش معیارهای پذیرش، موانع انتشار و روش Rollback در `docs/RELEASE_HARDENING_2026-09-19.md` است. قبولی این بررسی‌های محلی به معنای تأیید انتشار عمومی یا مجوز Restart خودکار سرویس نیست.
@@ -11,7 +17,7 @@ HooshiX یک MCP server محلی و یک runtime قطعی برای اجرای wo
 ## نیازمندی‌ها و اجرا
 
 - Node.js 24 (نسخهٔ CI و `.nvmrc`: 24.18.0؛ نسخهٔ سرویس باید پیش از اجرا بررسی شود)
-- pnpm 11.24.0 (مطابق فیلد `packageManager` در `package.json`؛ نسخه نصب‌شده را با آن تطبیق دهید)
+- pnpm 12.14.0 (مطابق فیلد `packageManager` در `package.json`؛ نسخه نصب‌شده را با آن تطبیق دهید)
 - Git برای ابزارهای Git
 - ابزارهای اختیاری مربوط به package manager انتخابی: Python/pip، winget یا Chocolatey
 
