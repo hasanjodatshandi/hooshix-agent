@@ -9,6 +9,7 @@
 package setup
 
 import (
+	"debug/pe"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -179,11 +180,19 @@ func Locate(file *os.File) (Payload, error) {
 	if size < TrailerSize {
 		return Payload{}, ErrNoPayload
 	}
+	// Signed PE images place WIN_CERTIFICATE after the runtime payload trailer.
+	trailerEnd, err := trailerEndBeforeAuthenticode(file, size)
+	if err != nil {
+		return Payload{}, err
+	}
+	if trailerEnd < TrailerSize {
+		return Payload{}, ErrNoPayload
+	}
 	raw := make([]byte, TrailerSize)
-	if _, err := file.ReadAt(raw, size-TrailerSize); err != nil {
+	if _, err := file.ReadAt(raw, trailerEnd-TrailerSize); err != nil {
 		return Payload{}, fmt.Errorf("read payload trailer: %w", err)
 	}
-	payload, err := parseTrailer(raw, size)
+	payload, err := parseTrailer(raw, trailerEnd)
 	if err != nil {
 		return Payload{}, err
 	}
@@ -199,6 +208,70 @@ func Locate(file *os.File) (Payload, error) {
 			payload.Checksum, hash)
 	}
 	return payload, nil
+}
+
+// trailerEndBeforeAuthenticode interprets PE IMAGE_DIRECTORY_ENTRY_SECURITY.
+// Unlike other PE directories, VirtualAddress is a file offset, not an RVA.
+// Only a certificate table that occupies the exact file tail is accepted.
+// This prevents attacker-added trailing bytes from hiding a corrupt payload.
+func trailerEndBeforeAuthenticode(file *os.File, size int64) (int64, error) {
+	image, err := pe.NewFile(file)
+	if err != nil {
+		// The package tests use synthetic non-PE stand-ins and ordinary
+		// unsigned files still carry a trailer at physical EOF.
+		return size, nil
+	}
+	defer image.Close()
+	const securityDirectory = 4
+	var directory pe.DataDirectory
+	switch header := image.OptionalHeader.(type) {
+	case *pe.OptionalHeader32:
+		directory = header.DataDirectory[securityDirectory]
+	case *pe.OptionalHeader64:
+		directory = header.DataDirectory[securityDirectory]
+	default:
+		return 0, fmt.Errorf("unrecognized PE optional header")
+	}
+	if directory.Size == 0 && directory.VirtualAddress == 0 {
+		return size, nil
+	}
+	if directory.Size == 0 || directory.VirtualAddress == 0 {
+		return 0, fmt.Errorf("malformed Authenticode security directory")
+	}
+	end := int64(directory.VirtualAddress)
+	length := int64(directory.Size)
+	if end < TrailerSize || end > size || length > size-end || end+length != size {
+		return 0, fmt.Errorf("invalid Authenticode certificate offset/length")
+	}
+	return signedTrailerEnd(file, end)
+}
+
+// signedTrailerEnd is independently testable without a signing key. The
+// WIN_CERTIFICATE begins at certStart; all bytes between the HooshiX trailer
+// and the certificate must be zero alignment padding, never arbitrary data.
+func signedTrailerEnd(file io.ReaderAt, end int64) (int64, error) {
+	// Authenticode aligns WIN_CERTIFICATE on an eight-byte file boundary.
+	// A signed installer can have up to seven zero padding bytes after the
+	// HooshiX trailer. Reject anything other than bounded zero alignment.
+	for pad := int64(0); pad <= 7 && end-pad >= TrailerSize; pad++ {
+		if pad > 0 {
+			var zero [1]byte
+			if _, err := file.ReadAt(zero[:], end-pad); err != nil {
+				return 0, fmt.Errorf("read Authenticode padding: %w", err)
+			}
+			if zero[0] != 0 {
+				return 0, fmt.Errorf("nonzero Authenticode alignment padding")
+			}
+		}
+		var marker [8]byte
+		if _, err := file.ReadAt(marker[:], end-pad-TrailerSize); err != nil {
+			return 0, fmt.Errorf("read installer trailer marker: %w", err)
+		}
+		if string(marker[:]) == trailerMagic {
+			return end - pad, nil
+		}
+	}
+	return 0, fmt.Errorf("signed installer trailer missing immediately before Authenticode certificate")
 }
 
 // parseTrailer validates the fixed record against the file length.
