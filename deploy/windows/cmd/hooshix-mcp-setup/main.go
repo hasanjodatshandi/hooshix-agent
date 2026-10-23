@@ -162,14 +162,20 @@ func runInstall(layout setup.Layout, self, baseURL string, out io.Writer) error 
 	// fresh install pays nothing for this.
 	// Retain existing SCM account/DACL/recovery settings during upgrades.
 	// Recreating the service would reset owner-session WSL enrollment.
+	// Owner-session workers keep running even after an SCM stop. Probe both
+	// locked images before stopping a healthy service or touching installed
+	// files, so a busy worker can never strand a partially extracted package.
+	if err := layout.CheckWorkerIdle(); err != nil {
+		return err
+	}
+	if err := layout.CheckTrayIdle(); err != nil {
+		return err
+	}
 	existingService, err := svc.PrepareForUpgrade(layout.ServiceBinary())
 	if err != nil {
 		return err
 	}
 	if err := setup.WaitListenerFree(setup.DefaultPort, listenerReleaseTimeout); err != nil {
-		return err
-	}
-	if err := layout.CheckTrayIdle(); err != nil {
 		return err
 	}
 

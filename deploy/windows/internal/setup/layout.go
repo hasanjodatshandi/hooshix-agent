@@ -171,6 +171,12 @@ func (layout Layout) TrayBinary() string {
 	return filepath.Join(layout.BinDir, "hooshix-mcp-tray.exe")
 }
 
+// WorkerBinary is the owner-session executable that may outlive a service stop.
+// Windows cannot replace its running executable image.
+func (layout Layout) WorkerBinary() string {
+	return filepath.Join(layout.BinDir, "hooshix-git-worker.exe")
+}
+
 // UninstallerBinary is the payload-less copy of setup that the Add/Remove
 // Programs entry runs. It is small because the runtime archive is not copied
 // into it.
@@ -333,6 +339,22 @@ func probeListener(port string) error {
 		return err
 	}
 	return listener.Close()
+}
+
+// CheckWorkerIdle is a read-only upgrade preflight. Owner-session Git/WSL
+// workers are detached from the Windows service and may outlive its stop.
+// Refuse an upgrade BEFORE stopping the service or extracting any files when
+// their image is locked. Never terminate workers or alter HKCU enrollment here.
+func (layout Layout) CheckWorkerIdle() error {
+	worker := layout.WorkerBinary()
+	if _, err := os.Stat(worker); errors.Is(err, os.ErrNotExist) {
+		return nil // no previous install
+	}
+	file, err := os.OpenFile(worker, os.O_WRONLY, 0)
+	if err != nil {
+		return fmt.Errorf("%s is in use or unavailable: close enrolled HooshiX owner-session Git/WSL workers from an independent Windows session, then retry setup; service and files were not changed (%w)", worker, err)
+	}
+	return file.Close()
 }
 
 // CheckTrayIdle opens the installed tray executable the way an overwrite would.
