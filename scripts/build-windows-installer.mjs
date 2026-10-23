@@ -67,6 +67,8 @@ function main() {
 		const appDir = path.join(payloadDir, "app");
 		fs.mkdirSync(appDir, { recursive: true });
 		fs.copyFileSync(path.join(repo, "package.json"), path.join(appDir, "package.json"));
+		// Binary redistributions must include the project\x27s open-source license.
+		fs.copyFileSync(path.join(repo, "LICENSE"), path.join(appDir, "LICENSE"));
 		fs.cpSync(path.join(repo, "dist"), path.join(appDir, "dist"), { recursive: true });
 		installProductionDependencies(appDir, scratch, runtime);
 
