@@ -73,7 +73,7 @@ describe("exec: unrestricted shell behind one opt-in flag", () => {
     enable();
     const result = await executeUnrestrictedCommand(
       isWindows ? "whoami" : "whoami",
-      { shell: isWindows ? "cmd" : "sh" },
+      { shell: isWindows ? "cmd" : undefined },
     );
     expect(result.exitCode).toBe(0);
     expect(result.stdout.trim().length).toBeGreaterThan(0);
