@@ -206,7 +206,7 @@ func runInstall(layout setup.Layout, self, baseURL string, out io.Writer) (err e
 			// A fresh install owns the program directory and new SCM registration;
 			// leave any pre-existing ProgramData untouched.
 			if !hadService {
-				_ = svc.Uninstall()
+				_ = cleanupNewServiceAfterInstallFailure()
 				_ = removeRegistration()
 				_ = os.RemoveAll(layout.InstallDir)
 			}
@@ -222,7 +222,7 @@ func runInstall(layout setup.Layout, self, baseURL string, out io.Writer) (err e
 			return
 		}
 		if !hadService {
-			_ = svc.Uninstall()
+			_ = cleanupNewServiceAfterInstallFailure()
 			_ = removeRegistration()
 		}
 		if hadService {

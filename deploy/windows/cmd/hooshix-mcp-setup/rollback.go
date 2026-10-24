@@ -8,6 +8,12 @@ import (
 	"github.com/hasanjodatshandi/hooshix-agent/deploy/windows/internal/svc"
 )
 
+// cleanupNewServiceAfterInstallFailure is called only on a fresh install
+// that had no previous SCM service. Existing services must never be deleted.
+func cleanupNewServiceAfterInstallFailure() error {
+	return svc.Uninstall()
+}
+
 // runRollback is the explicit one-level Windows program restore point.
 // The settings, SQLite database, logs, and user workspaces are never removed.
 // No installer payload is needed: even the uninstaller executable can invoke it.
