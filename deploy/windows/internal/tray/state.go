@@ -20,14 +20,15 @@ import (
 // inside it, and the two disagree routinely — a stopped service leaves its last
 // status.json on disk.
 type Snapshot struct {
-	Service   string // SCM state name, or "unknown" when it could not be queried
-	Phase     string // host phase reported by the service
-	State     string // host probe state
-	Listener  string
-	Restarts  int
-	LastError string
-	Published bool // a usable status.json was read
-	Stale     bool // that document is older than liveReportWindow
+	Service       string // SCM state name, or "unknown" when it could not be queried
+	Phase         string // host phase reported by the service
+	State         string // host probe state
+	Listener      string
+	PublicBaseURL string // published HTTPS origin, not a credential
+	Restarts      int
+	LastError     string
+	Published     bool // a usable status.json was read
+	Stale         bool // that document is older than liveReportWindow
 }
 
 // liveReportWindow is how long a published document counts as current. The
@@ -52,6 +53,7 @@ func Merge(serviceState string, status host.Status, readErr error) Snapshot {
 	snapshot.Phase = status.Phase
 	snapshot.State = status.State
 	snapshot.Listener = status.Listener
+	snapshot.PublicBaseURL = status.PublicBase
 	snapshot.Restarts = status.Restarts
 	snapshot.LastError = status.LastError
 	snapshot.Published = true

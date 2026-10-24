@@ -550,18 +550,46 @@ export function runMigrations(db: Database.Database): void {
     ensureColumn(db,"task_leases","context_id","TEXT");
   });
 
-  // Preserve the historical, contiguous version sequence for existing databases.
-  // These retired compatibility slots perform no Linux/WSL installation.
-  migrate(db, 26, "retired-compatibility-26", () => {});
-  migrate(db, 27, "retired-compatibility-27", () => {});
-  migrate(db, 28, "retired-compatibility-28", () => {});
-
-  // Windows-only schema transition. Existing databases may contain now-retired
-  // WSL binding metadata; remove it without touching operator files or Linux.
-  migrate(db, 29, "windows-only-retire-linux-workspaces", () => {
-    db.exec("DROP TABLE IF EXISTS wsl_file_backup_owners");
-    db.exec("DROP TABLE IF EXISTS wsl_workspace_bindings");
-    db.prepare("DELETE FROM workspace_roots WHERE path LIKE 'wsl://%'").run();
+  // Retain only the historical compatibility schema in SQLite for users who
+  // roll back to a prior release. The Windows-only application never uses or
+  // exposes these tables; deleting user data would make rollback unsafe.
+  migrate(db,26,"wsl-workspace-owner-bindings",()=>{
+    db.exec(`
+      CREATE TABLE wsl_workspace_bindings (
+        workspace_uri TEXT NOT NULL PRIMARY KEY,
+        windows_owner_anchor TEXT NOT NULL,
+        distro TEXT NOT NULL,
+        linux_root TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        FOREIGN KEY(workspace_uri) REFERENCES workspace_roots(normalized_path) ON DELETE CASCADE
+      );
+      CREATE INDEX idx_wsl_owner_anchor ON wsl_workspace_bindings(windows_owner_anchor);
+    `);
   });
+
+  // Deny legacy Windows-owner-only grants until their OAuth/MCP principal is
+  // explicitly enrolled through a governed, exact-root approval.  A Windows
+  // account SID is not a substitute for a tenant principal.
+  migrate(db,27,"wsl-workspace-principal-binding",()=>{
+    ensureColumn(db,"wsl_workspace_bindings","principal_id",
+      "TEXT NOT NULL DEFAULT '__unbound__'");
+    db.exec("CREATE INDEX IF NOT EXISTS idx_wsl_principal ON wsl_workspace_bindings(principal_id)");
+  });
+
+  // Backups for a Linux filesystem root belong to the authenticated MCP
+  // principal that approved that root, not just the Windows owner SID. A later
+  // principal re-enrolling the same root must never inherit older backups.
+  migrate(db,28,"wsl-file-backup-principal-binding",()=>{
+    db.exec(`
+      CREATE TABLE wsl_file_backup_owners (
+        backup_id TEXT PRIMARY KEY REFERENCES file_backups(id) ON DELETE CASCADE,
+        principal_id TEXT NOT NULL,
+        workspace_uri TEXT NOT NULL
+      );
+      CREATE INDEX idx_wsl_backup_principal ON wsl_file_backup_owners(principal_id,workspace_uri);
+    `);
+  });
+
+  migrate(db,29,"windows-only-compatibility-marker",()=>{});
 
 }

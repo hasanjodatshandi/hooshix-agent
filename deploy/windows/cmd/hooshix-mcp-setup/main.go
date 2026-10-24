@@ -40,12 +40,14 @@ func main() {
 		uninstall = flag.Bool("uninstall", false, "remove the service, the startup entry and the installed files")
 		purgeData = flag.Bool("purge-data", false, "with --uninstall: also delete the data root, which holds the database, the logs and the settings document")
 		verify    = flag.Bool("verify", false, "verify the embedded runtime payload without installing anything or requesting elevation")
+		repair    = flag.Bool("repair", false, "repair an existing Windows installation using this complete offline installer")
+		rollback  = flag.Bool("rollback", false, "restore the prior installed program version; preserve user data")
 	)
 	flag.Usage = usage
 	flag.Parse()
 
 	if *verify {
-		if *uninstall || *purgeData {
+		if *uninstall || *purgeData || *repair || *rollback {
 			fmt.Fprintln(os.Stderr, "setup: --verify cannot be combined with uninstall options")
 			os.Exit(2)
 		}
@@ -77,7 +79,7 @@ func main() {
 		fmt.Fprintln(os.Stderr, "setup:", err)
 		os.Exit(1)
 	}
-	summary, err := run(self, *baseURL, *uninstall || isUninstaller(self), *purgeData, os.Stdout)
+	summary, err := run(self, *baseURL, *uninstall || isUninstaller(self), *purgeData, *repair, *rollback, os.Stdout)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "setup:", err)
 		notify(setup.AppName,
@@ -109,16 +111,30 @@ func verifyInstaller(filename string, out io.Writer) error {
 // run does the work for both modes and returns the sentence for the dialog. It
 // takes the executable path and the writer so a test can drive it without a
 // registry, a service control manager or an installer to point at.
-func run(self, baseURL string, uninstalling, purgeData bool, out io.Writer) (string, error) {
+func run(self, baseURL string, uninstalling, purgeData, repairing, rollingBack bool, out io.Writer) (string, error) {
 	layout, err := setup.DefaultLayout()
 	if err != nil {
 		return "", err
+	}
+	if (uninstalling && (repairing || rollingBack)) || (repairing && rollingBack) {
+		return "", fmt.Errorf("repair, rollback and uninstall modes cannot be combined")
+	}
+	if rollingBack {
+		if err := runRollback(layout, out); err != nil {
+			return "", err
+		}
+		return setup.AppName + " previous version restored; settings and user data preserved.", nil
 	}
 	if uninstalling {
 		if err := runUninstall(layout, purgeData, out); err != nil {
 			return "", err
 		}
 		return setup.AppName + " has been removed. The service, the installed files and the entry in Programs are gone.", nil
+	}
+	if repairing {
+		if _, err := os.Stat(layout.ServiceBinary()); err != nil {
+			return "", fmt.Errorf("repair requires an existing Windows installation: %w", err)
+		}
 	}
 	if err := runInstall(layout, self, baseURL, out); err != nil {
 		return "", err
@@ -128,8 +144,8 @@ func run(self, baseURL string, uninstalling, purgeData bool, out io.Writer) (str
 		"The icon appears at the next sign-in, and the tray menu starts, stops and restarts the service.", nil
 }
 
-func runInstall(layout setup.Layout, self, baseURL string, out io.Writer) error {
-	baseURL, err := setup.ValidatePublicBaseURL(baseURL)
+func runInstall(layout setup.Layout, self, baseURL string, out io.Writer) (err error) {
+	baseURL, err = setup.ValidatePublicBaseURL(baseURL)
 	if err != nil {
 		return err
 	}
@@ -171,10 +187,63 @@ func runInstall(layout setup.Layout, self, baseURL string, out io.Writer) error 
 	if err := layout.CheckTrayIdle(); err != nil {
 		return err
 	}
+	// Create a complete restore point before the service or installed files are changed.
+	recovery := setup.RecoveryFor(layout)
+	if err := recovery.Snapshot(); err != nil {
+		return err
+	}
+	prepared := false
+	hadService := false
+	defer func() {
+		if err == nil {
+			return
+		}
+		if !prepared {
+			_ = recovery.Cancel() // No program files were changed.
+			return
+		}
+		if !recovery.HasSnapshot() {
+			// A fresh install owns the program directory and new SCM registration;
+			// leave any pre-existing ProgramData untouched.
+			if !hadService {
+				_ = svc.Uninstall()
+				_ = removeRegistration()
+				_ = os.RemoveAll(layout.InstallDir)
+			}
+			return
+		}
+		_, stopErr := svc.PrepareForUpgrade(layout.ServiceBinary())
+		if stopErr != nil {
+			err = fmt.Errorf("%w; automatic rollback could not stop the failed service: %v (recovery snapshot %s)", err, stopErr, recovery.Pending)
+			return
+		}
+		if restoreErr := recovery.RestorePending(); restoreErr != nil {
+			err = fmt.Errorf("%w; automatic rollback failed: %v (snapshot %s retained)", err, restoreErr, recovery.Pending)
+			return
+		}
+		if !hadService {
+			_ = svc.Uninstall()
+			_ = removeRegistration()
+		}
+		if hadService {
+			if registryErr := registerInstall(layout, layout.ReadAppVersion()); registryErr != nil {
+				err = fmt.Errorf("%w; prior program restored but Apps registration could not be restored: %v", err, registryErr)
+				return
+			}
+			if startErr := svc.Start(); startErr != nil {
+				err = fmt.Errorf("%w; previous version restored but service restart failed: %v", err, startErr)
+				return
+			}
+		}
+		_ = recovery.Cancel()
+		err = fmt.Errorf("%w; prior installed program version restored automatically", err)
+	}()
 	existingService, err := svc.PrepareForUpgrade(layout.ServiceBinary())
 	if err != nil {
 		return err
 	}
+	prepared = true
+	hadService = existingService
 	if err := setup.WaitListenerFree(setup.DefaultPort, listenerReleaseTimeout); err != nil {
 		return err
 	}
@@ -186,7 +255,7 @@ func runInstall(layout setup.Layout, self, baseURL string, out io.Writer) error 
 	fmt.Fprintf(out, "\nwrote %d files to %s\n", files, layout.InstallDir)
 
 	// Remove the exact obsolete HooshiX-owned WSL payload names on an upgrade.
-	// This never accesses the user\x27s WSL distributions or project files.
+	// This never accesses the user's WSL distributions or project files.
 	if err := removeRetiredLinuxPayload(layout.InstallDir); err != nil {
 		return err
 	}
@@ -221,10 +290,24 @@ func runInstall(layout setup.Layout, self, baseURL string, out io.Writer) error 
 		return fmt.Errorf("%s is installed but did not start: %w\n\nRead %s, then start it from the tray icon or from services.msc.",
 			setup.AppName, err, filepath.Join(layout.DataRoot, "service.log"))
 	}
+	// The newly installed Windows service is already running. Failure to rotate
+	// snapshots must not trigger an unsafe second destructive rollback attempt.
+	prepared = false
+	if err := recovery.Commit(); err != nil {
+		return fmt.Errorf("Windows service running but recovery snapshot needs inspection: %w", err)
+	}
 	return nil
 }
 
 func runUninstall(layout setup.Layout, purgeData bool, out io.Writer) error {
+	// Refuse to unregister a healthy service if enrolled user workers/tray
+	// still hold Program Files images; otherwise uninstall would be partial.
+	if err := layout.CheckWorkerIdle(); err != nil {
+		return err
+	}
+	if err := layout.CheckTrayIdle(); err != nil {
+		return err
+	}
 	fmt.Fprintf(out, "removing %s\n", setup.AppName)
 	if err := svc.Uninstall(); err != nil {
 		return fmt.Errorf("remove the service: %w", err)
@@ -294,6 +377,8 @@ runtime carried inside this file, then starts it. Run it again to upgrade.
 
 options:
   --base-url     the HTTPS origin the connector is reached on
+  --repair       reinstall this Windows version, preserving settings and data
+  --rollback     restore the previous program version after an upgrade
   --uninstall    remove the service, the files and the entry in Programs
   --purge-data   with --uninstall, also delete %ProgramData%\HooshiXMCP
   --help         show this message
