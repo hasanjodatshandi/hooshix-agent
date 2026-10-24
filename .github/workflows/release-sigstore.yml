@@ -96,8 +96,8 @@ jobs:
           $actual = (Get-FileHash -LiteralPath $installer -Algorithm SHA256).Hash.ToLowerInvariant()
           $expected = ((Get-Content -LiteralPath ($installer + '.sha256') -Raw).Trim() -split '\s+')[0].ToLowerInvariant()
           if ($actual -ne $expected) { throw 'Installer SHA-256 mismatch.' }
-          node scripts/audit-wsl-release-candidate.mjs --installer $installer
-          if ($LASTEXITCODE -ne 0) { throw 'Installer provenance audit failed.' }
+          node scripts/audit-windows-only-release.mjs --installer $installer
+          if ($LASTEXITCODE -ne 0) { throw 'Windows-only installer provenance audit failed.' }
           "RELEASE_INSTALLER=$installer" >> $env:GITHUB_ENV
 
       - name: Test the exact installer in an isolated rollback fixture

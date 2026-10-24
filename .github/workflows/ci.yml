@@ -61,7 +61,7 @@ jobs:
       - name: Source integrity preflight
         run: |
           pnpm run release:preflight
-          node scripts/audit-wsl-release-candidate.mjs
+          node scripts/audit-windows-only-release.mjs
 
   windows-native:
     # Exercise the actual Windows filesystem, SCM-adjacent packages and
@@ -89,7 +89,7 @@ jobs:
         run: |
           corepack pnpm run typecheck
           corepack pnpm run build
-          corepack pnpm exec vitest run tests/ci/ci-g6-project-handle.test.ts tests/git-diff-trust-preflight.test.ts tests/git-readiness.test.ts tests/git-owner-delegation.test.ts tests/security/r4-child-env-excludes-secrets.test.ts tests/tools/in-process-tools.test.ts tests/windows-service-deployment.test.ts tests/shell/exec-service.test.ts tests/git-empty-history.test.ts tests/e2e/memory-roundtrip-real-process.test.ts tests/e2e/r8-http-task-lifecycle.test.ts tests/wsl-workspace-uri.test.ts tests/wsl-workspace-principal.test.ts tests/wsl-workspace-response.test.ts tests/wsl-file-backup.test.ts tests/wsl-mutation-service.test.ts tests/wsl-git-handler.test.ts tests/wsl-git-branch-protocol.test.ts tests/wsl-task-governance.test.ts tests/wsl-workspace-write.test.ts tests/wsl-enrollment-packaging.test.ts tests/wsl-release-ci.test.ts --maxWorkers=1 --no-file-parallelism
+          corepack pnpm exec vitest run tests/ci/ci-g6-project-handle.test.ts tests/git-diff-trust-preflight.test.ts tests/git-readiness.test.ts tests/git-owner-delegation.test.ts tests/security/r4-child-env-excludes-secrets.test.ts tests/tools/in-process-tools.test.ts tests/windows-service-deployment.test.ts tests/shell/exec-service.test.ts tests/git-empty-history.test.ts tests/e2e/memory-roundtrip-real-process.test.ts tests/e2e/r8-http-task-lifecycle.test.ts --maxWorkers=1 --no-file-parallelism
       - name: Set up pinned Go toolchain
         uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
         with:
@@ -100,33 +100,18 @@ jobs:
         working-directory: deploy/windows
         run: |
           $env:HOOSHIX_REQUIRE_GIT_WORKER_E2E = "1"
-          $env:HOOSHIX_REQUIRE_WSL_BROKER_E2E = "1"
-          # Hosted Windows runners are not provisioned with Ubuntu and a signed-in
-          # WSL owner broker. Native WSL process E2E is a separate owner-host gate.
-          # Keep Windows pipe-policy/security tests here; do not pretend a mock is WSL E2E.
           go test ./... -count=1
           Remove-Item Env:\HOOSHIX_REQUIRE_GIT_WORKER_E2E
-          Remove-Item Env:\HOOSHIX_REQUIRE_WSL_BROKER_E2E
-          go test ./internal/gitworker -run "^TestWSLGitMutationPipeIsIndependentAndRootBound$" -count=1
           go test ./internal/host -run TestStatusWriteSurvivesConcurrentPublishers -count=100
           go vet ./...
           go build ./...
-      - name: Validate owner-session WSL smoke script syntax
+      - name: Validate owner-session Windows Git smoke script syntax
         shell: pwsh
         run: |
           $tokens = $null
           $parseErrors = $null
-          [System.Management.Automation.Language.Parser]::ParseFile((Join-Path $PWD 'scripts/test-owner-wsl.ps1'), [ref]$tokens, [ref]$parseErrors) | Out-Null
-          if ($parseErrors.Count -ne 0) { throw "Owner WSL smoke script has parse errors" }
-          $parseErrors = $null
           [System.Management.Automation.Language.Parser]::ParseFile((Join-Path $PWD 'scripts/test-owner-git.ps1'), [ref]$tokens, [ref]$parseErrors) | Out-Null
           if ($parseErrors.Count -ne 0) { throw "Owner Git smoke script has parse errors" }
-          $parseErrors = $null
-          foreach ($script in @("enroll-wsl-files.ps1", "enroll-wsl-file-writes.ps1", "enroll-wsl-git-writes.ps1", "preflight-wsl-enrollment.ps1")) {
-            $parseErrors = $null
-            [System.Management.Automation.Language.Parser]::ParseFile((Join-Path $PWD ("scripts/" + $script)), [ref]$tokens, [ref]$parseErrors) | Out-Null
-            if ($parseErrors.Count -ne 0) { throw ("WSL owner enrollment script parse error: " + $script) }
-          }
       - name: Build and checksum a fresh Windows installer
         shell: pwsh
         run: |
@@ -135,14 +120,12 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "Windows installer build failed" }
           if (-not (Test-Path -LiteralPath $target -PathType Leaf)) { throw "Installer is missing" }
           if (-not (Test-Path -LiteralPath 'deploy/windows/build/payload/bin/hooshix-git-worker.exe')) { throw "Git owner worker is missing from payload" }
-          if (-not (Test-Path -LiteralPath 'deploy/windows/build/payload/bin/hooshix-wsl-fs-broker-linux-amd64')) { throw "Linux WSL filesystem broker is missing from payload" }
-          if (-not (Test-Path -LiteralPath 'deploy/windows/build/payload/tools/enroll-wsl-files.ps1')) { throw "User-owned WSL file enrollment script is missing from payload" }
           $actual = (Get-FileHash -LiteralPath $target -Algorithm SHA256).Hash.ToLowerInvariant()
           $manifest = Get-Content -LiteralPath ($target + '.sha256') -Raw
           $expected = ($manifest.Trim() -split '\s+')[0].ToLowerInvariant()
           if ($actual -ne $expected) { throw "Installer checksum mismatch" }
-          node scripts/audit-wsl-release-candidate.mjs --installer $target
-          if ($LASTEXITCODE -ne 0) { throw "Staging source provenance or checksum gate failed" }
+          node scripts/audit-windows-only-release.mjs --installer $target
+          if ($LASTEXITCODE -ne 0) { throw "Windows-only payload provenance or checksum gate failed" }
           if ((Get-Item -LiteralPath $target).Length -lt 1048576) { throw "Installer payload is unexpectedly small" }
           & $target --verify
           if ($LASTEXITCODE -ne 0) { throw "Embedded runtime CRC verification failed" }
@@ -163,32 +146,6 @@ jobs:
           retention-days: 7
           compression-level: 0
           if-no-files-found: error
-
-  linux-wslfs-broker:
-    name: Linux-native WSL file broker security
-    runs-on: ubuntu-24.04
-    timeout-minutes: 15
-    defaults:
-      run:
-        working-directory: deploy/windows
-    steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-        with:
-          persist-credentials: false
-      - name: Set up pinned Linux Go toolchain
-        uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
-        with:
-          go-version: "1.27.1"
-          cache-dependency-path: deploy/windows/go.sum
-      - name: Test kernel-enforced rooted file operations and security boundaries
-        run: |
-          go test -race -buildvcs=false ./internal/wslfs ./cmd/hooshix-wsl-fs-broker -count=1
-          go vet -buildvcs=false ./internal/wslfs ./cmd/hooshix-wsl-fs-broker
-      - name: Build Linux WSL broker from reviewed source
-        run: |
-          CGO_ENABLED=0 go build -buildvcs=false -trimpath -o "${RUNNER_TEMP}/hooshix-wsl-fs-broker" ./cmd/hooshix-wsl-fs-broker
-          test -s "${RUNNER_TEMP}/hooshix-wsl-fs-broker"
-          file "${RUNNER_TEMP}/hooshix-wsl-fs-broker" | grep -E 'ELF.*(x86-64|x86_64)'
 
   container-smoke:
     runs-on: ubuntu-24.04

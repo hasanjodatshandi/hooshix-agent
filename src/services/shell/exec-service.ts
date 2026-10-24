@@ -4,7 +4,6 @@ import { logCommandAction } from "../../memory/command-audit.js";
 import { resolveCorrelationId } from "../../core/runtime/correlation-id.js";
 import { assertCwdExists } from "../execa-result.js";
 import { isExecEnabled } from "../../infrastructure/config/exec-enabled-config.js";
-import { runOwnerWSLWorker } from "./wsl-worker-client.js";
 
 /**
  * Named shells an operator may select with the `shell` option. Each maps to an
@@ -17,8 +16,6 @@ const SHELL_PROGRAMS: ReadonlyMap<string, { program: string; flag: string }> = n
   ["cmd", { program: "cmd.exe", flag: "/c" }],
   ["powershell", { program: "powershell", flag: "-Command" }],
   ["pwsh", { program: "pwsh", flag: "-Command" }],
-  ["bash", { program: "bash", flag: "-c" }],
-  ["sh", { program: "sh", flag: "-c" }],
 ]);
 
 export interface ExecOptions {
@@ -80,6 +77,8 @@ export async function executeUnrestrictedCommand(
   const timeout = Math.min(Math.max(options.timeout ?? EXEC_DEFAULT_TIMEOUT, 100), EXEC_MAX_TIMEOUT);
 
   try {
+    if (options.shell && !SHELL_PROGRAMS.has(options.shell.trim().toLowerCase()))
+      throw new Error("unsupported_shell");
     if (cwd !== undefined) assertCwdExists(cwd, "Working directory");
 
     const base: SpawnOptions = {
@@ -93,13 +92,7 @@ export async function executeUnrestrictedCommand(
     // A named shell is spawned directly with its own command flag; anything
     // else runs through the platform shell (cmd.exe / /bin/sh), which already
     // understands the full command string.
-    // WSL is bound to a signed-in user-owned worker. LocalSystem cannot run
-    // wsl.exe, and silently falling back to Windows Bash is not acceptable.
-    const wslMode = options.shell?.trim().toLowerCase() === "wsl";
-    if (wslMode && (!cwd || process.platform !== "win32")) throw new Error("wsl_owner_worker_requires_windows_anchor_cwd");
-    const result = wslMode
-      ? await runOwnerWSLWorker(command, cwd!)
-      : named !== undefined
+    const result = named !== undefined
       ? await spawn(named.program, [named.flag, command], { ...base, shell: false })
       : await spawn(command, [], { ...base, shell: options.shell ?? true });
 

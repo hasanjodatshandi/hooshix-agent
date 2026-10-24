@@ -1,9 +1,6 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import {parseWSLWorkspaceURI,isWSLWorkspaceURI} from "./wsl-workspace-uri.js";
-import {getWSLWorkspaceBinding} from "./wsl-workspace-binding.js";
-import {probeWSLWorkspace} from "./wsl-workspace-client.js";
 import { parseProjectHandleTtlMs } from "../infrastructure/config/app-config.js";
 import { listWorkspaceRoots, sameRootIdentity } from "./workspace-guard.js";
 
@@ -135,18 +132,16 @@ export function closeProjectHandle(handle: string, principalId: string): Project
  * set_workspace. Errors carry actionable guidance for the model.
  */
 export function resolveProjectSelector(selector: string): ProjectSelectorResolution {
-  const pool = listWorkspaceRoots().map((root) => root.path).filter(root =>
-    !isWSLWorkspaceURI(root) || getWSLWorkspaceBinding(root) !== null);
+  const pool = listWorkspaceRoots().map((root) => root.path);
   const describePool = () =>
     pool.length
       ? pool.map((p) => `${path.basename(p)} (${p})`).join(", ")
       : "(none — add one through a governed Task containing an add_workspace_roots step)";
   let match: string | undefined;
-  const virtual=parseWSLWorkspaceURI(selector);
-  const direct = virtual ? virtual.uri : path.resolve(selector);
+  const direct = path.resolve(selector);
   try {
-    if (virtual ? Boolean(getWSLWorkspaceBinding(direct)) : fs.existsSync(direct)) {
-      const real = virtual ? virtual.uri : fs.realpathSync(direct);
+    if (fs.existsSync(direct)) {
+      const real = fs.realpathSync(direct);
       match = pool.find((root) => sameRootIdentity(root, real));
     }
   } catch {
@@ -164,12 +159,7 @@ export function resolveProjectSelector(selector: string): ProjectSelectorResolut
   }
   if (!match)
     throw new Error(`project_not_allowed: "${selector}" is not an allowed project. Allowed projects: ${describePool()}. To grant a new one, run a governed Task with a single add_workspace_roots step (task_create → task_run → task_approve → task_resume) — it works with no active workspace.`);
-  if (!isWSLWorkspaceURI(match) && !fs.existsSync(match))
+  if (!fs.existsSync(match))
     throw new Error(`project_unavailable: ${match} does not exist on disk — fix or remove it with remove_workspace_root`);
-  if(isWSLWorkspaceURI(match)){
-    const binding=getWSLWorkspaceBinding(match);
-    if(!binding||!probeWSLWorkspace(binding))throw new Error("wslfs_project_unavailable_or_worker_offline");
-    return {root:match,label:binding.label};
-  }
   return { root: fs.realpathSync(match), label: path.basename(match) };
 }

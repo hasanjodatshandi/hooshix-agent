@@ -164,7 +164,7 @@ function getToolDescription(tool: ToolName): string {
     set_workspace: "Select the active workspace from the allowed roots pool (cannot expand file-tool scope; on a multi-project server file/exec/git calls still need project=<handle>).",
     get_workspace: "View the active workspace and the allowed roots pool.",
     remove_workspace_root: "📂 WORKSPACE — Remove one directory from the allowed workspace roots pool.",
-    add_workspace_roots: "📂 WORKSPACE — Add one or more directories to the allowed workspace roots pool (idempotent). Paths must be reachable by the service account running the server; a \\\\wsl.localhost or network-share path needs host configuration by the operator and otherwise reports as not existing rather than denied. Governed: runs only inside an approved Task step (task_create → task_run → task_approve → task_resume), which works even with no active workspace.",
+    add_workspace_roots: "📂 WORKSPACE — Grant one or more existing Windows project folders through an approved Task. Windows local filesystem paths only; Linux/WSL workspace identifiers are unsupported.",
     // Management tools registered via tools/task (not step-executable, so absent from TOOL_CAPABILITIES):
     task_create: "🗂️ TASK — Persist an explicit multi-step plan. Lifecycle: task_create → task_run → (approval?) task_approve → task_resume → task_report.",
     task_get: "🗂️ TASK (read) — Full task object: state, steps with statuses/outputs/errors, pending approval info.",

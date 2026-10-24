@@ -79,20 +79,7 @@ function main() {
 		buildWindowsBinary("./cmd/hooshix-mcp-tray", path.join(payloadDir, "bin", "hooshix-mcp-tray.exe"), true);
 		// Opt-in user-session Git transport; never registered as a SYSTEM service.
 		buildWindowsBinary("./cmd/hooshix-git-worker", path.join(payloadDir, "bin", "hooshix-git-worker.exe"), false);
-		// Linux-native, shell-free, os.OpenRoot-confined WSL workspace transport.
-		// This is a Linux ELF; it runs ONLY under an explicitly enrolled WSL user.
-		buildLinuxBinary("./cmd/hooshix-wsl-fs-broker", path.join(payloadDir, "bin", "hooshix-wsl-fs-broker-linux-amd64"));
-		// Enrollment is an explicit, non-elevated user action. Package the reviewed
-		// script with the same signed payload as both broker executables.
-		fs.mkdirSync(path.join(payloadDir, "tools"), { recursive: true });
-		for (const script of [
-			"enroll-wsl-files.ps1",
-			"enroll-wsl-file-writes.ps1",
-			"enroll-wsl-git-writes.ps1",
-			"preflight-wsl-enrollment.ps1",
-		]) {
-			fs.copyFileSync(path.join(repo, "scripts", script), path.join(payloadDir, "tools", script));
-		}
+		// Windows-only payload: owner Git worker is retained for Windows repositories.
 		const setup = path.join(binDir, "hooshix-mcp-setup.exe");
 		buildWindowsBinary("./cmd/hooshix-mcp-setup", setup, false);
 		const assembler = path.join(binDir, `make-setup${executableSuffix}`);
@@ -180,6 +167,15 @@ function installProductionDependencies(appDir, scratch, runtime) {
 
 function requireBuiltEntry() {
 	const entry = path.join(repo, "dist", "index-http.js");
+	for (const retired of [
+		"security/wsl-file-backup.js", "security/wsl-mutation-service.js",
+		"security/wsl-workspace-binding.js", "security/wsl-workspace-client.js",
+		"security/wsl-workspace-uri.js", "services/shell/wsl-worker-client.js",
+	]) {
+		if (fs.existsSync(path.join(repo, "dist", retired))) {
+			throw new Error(`stale retired WSL compiler output: ${retired}. Run pnpm build to clean and recompile.`);
+		}
+	}
 	if (!fs.existsSync(entry)) {
 		throw new Error(`${entry} is missing: run \`pnpm build\` first, or drop --skip-build`);
 	}
@@ -201,6 +197,7 @@ function compileApplication(nodeRuntime) {
 	}
 	// The same project file `pnpm build` names, so the installer and CI cannot
 	// disagree about what dist/ holds.
+	run(nodeRuntime, [path.join(repo, "scripts", "clean-dist.mjs")], { cwd: repo });
 	run(nodeRuntime, [compiler, "-p", "tsconfig.json"], { cwd: repo });
 }
 
@@ -214,13 +211,6 @@ function buildWindowsBinary(pkg, output, gui) {
 		cwd: moduleDir,
 		env: { ...process.env, GOOS: "windows", GOARCH: "amd64", CGO_ENABLED: "0" },
 	});
-}
-
-function buildLinuxBinary(pkg, output) {
- run("go", ["build", "-buildvcs=false", "-trimpath", "-ldflags=-s -w", "-o", output, pkg], {
-  cwd: moduleDir,
-  env: { ...process.env, GOOS: "linux", GOARCH: "amd64", CGO_ENABLED: "0" },
- });
 }
 
 function buildHostBinary(pkg, output) {

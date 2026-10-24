@@ -10,7 +10,7 @@
   "scripts": {
     "dev": "tsx src/index.ts",
     "dev:http": "tsx src/index-http.ts",
-    "build": "tsc -p tsconfig.json",
+    "build": "node scripts/clean-dist.mjs && tsc -p tsconfig.json",
     "installer:windows": "node scripts/build-windows-installer.mjs",
     "service:build": "cd deploy/windows && go build -trimpath -ldflags \"-s -w\" -o build/bin/hooshix-mcp-service.exe ./cmd/hooshix-mcp-service",
     "service:status": "deploy\\windows\\build\\bin\\hooshix-mcp-service.exe status",

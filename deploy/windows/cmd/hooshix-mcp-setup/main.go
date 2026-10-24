@@ -161,7 +161,7 @@ func runInstall(layout setup.Layout, self, baseURL string, out io.Writer) error 
 	// locked. Unregistering a service that is not there is not an error, so a
 	// fresh install pays nothing for this.
 	// Retain existing SCM account/DACL/recovery settings during upgrades.
-	// Recreating the service would reset owner-session WSL enrollment.
+	// Recreating the service would reset the existing owner-session permissions.
 	// Owner-session workers keep running even after an SCM stop. Probe both
 	// locked images before stopping a healthy service or touching installed
 	// files, so a busy worker can never strand a partially extracted package.
@@ -184,6 +184,12 @@ func runInstall(layout setup.Layout, self, baseURL string, out io.Writer) error 
 		return err
 	}
 	fmt.Fprintf(out, "\nwrote %d files to %s\n", files, layout.InstallDir)
+
+	// Remove the exact obsolete HooshiX-owned WSL payload names on an upgrade.
+	// This never accesses the user\x27s WSL distributions or project files.
+	if err := removeRetiredLinuxPayload(layout.InstallDir); err != nil {
+		return err
+	}
 
 	created, err := layout.WriteSettings(layout.Settings(baseURL))
 	if err != nil {

@@ -26,11 +26,6 @@ type Settings struct {
 	WorkingDirectory string `json:"workingDirectory"`
 	// DataRoot holds data/, logs/ and secrets/ for the install.
 	DataRoot string `json:"dataRoot"`
-	// WslDistros names the Windows Subsystem for Linux distributions whose files
-	// the connector may be pointed at. Empty means the service never touches the
-	// subsystem, which is the right default: a name here is a request to make
-	// \\wsl.localhost visible in the service's own logon session.
-	WslDistros []string `json:"wslDistros"`
 	// Env carries the remaining HOOSHIX_* settings for the server process.
 	Env map[string]string `json:"env"`
 
@@ -92,13 +87,6 @@ func (settings *Settings) freeze() error {
 		{"dataRoot", settings.DataRoot},
 	} {
 		if err := requireAbsolute(check.field, check.value); err != nil {
-			return err
-		}
-	}
-	// A mistyped distribution is a configuration mistake the operator can fix in
-	// the document, so it is refused here rather than logged at every boot.
-	for _, distro := range settings.WslDistros {
-		if err := validateWslDistro(distro); err != nil {
 			return err
 		}
 	}

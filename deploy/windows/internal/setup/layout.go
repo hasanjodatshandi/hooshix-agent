@@ -341,7 +341,7 @@ func probeListener(port string) error {
 	return listener.Close()
 }
 
-// CheckWorkerIdle is a read-only upgrade preflight. Owner-session Git/WSL
+// CheckWorkerIdle is a read-only upgrade preflight. Owner-session Git
 // workers are detached from the Windows service and may outlive its stop.
 // Refuse an upgrade BEFORE stopping the service or extracting any files when
 // their image is locked. Never terminate workers or alter HKCU enrollment here.
@@ -352,7 +352,7 @@ func (layout Layout) CheckWorkerIdle() error {
 	}
 	file, err := os.OpenFile(worker, os.O_WRONLY, 0)
 	if err != nil {
-		return fmt.Errorf("%s is in use or unavailable: close enrolled HooshiX owner-session Git/WSL workers from an independent Windows session, then retry setup; service and files were not changed (%w)", worker, err)
+		return fmt.Errorf("%s is in use or unavailable: close enrolled HooshiX owner-session Windows Git workers from an independent Windows session, then retry setup; service and files were not changed (%w)", worker, err)
 	}
 	return file.Close()
 }
