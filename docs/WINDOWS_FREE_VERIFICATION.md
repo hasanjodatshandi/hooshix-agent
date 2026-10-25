@@ -23,7 +23,15 @@ The MCP v2 transport exposes **58 registered tools**, independently asserted by 
 - The Windows-only installer regression suite, Go Windows packages and static/release CI checks passed on the preceding candidate commit.
 - The patched `pnpm-workspace.yaml` pins Hono to a version no older than `4.13.11`, and frozen install must match that version. `pnpm audit --prod --audit-level=moderate` must report no vulnerabilities.
 - `package.json` must declare `Apache-2.0`, and the installer must include `app/LICENSE`. `scripts/audit-windows-only-release.mjs` enforces the source and package consistency.
-- GitHub CI was green on the prior Windows-only candidate. **CI must pass again on the final source commit**, including an installer build using the patched dependencies.
+- GitHub CI for customer-onboarding commit `8b8755382d4d3872395608432f35bdbc4bbce643` completed successfully in all three jobs (Windows-native, container-smoke, code-and-security): https://github.com/hasanjodatshandi/hooshix-agent/actions/runs/40167947111. **Re-run CI on every later code change** before any release.
+
+## Database rehearsal and sensitive-data hygiene (2026-10-25)
+
+The repository's representative `data/agent-memory.db` was opened **read-only**, and SQLite's online-backup API created two disposable copies. All migration, foreign-key and backup/restore checks passed on those copies: `integrity_check=ok` before and after; `foreign_key_check=0`; **1,198 Task records** preserved; **10 saved Workspace roots**; latest schema **29**; restored copy reopened successfully.
+
+**Scope limit:** this data source was already at schema 29, so this is a representative data-integrity/restore validation rather than proof of an actual *older-schema-to-29* migration. The separate fresh-schema and migration regression suites cover migration behavior; a historical RC2 schema migration rehearsal is still a recommended release check.
+
+A security hygiene issue was discovered: the original script left sensitive `.db` backup files and SQLite `-wal`/`-shm` sidecars in ignored `data/release-validation/`. The artifacts from the first trial were removed. The script now closes all SQLite handles and automatically deletes its exact two backup files and sidecars after success or failure. Two executable regression cases cover normal and failed rehearsal cleanup. The representative rehearsal was repeated after the fix and reported `sensitiveArtifactsRemoved=true` and `remainingCount=0` while the running production Windows service stayed healthy.
 
 ## Manual Windows Sandbox evidence
 
