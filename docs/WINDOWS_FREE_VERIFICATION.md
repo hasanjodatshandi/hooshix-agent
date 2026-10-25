@@ -1,0 +1,43 @@
+# HooshiX Windows Free Edition — verification evidence
+
+**Edition:** free, Apache License 2.0. **Release state:** candidate only; no merge, public publication, production installation, payment or licensing checks authorized by this document.
+
+## Capability inventory
+
+The MCP v2 transport exposes **58 registered tools**, independently asserted by `tests/e2e/real-mcp-process.test.ts`. A source scan found references to each of the 58 names in the test suite; **name references are not proof of 58 end-to-end functional successes**. Evidence is separated below.
+
+| Area | Windows direct evidence | Automated / isolated evidence | Outstanding limitations |
+| --- | --- | --- | --- |
+| Filesystem | Read, list, search, create, write with SHA precondition, modify and restore succeeded in a disposable `build/` folder; stale writes and out-of-root paths rejected | Full MCP in-process file lifecycle, approved delete and restore | Do not run destructive tests on customer data |
+| Git | Approved `git_init`, `git_add`, staged diff and `git_commit` succeeded in a disposable Git repository; Git status/log clean afterwards | In-process approve/branch/checkout/commit/snapshot/rollback contracts | Clone against a real remote is deliberately not part of the live host smoke |
+| Execution | Read-only `node --version` and status diagnostics succeeded | Shell timeout/command fencing and scoped execution tests | Unrestricted `exec` must remain an explicit operator opt-in |
+| Tasks and approval | Approval IDs 42–44 consumed exactly once; all four fixture Task steps completed | Task lifecycle, replay, reconcile, idempotency, leases, cancellation and permission tests | Do not bypass approval for real project mutation |
+| Project / memory | Read-only list endpoints and dry-run authorization policy returned valid responses | MCP tool fixture tests create, update, list, archive and delete disposable records | Existing historical WSL project *records* are user data and must not be silently erased |
+| Windows operator UI | HTTP service live and authenticated settings gate tested in Sandbox | Page escaping and Windows Git readiness tests | Full first-time customer sign-in and user usability on a clean physical Windows installation remain to be validated |
+| Windows installer | Fresh RC2 install, busy-worker fail-closed, Windows-only upgrade, explicit rollback, repair and uninstall passed in disposable Windows Sandbox | Recovery snapshot and tamper-rejection tests | Automatic failure injection after SCM stop also passed in a second fresh Sandbox; validate additional failure variants before broad rollout |
+
+## Automated evidence
+
+- Before the transitive security-dependency repair, the complete Vitest suite completed successfully: **237 test files, 1,161 tests**.
+- After the dependency repair, a focused rerun passed **5 test files, 40 tests**, including real MCP listing, in-process filesystem/Git/task operations and Windows UI/installer tests.
+- The Windows-only installer regression suite, Go Windows packages and static/release CI checks passed on the preceding candidate commit.
+- The patched `pnpm-workspace.yaml` pins Hono to a version no older than `4.13.11`, and frozen install must match that version. `pnpm audit --prod --audit-level=moderate` must report no vulnerabilities.
+- `package.json` must declare `Apache-2.0`, and the installer must include `app/LICENSE`. `scripts/audit-windows-only-release.mjs` enforces the source and package consistency.
+- GitHub CI was green on the prior Windows-only candidate. **CI must pass again on the final source commit**, including an installer build using the patched dependencies.
+
+## Manual Windows Sandbox evidence
+
+The user supplied Windows Sandbox transcripts confirming:
+
+1. Install of official RC2 -> SCM Running / HTTP 200.
+2. Busy Git worker refuses unsafe upgrade, existing service remains healthy.
+3. Windows-only upgrade -> Running / HTTP 200; protected settings authorization.
+4. Explicit rollback restores prior version.
+5. Re-upgrade, repair and uninstall preserve operator data.
+6. Separately induced extraction collision **after SCM stop** yields nonzero setup exit, but automatic rollback restores prior exact service binary hash, SCM account/security/recovery policy, operator settings and sentinel data; service returns Running / HTTP 200.
+
+These tests ran in a disposable Sandbox guest, **not** on the customer's production service. No unreviewed source or installer is authorized to be deployed by a test result.
+
+## Release decision
+
+**Draft / hold**, pending green final-commit CI, final installer checksum and provenance verification, and first-time customer onboarding checks. Leave the existing running Windows service and `main` branch intact until the owner explicitly chooses deployment, merge or publication. No paid tier and no code-signing work in scope.

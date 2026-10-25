@@ -2,6 +2,7 @@
   "name": "hooshix-agent",
   "version": "0.1.0",
   "private": true,
+  "license": "Apache-2.0",
   "type": "module",
   "packageManager": "pnpm@12.14.0",
   "engines": {
@@ -22,11 +23,6 @@
     "test:coverage": "vitest run --coverage",
     "release:preflight": "node scripts/release-preflight.mjs",
     "release:db-rehearsal": "node scripts/release-db-rehearsal.mjs"
-  },
-  "pnpm": {
-    "overrides": {
-      "hono": "4.13.11"
-    }
   },
   "dependencies": {
     "@modelcontextprotocol/node": "2.1.1",
