@@ -55,6 +55,15 @@ silently granting itself filesystem access. Git trust remains fail-closed for
 unknown owners. Service-level URL/permission settings require local
 administrator access rather than a browser form.
 
+## Verified TLS/OAuth rehearsal versus customer network testing
+
+An automated, isolated integration test now validates the full HTTPS-terminated
+loopback flow from OAuth discovery and PKCE consent to real MCP SDK tool
+listing and a read-only call, including rejection of requests that exceed
+approved scopes. This is **not** proof of a public Internet route. Real
+customer DNS, TLS, remote proxy/tunnel, firewall and interactive ChatGPT
+connector onboarding must be validated on an independent customer setup.
+
 ## Release gates still required
 
 - Green TypeScript, Windows-native, test coverage, release auditing and dependency security CI

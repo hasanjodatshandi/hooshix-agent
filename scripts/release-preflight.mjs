@@ -69,7 +69,8 @@ const result = {
   outstandingManualGates: [
     "Official docs/implementation/27_RELEASE_READINESS_CHECKLIST.md and 29_IMPLEMENTATION_PROGRESS_LEDGER.md",
 
-    "Authentication, external HTTP exposure, supervised process ownership and operator-approved cutover/rollback",
+    "Customer-specific external HTTPS/DNS/TLS, interactive ChatGPT OAuth connection and independently observed read-only MCP call",
+    "Supervised process ownership and operator-approved production cutover/rollback",
     "Release tag/commit provenance and owner approval"
   ]
 };

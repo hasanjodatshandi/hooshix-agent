@@ -33,6 +33,14 @@ The repository's representative `data/agent-memory.db` was opened **read-only**,
 
 A security hygiene issue was discovered: the original script left sensitive `.db` backup files and SQLite `-wal`/`-shm` sidecars in ignored `data/release-validation/`. The artifacts from the first trial were removed. The script now closes all SQLite handles and automatically deletes its exact two backup files and sidecars after success or failure. Two executable regression cases cover normal and failed rehearsal cleanup. The representative rehearsal was repeated after the fix and reported `sensitiveArtifactsRemoved=true` and `remainingCount=0` while the running production Windows service stayed healthy.
 
+## TLS-terminated MCP/OAuth customer-path rehearsal (2026-10-25)
+
+`tests/e2e/windows-customer-https-oauth.test.ts` launches the **actual HooshiX HTTP MCP server** with disposable data and a random operator bootstrap secret, fronted by an **ephemeral HTTPS reverse proxy bound only to 127.0.0.1**. OpenSSL generates a 1-day test certificate in the disposable fixture directory. The test trusts only this certificate in its test process; it retains normal TLS certificate/hostname verification and never disables it.
+
+An MCP SDK client then reaches the service **through HTTPS** and completes: OAuth protected-resource/issuer discovery, dynamic client registration, PKCE authorization-code grant with explicit read-only consent, token exchange, protocol negotiation, tool listing (58 tools), `get_system_info`, and denial of `create_file` without write scope. It rejects an unrelated Origin and prevents using the privileged bootstrap token as an MCP bearer. The reverse proxy, temporary certificate/key, fixture SQLite and process are removed after the test. Together with the existing real HTTP OAuth/Task lifecycle suites, **4 targeted test files / 5 tests passed**.
+
+**Not tested:** public DNS propagation, commercial tunnel/reverse-proxy providers, third-party TLS certificate issuance, actual ChatGPT custom-connector setup and interactive consent on a fresh customer's device, customer firewall/proxy conditions. None of those can be inferred from a loopback simulation. These remain mandatory **manual release gates**. The test uses a real TLS stack but does not expose a listening public service.
+
 ## Manual Windows Sandbox evidence
 
 The user supplied Windows Sandbox transcripts confirming:
