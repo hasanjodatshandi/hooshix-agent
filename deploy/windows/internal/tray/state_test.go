@@ -92,13 +92,29 @@ func TestMergeTreatsAnUnreadableDocumentAsNoReport(t *testing.T) {
 	}
 }
 
+func TestReadyTrayNeverClaimsRemoteChatGPTConnection(t *testing.T) {
+	status := freshStatus(host.PhaseRunning, host.StateReady)
+	status.PublicBase = "https://mcp.hooshix-agent.ir"
+	snapshot := Merge("running", status, nil)
+	if readinessOf(snapshot) != readinessGreen {
+		t.Fatal("healthy local service should remain green")
+	}
+	lines := statusLines(snapshot)
+	if !strings.Contains(lines[0], "local service ready (remote unverified)") {
+		t.Fatalf("tray misrepresents remote readiness: %v", lines)
+	}
+	if !strings.Contains(strings.Join(lines, "\\n"), "Set your own HTTPS address") {
+		t.Fatalf("shared default URL should require customer configuration: %v", lines)
+	}
+}
+
 func TestStatusLinesStayReadable(t *testing.T) {
 	snapshot := Merge("running", freshStatus(host.PhaseRunning, host.StateReady), nil)
 	lines := statusLines(snapshot)
 	if len(lines) < 2 {
 		t.Fatalf("expected a status line and the local address, got %v", lines)
 	}
-	if !strings.Contains(lines[0], "connected and ready") {
+	if !strings.Contains(lines[0], "local service ready (remote unverified)") {
 		t.Fatalf("expected the serving text first, got %v", lines)
 	}
 	if !strings.Contains(strings.Join(lines, "\n"), "http://127.0.0.1:3001") {

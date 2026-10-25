@@ -15,6 +15,11 @@ export function windowsSettingsPage(input:{
   publicBaseUrl:string;port:number;projects:WindowsProjectRow[];
 }):string{
  const esc=escapeHTML;
+ // The historical project origin is NOT a per-customer assigned endpoint.
+ // Do not imply that the local service health check proves Internet reachability.
+ const requiresCustomerOrigin=!input.publicBaseUrl.trim()||/^https:\/\/mcp\.hooshix-agent\.ir(?::443)?\/?$/i.test(input.publicBaseUrl.trim());
+ const remoteStatus=requiresCustomerOrigin?"HTTPS setup required":"Configured — external access unverified";
+ const mcpEndpoint=input.publicBaseUrl.replace(/\/$/,"")+"/mcp";
  const rows=input.projects.map(root=>{
   const git={
    ready:"Git detected",not_repository:"Not a Git repository",
@@ -60,15 +65,21 @@ input{padding:12px 14px;background:#0b1422;border:1px solid #3c4d62;color:#eaf0f
 @media(max-width:770px){.layout{grid-template-columns:1fr}aside{border-right:0;border-bottom:1px solid #273348;padding:16px}nav{display:flex;margin-top:12px}main{padding:24px 16px}.grid{grid-template-columns:1fr}.field{flex-direction:column}}
 </style></head><body><div class="layout">
 <aside><div class="logo">HooshiX <span>MCP</span></div><div class="mini">Windows edition · Free · Apache-2.0</div>
-<nav><a href="#general" class="current">Overview</a><a href="#projects">Windows projects</a><a href="#git">Git integration</a><a href="/docs">Tool reference</a><a href="/dashboard">Diagnostics</a></nav></aside>
+<nav><a href="#general" class="current">Overview</a><a href="#connect">Connect ChatGPT</a><a href="#projects">Windows projects</a><a href="#git">Git integration</a><a href="/docs">Tool reference</a><a href="/dashboard">Diagnostics</a></nav></aside>
 <main><h1>Settings</h1><p class="lead">A simple overview of your local Windows connector. Project access remains controlled by explicit MCP task approval.</p>
 <section class="section" id="general"><h2>Connection</h2>
 <div class="grid">
 <div class="stat"><div class="name">Edition</div><div class="value">Free (Apache-2.0)</div></div>
 <div class="stat"><div class="name">Service port</div><div class="value">${esc(String(input.port))}</div></div>
-<div class="stat"><div class="name">Approved project roots</div><div class="value">${input.projects.length}</div></div>
-</div><p class="meta">Configured public URL: <code>${esc(input.publicBaseUrl)}</code></p>
+<div class="stat"><div class="name">HTTPS connection</div><div class="value">${remoteStatus}</div></div>
+</div><p class="meta">Configured public URL: <code>${esc(input.publicBaseUrl)}</code> · Approved project roots: ${input.projects.length}</p>
+<p class="note">A healthy local Windows service does not prove that ChatGPT can reach this machine through HTTPS.</p>
+${requiresCustomerOrigin?'<p class="note"><strong>Not connected:</strong> the installed project default URL is not a customer-specific address. Configure an HTTPS endpoint you control before attempting a connection.</p>':'<p class="note">Configured MCP endpoint (reachability not verified): <code>'+esc(mcpEndpoint)+'</code></p>'}
 <p class="note">Connection and security settings are intentionally not editable over the network. Reconfiguring the Windows service requires local administrative access.</p></section>
+<section class="section" id="connect"><h2>Connect ChatGPT</h2>
+<p class="lead">Installation and remote connection are separate steps. No remote connection test is performed by this settings page.</p>
+<ol class="lead"><li>Provide a customer-specific HTTPS origin with a trusted TLS certificate and route it securely to the local MCP listener (default 127.0.0.1:3001). Do not expose the plain HTTP listener directly.</li><li>Set the exact origin in the operator-owned service configuration; restart the service through an approved local maintenance action.</li><li>In ChatGPT, add the custom MCP connector using your own <code>https://your-domain.example/mcp</code> URL and complete its OAuth authorization flow.</li><li>Confirm that tools are visible and an approved read-only request works. Verify the HTTPS connection independently of the local green tray icon.</li></ol>
+<p class="note">For local operator sign-in, the bootstrap secret is stored on the Windows host in <code>%ProgramData%\\HooshiXMCP\\secrets\\.token</code>. Access it locally with appropriate permissions; never paste it into chat or share it as a bearer token.</p></section>
 <section class="section" id="projects"><h2>Windows projects</h2>
 <p class="lead">Choose an approved folder to prepare an <code>open_project</code> request. This does not grant additional filesystem access.</p>
 ${rows||'<p class="lead">No approved Windows projects are available yet.</p>'}

@@ -71,6 +71,8 @@ const (
 )
 
 // readinessOf maps a snapshot to the icon colour.
+// Green means local loopback readiness only: it is NOT an end-to-end
+// HTTPS or ChatGPT connection probe.
 //
 // Red means the connector cannot serve: SCM does not report the service
 // running, or the service says it stopped. Yellow means alive but not serving —
@@ -102,7 +104,7 @@ func readinessOf(snapshot Snapshot) readiness {
 func displayText(snapshot Snapshot) string {
 	switch readinessOf(snapshot) {
 	case readinessGreen:
-		return "connected and ready"
+		return "local service ready (remote unverified)"
 	case readinessRed:
 		if snapshot.Service == "unknown" {
 			return "service status unavailable"
@@ -129,6 +131,9 @@ func statusLines(snapshot Snapshot) []string {
 	lines := []string{"HooshiX MCP: " + displayText(snapshot)}
 	if snapshot.Listener != "" && !snapshot.Stale && snapshot.Published {
 		lines = append(lines, "Local address: "+snapshot.Listener)
+	}
+	if readinessOf(snapshot) == readinessGreen && snapshot.PublicBaseURL == "https://mcp.hooshix-agent.ir" {
+		lines = append(lines, "Set your own HTTPS address to connect ChatGPT")
 	}
 	if snapshot.Restarts > 0 {
 		lines = append(lines, "Server restarts: "+strconv.Itoa(snapshot.Restarts))

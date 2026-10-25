@@ -47,6 +47,7 @@ if(installerIndex>=0){
  const payload=path.join(repo,"deploy/windows/build/payload");
  assert(fs.existsSync(path.join(payload,"bin/hooshix-git-worker.exe")),"Windows Git worker missing");
  assert(fs.existsSync(path.join(payload,"app/LICENSE")),"license absent from payload");
+ assert(fs.existsSync(path.join(payload,"app/QUICKSTART.txt")),"customer first-run guide missing from installer payload");
  const bundledHono=JSON.parse(fs.readFileSync(path.join(payload,"app/node_modules/hono/package.json"),"utf8"));
  assert(bundledHono.version===honoVersion,"installer payload contains a different or vulnerable Hono version");
  assert(!fs.existsSync(path.join(payload,"bin/hooshix-wsl-fs-broker-linux-amd64")),"Linux broker still in payload");

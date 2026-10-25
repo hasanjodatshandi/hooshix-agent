@@ -139,9 +139,10 @@ func run(self, baseURL string, uninstalling, purgeData, repairing, rollingBack b
 	if err := runInstall(layout, self, baseURL, out); err != nil {
 		return "", err
 	}
-	return setup.AppName + " is installed and running as a Windows service.\n\n" +
-		"Look for the coloured icon in the notification area: green means ChatGPT can reach it. " +
-		"The icon appears at the next sign-in, and the tray menu starts, stops and restarts the service.", nil
+	return setup.AppName + " was installed and the Windows service was started.\n\n" +
+		"A green tray icon verifies LOCAL service health only; it does not verify ChatGPT connectivity. " +
+		"Set up your own HTTPS origin and protected OAuth connection before using ChatGPT.\n\n" +
+		"First-time instructions: " + filepath.Join(layout.AppDir, "QUICKSTART.txt"), nil
 }
 
 func runInstall(layout setup.Layout, self, baseURL string, out io.Writer) (err error) {

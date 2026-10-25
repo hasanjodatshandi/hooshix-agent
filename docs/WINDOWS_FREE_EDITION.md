@@ -12,7 +12,7 @@ payment, subscription, trial expiration, or paid-feature entitlement checks.
 
 ## Installation and maintenance
 
-The offline installer carries the pinned Node runtime and application. Double-click
+The offline installer carries the pinned Node runtime, application and a customer-facing `app/QUICKSTART.txt`. Installation health is local only; it does not prove that the customer's HTTPS connector is reachable. Each customer must configure a customer-owned HTTPS origin and OAuth before calling ChatGPT tools. Double-click
 the EXE and accept the administrator prompt. The installer creates the Windows
 service and preserves its existing account, recovery policy and security descriptor
 on upgrades.
@@ -40,6 +40,8 @@ to stop or overwrite the service in that case; close the tray or unenroll the
 Windows Git worker through its owner first. Setup never kills those processes.
 
 ## Customer settings and projects
+
+The historical default `https://mcp.hooshix-agent.ir` is **not** a customer-specific endpoint. Until the operator provides their own HTTPS origin, the tray refuses to open that default login page, preventing a customer from disclosing a privileged operator secret to the wrong website. Follow the bundled `%ProgramFiles%\\HooshiX MCP\\app\\QUICKSTART.txt` for first-run configuration. A green tray icon proves only local service readiness, never remote HTTPS reachability.
 
 From the tray menu choose **Open Windows settings**. Sign in with the operator
 credential. The page shows service URL/port, approved Windows roots, active

@@ -69,6 +69,7 @@ function main() {
 		fs.copyFileSync(path.join(repo, "package.json"), path.join(appDir, "package.json"));
 		// Binary redistributions must include the project\x27s open-source license.
 		fs.copyFileSync(path.join(repo, "LICENSE"), path.join(appDir, "LICENSE"));
+		fs.copyFileSync(path.join(repo, "docs", "WINDOWS_CUSTOMER_QUICKSTART.txt"), path.join(appDir, "QUICKSTART.txt"));
 		fs.cpSync(path.join(repo, "dist"), path.join(appDir, "dist"), { recursive: true });
 		installProductionDependencies(appDir, scratch, runtime);
 

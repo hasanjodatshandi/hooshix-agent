@@ -2,6 +2,20 @@ import {describe,expect,it} from "vitest";
 import {windowsSettingsPage} from "../src/mcp/windows-settings-page.js";
 
 describe("Windows-only operator settings page",()=>{
+ it("does not mistake the shared project origin or local health for a customer connection",()=>{
+  const html=windowsSettingsPage({publicBaseUrl:"https://mcp.hooshix-agent.ir",port:3001,projects:[]});
+  expect(html).toContain("HTTPS setup required");
+  expect(html).toContain("Not connected:");
+  expect(html).toContain("not a customer-specific address");
+  expect(html).not.toContain("Configured MCP endpoint (reachability not verified)");
+  expect(html).toContain("does not prove that ChatGPT can reach this machine");
+ });
+ it("shows the customer MCP endpoint only as unverified",()=>{
+  const html=windowsSettingsPage({publicBaseUrl:"https://customer.example",port:3001,projects:[]});
+  expect(html).toContain("Configured — external access unverified");
+  expect(html).toContain("https://customer.example/mcp");
+  expect(html).not.toContain("Not connected:");
+ });
  it("shows free edition, Windows roots and automatic Git results",()=>{
   const html=windowsSettingsPage({publicBaseUrl:"https://mcp.example.test",port:3001,projects:[
    {path:"D:\\Work\\Client",active:true,persistent:true,exists:true,git:"ready"},
