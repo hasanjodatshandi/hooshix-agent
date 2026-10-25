@@ -28,6 +28,7 @@ try {
   const integrityBefore = copy.pragma("integrity_check", { simple: true });
   if (integrityBefore !== "ok") throw new Error("Backup integrity check failed: " + integrityBefore);
   const before = copy.prepare("SELECT COUNT(*) AS count FROM tasks").get().count;
+  const schemaVersionBefore = copy.prepare("SELECT MAX(version) AS version FROM schema_migrations").get().version;
 
   runMigrations(copy);
 
@@ -65,6 +66,7 @@ try {
     foreignKeyIssues,
     taskCountPreserved: before,
     persistedRootCount: roots,
+    sourceSchemaVersion: schemaVersionBefore,
     schemaVersion,
     restoreDrill: {
       result: "PASS",

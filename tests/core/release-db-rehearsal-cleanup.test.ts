@@ -50,6 +50,7 @@ describe("release DB rehearsal clears sensitive backups",()=>{
       expect(result.status,`stdout=${result.stdout} stderr=${result.stderr}`).toBe(0);
       expect(result.stdout).toContain('"result": "PASS"');
       expect(result.stdout).toContain('"restoreDrill"');
+      expect(result.stdout).toContain('"sourceSchemaVersion": 29');
       assertNoCopies(result.stdout);
       expect(sha(source)).toBe(initial);
     }finally{fs.rmSync(dir,{recursive:true,force:true});}

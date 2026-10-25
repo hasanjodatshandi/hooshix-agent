@@ -68,7 +68,7 @@ const result = {
   warnings,
   outstandingManualGates: [
     "Official docs/implementation/27_RELEASE_READINESS_CHECKLIST.md and 29_IMPLEMENTATION_PROGRESS_LEDGER.md",
-    "Historical customer schema upgrade rehearsal (older RC2 schema -> current) before first public cutover",
+
     "Authentication, external HTTP exposure, supervised process ownership and operator-approved cutover/rollback",
     "Release tag/commit provenance and owner approval"
   ]
