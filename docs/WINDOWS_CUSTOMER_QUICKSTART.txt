@@ -1,8 +1,10 @@
 HooshiX MCP - Windows Free Edition: first-time setup
 =================================================
 License: Apache-2.0. Free to use and redistribute under the license.
-This installer supports Windows only. No WSL, Linux distribution or
-separate customer-side agent is required.
+This installer supports Windows only. No WSL or Linux distribution is
+required. Remote HTTPS access needs a secure reverse proxy or tunnel.
+If using the HooshiX public Tunnel Gateway, install and pair the separate
+HooshiXAgent Windows service; it is NOT bundled with this MCP installer.
 
 1. INSTALL ON WINDOWS
    - Double-click the official HooshiX Windows installer.
@@ -22,6 +24,10 @@ separate customer-side agent is required.
      placeholder, NOT an endpoint allocated to your computer.
    - A green tray icon cannot validate DNS, TLS, reverse-proxy routing,
      external firewalls or OAuth access.
+   - For the optional HooshiX Tunnel Gateway route, the paired HooshiXAgent
+     must expose only the intended loopback listener (127.0.0.1:3001).
+     Bind your hostname to that device and endpoint in the Panel; an old
+     closed Sandbox device identity is not a valid current route.
 
    If installing from an administrator PowerShell for the first time,
    you may specify an HTTPS origin:
@@ -40,6 +46,11 @@ separate customer-side agent is required.
    - Configure a custom MCP connector in your eligible ChatGPT client
      using your endpoint: https://YOUR-HOST.example/mcp
    - Follow that client's current OAuth authorization process.
+   - Confirm the consent page is on YOUR verified public HTTPS origin and
+     explicitly select the minimum scopes needed (read-only for the first
+     smoke test). If the operator secret is requested, retrieve it on the
+     very same installed Windows machine; never enter it on an unverified
+     host or the shared project default hostname.
    - Do NOT paste the operator bootstrap secret into chat or into an
      MCP bearer-token field; it is a different, privileged credential.
    - To sign into the protected Windows settings page from your own

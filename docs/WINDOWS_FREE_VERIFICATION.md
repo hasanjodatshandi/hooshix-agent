@@ -54,6 +54,27 @@ The user supplied Windows Sandbox transcripts confirming:
 
 These tests ran in a disposable Sandbox guest, **not** on the customer's production service. No unreviewed source or installer is authorized to be deployed by a test result.
 
+## Customer public HTTPS/OAuth acceptance update (2026-10-27)
+
+The operator reported successful connection of the Windows Sandbox
+installation to ChatGPT via `https://test.hooshix-agent.ir/mcp` after OAuth,
+with no recurrence of `Authentication succeeded, action discovery failed`.
+This is a **user report**, not an independently captured `tools/list` or
+`get_system_info` transcript. It is not a separate physical-Windows customer
+test and does not prove every one of the 58 tools works individually. The
+Gateway route used separately installed and paired HooshiXAgent software.
+
+The candidate `98dc6151` passed GitHub Actions run 40173714816 (three jobs).
+The unsigned Windows-only installer was independently rehashed to
+`e5b478183a41b224efcd6d9618e792dd3916e715969209e87de6fcd3a1a92939`.
+The running host's existing HooshiXMCP service remained healthy (HTTP 200)
+and was not upgraded.
+
+Outstanding: physical Windows customer acceptance, complete independent
+security/code review, final-source CI and signed release-artifact provenance,
+and owner approval before merging, publishing or production deployment.
+Paid Authenticode signing remains intentionally deferred.
+
 ## Release decision
 
 **Draft / hold**, pending green final-commit CI, final installer checksum and provenance verification, and first-time customer onboarding checks. Leave the existing running Windows service and `main` branch intact until the owner explicitly chooses deployment, merge or publication. No paid tier and no code-signing work in scope.

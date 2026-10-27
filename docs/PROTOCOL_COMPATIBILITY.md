@@ -6,8 +6,8 @@ This document states the exact SDK and protocol versions shipped. The registry a
 
 | Package | Version | Role |
 |---|---|---|
-| `@modelcontextprotocol/server` | 2.0.0 | Server + stdio transport (production) |
-| `@modelcontextprotocol/node` | 2.0.0 | Node streamable HTTP transport (production) |
+| `@modelcontextprotocol/server` | 2.3.0 | Server + stdio transport (production) |
+| `@modelcontextprotocol/node` | 2.1.1 | Node streamable HTTP transport (production) |
 | `@modelcontextprotocol/client` | 2.0.0 | Test client (dev) |
 
 The monolithic v1 SDK (`@modelcontextprotocol/sdk` 1.30.0) is **removed**. Its last consumer, `tests/helpers/mcp-client.ts`, loads the v2 `StdioClientTransport` through `createRequire` — TypeScript 7's NodeNext resolution will not follow the client subpath's bundled declaration, so the runtime load is typed against the `Transport` the `Client` accepts. `tests/security/r3-no-v1-monolith-imports.test.ts` keeps the absence enforced.

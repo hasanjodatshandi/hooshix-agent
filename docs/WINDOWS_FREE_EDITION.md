@@ -64,6 +64,17 @@ approved scopes. This is **not** proof of a public Internet route. Real
 customer DNS, TLS, remote proxy/tunnel, firewall and interactive ChatGPT
 connector onboarding must be validated on an independent customer setup.
 
+### Customer public-connection acceptance update (2026-10-27)
+
+The operator reported successful installation, ChatGPT OAuth registration
+and MCP testing through `https://test.hooshix-agent.ir/mcp` in a disposable
+Windows Sandbox. The earlier action-discovery error no longer occurred.
+This is **user-reported acceptance**, not independently retained MCP
+`tools/list`/`get_system_info` logs and not proof that every one of the 58
+tools works end-to-end. The public Gateway path used separately installed
+HooshiXAgent tunnel software; it is not bundled with the MCP installer.
+Independent physical Windows customer acceptance remains outstanding.
+
 ## Release gates still required
 
 - Green TypeScript, Windows-native, test coverage, release auditing and dependency security CI
