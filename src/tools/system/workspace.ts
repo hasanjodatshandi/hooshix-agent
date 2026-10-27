@@ -6,7 +6,6 @@ import { getTrustedInboundIdentity } from "../../core/runtime/r2-trusted-inbound
 import { saveDecisionWithContext } from "../../core/memory/context-memory.js";
 import { assertToolPermission } from "../../security/permission.js";
 import { closeProjectHandle, mintProjectHandle, resolveProjectSelector } from "../../security/project-handles.js";
-import {isWSLWorkspaceURI} from "../../security/wsl-workspace-uri.js";
 // Project Git diagnostics are provided by the composition root; this inbound
 // registrar must not import concrete Git/process services directly.
 
@@ -48,11 +47,10 @@ export function registerWorkspaceTools(
     "add_workspace_roots",
     {
       title: "Add Workspace Roots",
-      description: "📂 WORKSPACE — Add one or more directories to the persistent allowed workspace roots pool (idempotent). Windows roots must exist on disk and be reachable by this server. WSL roots use a virtual wsl://Distro/absolute/Linux/root identity. Standard WSL UNC selectors are normalized to that identity, NEVER opened by Windows LocalSystem. Granting requires a separately user-enrolled SID-verified WSLFS broker and a matching wslBindings entry in this SAME approved Task; a missing worker fails closed. Arbitrary UNC/network shares are not WSL roots and cannot bypass Windows filesystem checks. Native WSL file read/list/search and snapshot-backed create/write/modify/delete/restore use the separately enrolled owner workers and Linux-root/sensitive-path restrictions. WSL Git status/diff/log use the read worker; Git add/branch/commit/checkout require a separately enrolled Git-write worker and the normal Task approval policy. WSL Git clone/init and execute_command are not supported. Do not treat enrollment as authorization for a mutation. Allowed roots survive service restarts; the active workspace is session state and may reset to null after restart. Does NOT switch the active workspace — use set_workspace for that. One exception: when the pool is empty (fresh install or all roots removed) the first added root also becomes the active workspace, since file tools are denied with no active root.\n\nGOVERNED — a direct call is always refused. Put this tool in a Task and approve that one step: task_create → task_run (returns approvalId) → task_approve → task_resume. Approval works with no active workspace, so a client can grant its own first project.\n\nExample: { \"paths\": [\"D:/Projects/app-a\", \"D:/Projects/app-b\"] }",
+      description: "📂 WORKSPACE — Add one or more existing local Windows directories to the persistent allowed workspace roots pool (idempotent). This is a governed change: create a Task with add_workspace_roots, run it, approve, and resume. Network shares and WSL roots are not authorized workspace roots. Does NOT switch the active workspace. Example: { \"paths\": [\"D:/Projects/app-a\"] }",
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
       inputSchema: z.object({
-        paths: z.array(z.string().min(1)).min(1).max(50).describe("Windows paths or wsl://Distro/absolute/Linux/root identifiers."),
-        wslBindings: z.array(z.object({path:z.string().min(1),ownerWindowsRoot:z.string().min(3)})).optional().describe("Explicit Windows owner anchor for each WSL root; user must separately enroll the WSLFS owner worker."),
+        paths: z.array(z.string().min(1)).min(1).max(50).describe("Existing local Windows workspace directories."),
         correlationId: z.string().min(1).optional(),
       }),
     },
@@ -95,15 +93,11 @@ export function registerWorkspaceTools(
         });
         return response({
           project: resolved.label,
-          gitReadiness: isWSLWorkspaceURI(resolved.root)
-            ? {status:"wsl_linux_workspace",advice:"Linux Git is routed through the explicitly enrolled WSL owner read worker for status/diff/log. Git add/branch/commit/checkout use a separate owner Git-write worker and governed approvals; Git init/clone and execute_command are not supported for WSL. Confined file reads and snapshot-backed writes require their respective owner workers."}
-            : await inspectGitReadiness(resolved.root),
+          gitReadiness: await inspectGitReadiness(resolved.root),
           root: resolved.root,
           handle: minted.handle,
           expiresAt: new Date(minted.expiresAt).toISOString(),
-          instruction: isWSLWorkspaceURI(resolved.root)
-            ? `WSL project "${resolved.label}" is open for THIS conversation. Use project: "${minted.handle}" on native WSL file tools and supported Git tools. File mutations use the separately enrolled WSL file-write worker and recoverable backups; Git mutations require the owner Git-write worker and Task approval. WSL git_init/git_clone and execute_command remain unsupported. Never reuse this handle across conversations.`
-            : `Project "${resolved.label}" is now open for THIS conversation only. From now on include project: "${minted.handle}" on every file, exec and git call in this conversation. Never reuse this handle in another conversation.`,
+          instruction: `Project "${resolved.label}" is open for THIS conversation only. From now on include project: "${minted.handle}" on every file, exec and git call in this conversation. Never reuse this handle in another conversation.`,
         }, traceId);
       });
     },

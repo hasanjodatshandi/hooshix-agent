@@ -67,18 +67,10 @@ important sequence on this server — memorise it:
 Approval works even with no active workspace, so a fresh install is
 self-grantable through exactly this path — there is no manual seeding step.
 
-Paths must exist AND be visible to the account running the server. A
-\`\\\\wsl.localhost\` or network-share path that the service account cannot see is
-reported as *not existing*, not as *denied*: that is a host configuration gap.
-
-Re-approving the same inaccessible WSL path cannot fix it; a host configuration change is required.
-
-Native WSL projects use a virtual wsl://Distro/absolute/Linux/root identity, approved through add_workspace_roots with an enrolled Windows-owner anchor; they do not require UNC or LocalSystem filesystem access. The owner read worker supplies confined read/list/search and Git status/diff/log. Independently enrolled file-write and Git-write workers support snapshot-backed file mutations and governed Git add/branch/commit/checkout. Git init/clone and execute_command are not supported on virtual WSL projects. exec with shell wsl is an independent unrestricted owner command channel and must never be used to bypass Task approvals.
-
-
-
-
-\`set_workspace\` selects the ACTIVE root from the pool. It never adds one.
+Paths must exist in a local Windows workspace accessible to the service.
+Linux workspace identifiers and the WSL filesystem redirector are unsupported
+by this Windows-only HooshiX installation.
+set_workspace selects the active root; it does not add one.
 
 ## 2. One connector, many conversations: project handles
 
@@ -112,7 +104,7 @@ needs an approved task step. Arguments travel as an ARRAY, so shell quoting is
 not your problem — do not build one big command string.
 
 \`exec\` is the wide-open door. It runs one arbitrary command line through the
-platform shell (cmd.exe by default on Windows; powershell, pwsh, bash, sh or the explicitly enrolled WSL worker via
+platform shell (cmd.exe by default on Windows; powershell or pwsh via
 the \`shell\` argument) with pipes, redirects, builtins and chaining, in ANY
 directory — not just the workspace. Its only gate is the operator flag
 \`HOOSHIX_EXEC_ENABLED=1\`: no permission ceiling and no workspace scope stands in

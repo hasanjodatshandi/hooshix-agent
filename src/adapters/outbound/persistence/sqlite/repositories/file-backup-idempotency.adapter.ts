@@ -1,7 +1,6 @@
 import { withAgentDatabase } from "../../../../../core/memory/database/index.js";
 import {createHash} from "node:crypto";
 import path from "node:path";
-import { parseWSLWorkspaceURI } from "../../../../../security/wsl-workspace-uri.js";
 
 /** SQLite-only persistence for legacy filesystem backup/idempotency operations. */
 /** R4.01 immutable snapshot; restore attempts are NOT the snapshot type. */
@@ -20,12 +19,6 @@ export interface StoredFileBackup {
   readonly legacy_unversioned:number;
 }
 function requireAbsolute(target:string):void {
-  // Virtual Linux targets remain canonical WSL identities, not Windows paths.
-  const virtual = parseWSLWorkspaceURI(target);
-  if(virtual){
-    if(virtual.uri!==target)throw new Error("backup_target_must_be_canonical_absolute_path");
-    return;
-  }
   if(!path.isAbsolute(target)||path.normalize(target)!==target)
     throw new Error("backup_target_must_be_canonical_absolute_path");
 }
@@ -75,38 +68,6 @@ export function getStoredFileBackup(id: string): StoredFileBackup | undefined {
     "SELECT id,path,content,restored_at,target_canonical_path,previous_state,previous_revision,content_hash,content_ref,post_mutation_state,post_mutation_revision,legacy_unversioned FROM file_backups WHERE id=?"
   ).get(id) as StoredFileBackup | undefined);
 }
-/** Atomically persist an immutable WSL snapshot with its authenticated owner. */
-export function persistWSLFileSnapshotForPrincipal(
-  backupId: string, correlationId: string, target: string, root: string,
-  principalId: string, bytes: Buffer | null, revision: string | null,
-): void {
-  withAgentDatabase(db => db.transaction(() => {
-    if (bytes === null) persistAbsentFileBackup(backupId, correlationId, target);
-    else {
-      if (!revision) throw new Error("wsl_backup_pre_revision_required");
-      persistFileBackup(backupId, correlationId, target, bytes, revision);
-    }
-    db.prepare("INSERT INTO wsl_file_backup_owners(backup_id,principal_id,workspace_uri) VALUES (?,?,?)")
-      .run(backupId, principalId, root);
-  })());
-}
-
-/** Keep owner queries parameterized and inside the SQLite adapter. */
-export function isWSLFileSnapshotOwned(
-  backupId: string, principalId: string, workspaceUri: string,
-): boolean {
-  return withAgentDatabase(db => Boolean(db.prepare(
-    "SELECT 1 FROM wsl_file_backup_owners WHERE backup_id=? AND principal_id=? AND workspace_uri=?"
-  ).get(backupId, principalId, workspaceUri)));
-}
-
-export function findWSLFileSnapshotOwnerRoot(backupId: string, principalId: string): string | null {
-  const row = withAgentDatabase(db => db.prepare(
-    "SELECT workspace_uri AS root FROM wsl_file_backup_owners WHERE backup_id=? AND principal_id=?"
-  ).get(backupId, principalId) as {root:string} | undefined);
-  return row?.root ?? null;
-}
-
 export function markFileBackupRestored(id: string): void {
   withAgentDatabase(db => db.prepare(
     "UPDATE file_backups SET restored_at=? WHERE id=? AND restored_at IS NULL"

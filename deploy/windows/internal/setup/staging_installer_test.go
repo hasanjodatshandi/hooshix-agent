@@ -56,11 +56,6 @@ func TestStagedInstallerPayload(t *testing.T) {
 		"app/dist/index-http.js",
 		"bin/hooshix-mcp-service.exe",
 		"bin/hooshix-git-worker.exe",
-		"bin/hooshix-wsl-fs-broker-linux-amd64",
-		"tools/enroll-wsl-files.ps1",
-		"tools/enroll-wsl-file-writes.ps1",
-		"tools/enroll-wsl-git-writes.ps1",
-		"tools/preflight-wsl-enrollment.ps1",
 	} {
 		path := filepath.Join(stage, filepath.FromSlash(rel))
 		info, e := os.Stat(path)

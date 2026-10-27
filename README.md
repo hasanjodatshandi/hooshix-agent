@@ -10,6 +10,10 @@ The HooshiX Agent source code is distributed under the **Apache License, Version
 
 The Windows installer contains a copy of the Apache-2.0 license at `app/LICENSE`. GitHub Releases use SHA-256 checksums plus a free Sigstore keyless signature, **not** Windows Authenticode; Windows SmartScreen warnings may still occur. Refer to [release and verification instructions](docs/RELEASE_SIGSTORE.md).
 
+## Windows Free customer quickstart
+
+Windows-only customers should follow [first-time setup and secure ChatGPT connection](docs/WINDOWS_CUSTOMER_QUICKSTART.txt) after installing the offline EXE. The green tray icon verifies **local service health only**, not HTTPS routing, OAuth or remote ChatGPT connectivity. The historic default public URL is not a per-customer provisioned endpoint; users must set their own hostname. The installed copy of this guide is `%ProgramFiles%\\HooshiX MCP\\app\\QUICKSTART.txt`.
+
 ## کنترل پیش از انتشار
 
 برای بررسی غیرمخرب وضعیت Source/Build از `pnpm run release:preflight` و برای تمرین مهاجرت پایگاه داده **فقط روی نسخهٔ پشتیبان** از `pnpm run release:db-rehearsal` استفاده کنید. گزارش معیارهای پذیرش، موانع انتشار و روش Rollback در `docs/RELEASE_HARDENING_2026-09-19.md` است. قبولی این بررسی‌های محلی به معنای تأیید انتشار عمومی یا مجوز Restart خودکار سرویس نیست.

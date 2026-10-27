@@ -49,7 +49,7 @@ The identity and issuer above must match the **official** release workflow, not 
 - The exact Windows installer `--verify` and isolated rollback regression test pass before signing.
 - The EXE SHA-256 is independently recomputed from bytes; the checksum asset matches exactly.
 - Sigstore keyless bundle verification succeeds with both expected certificate identity and GitHub OIDC issuer.
-- Windows service account, WSL enrollment, database backups and live upgrade/rollback have been exercised separately by an independent administrator console (the product itself cannot safely control its own recovery).
+- Windows service account, database backups and live upgrade/rollback have been exercised separately by an independent administrator console (the product itself cannot safely control its own recovery).
 - Draft Release stays unpublished until the owner explicitly authorizes publishing.
 
 For the Apache-2.0 license terms, see `LICENSE`. For project-specific documentation, see `docs/INDEX.md`.

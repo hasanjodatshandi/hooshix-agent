@@ -3,7 +3,6 @@ import { policyDecisionPoint } from "./policy-decision-point.js";
 import { selectTool, type ToolName } from "../../application/services/legacy-tool-orchestrator.js";
 import { evaluateAction } from "../../application/services/legacy-action-governance.js";
 import { validateWorkspace, classifyCommandCwd, getActiveWorkspace } from "../../security/workspace-guard.js";
-import { isWSLWorkspaceURI, wslRelativePath } from "../../security/wsl-workspace-uri.js";
 
 /** File tools whose `path` argument is hard-scoped to the active workspace. */
 const FILE_PATH_TOOLS = new Set<ToolName>([
@@ -11,9 +10,6 @@ const FILE_PATH_TOOLS = new Set<ToolName>([
   "delete_file", "list_directory", "search_files",
 ]);
 /** Git tools whose `cwd` argument is hard-scoped to the active workspace. */
-const WSL_GIT_MUTATIONS = new Set<ToolName>([
-  "git_clone","git_init"
-]);
 const GIT_CWD_TOOLS = new Set<ToolName>([
   "git_status", "git_diff", "git_commit", "git_branch", "git_checkout", "git_add", "git_log",
 ]);
@@ -35,29 +31,13 @@ export function checkStepGovernance(step: TaskStep | string, effectiveCwd?: stri
   const tool = selectTool(step);
   const args = { ...(step.arguments ?? {}) } as Record<string, unknown>;
 
-  // Native WSL Task steps never turn into Windows processes or silently
-  // inherit unrestricted shell privileges. Git mutations need an enrolled
-  // purpose-built Linux Git write capability, not a shell-based fallback.
-  const activeWSL=getActiveWorkspace();
-  if(activeWSL && isWSLWorkspaceURI(activeWSL) &&
-     (WSL_GIT_MUTATIONS.has(tool) || tool==="execute_command" ||
-      PACKAGE_CWD_TOOLS.has(tool))){
-    return {decision:"blocked" as const,risk:"high" as const,
-      reason:"wsl_task_requires_native_owner_capability"};
-  }
-
   // Hard-scope classification BEFORE approval: file tools can never touch
   // paths outside the active workspace (no approval legitimizes it), so such
   // steps are BLOCKED up-front instead of pausing for a doomed approval.
   // Mirrors the enforcement error message in workspace-guard.
   if (FILE_PATH_TOOLS.has(tool) && args.unrestricted !== true && typeof args.path === "string") {
     try {
-      const active=getActiveWorkspace();
-      if(active && isWSLWorkspaceURI(active)){
-        wslRelativePath(args.path);
-      }else{
-        validateWorkspace(args.path);
-      }
+      validateWorkspace(args.path);
     } catch (error) {
       return {
         decision: "blocked" as const,
@@ -67,10 +47,7 @@ export function checkStepGovernance(step: TaskStep | string, effectiveCwd?: stri
     }
   }
   if (GIT_CWD_TOOLS.has(tool) && typeof args.cwd === "string" && args.cwd !== ".") {
-    const active=getActiveWorkspace();
-    const allowed=active && isWSLWorkspaceURI(active)
-      ? (args.cwd===active)
-      : classifyCommandCwd(args.cwd).inside;
+    const allowed=classifyCommandCwd(args.cwd).inside;
     if (!allowed) {
       return {
         decision: "blocked" as const,

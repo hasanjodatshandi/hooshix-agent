@@ -73,7 +73,7 @@ describe("exec: unrestricted shell behind one opt-in flag", () => {
     enable();
     const result = await executeUnrestrictedCommand(
       isWindows ? "whoami" : "whoami",
-      { shell: isWindows ? "cmd" : "sh" },
+      { shell: isWindows ? "cmd" : undefined },
     );
     expect(result.exitCode).toBe(0);
     expect(result.stdout.trim().length).toBeGreaterThan(0);
@@ -104,15 +104,9 @@ describe("exec: unrestricted shell behind one opt-in flag", () => {
     expect(result.stderr).toContain("exec-err-marker");
   });
 
-  it("never routes WSL via LocalSystem or the Windows bash fallback", async () => {
-    delete process.env.HOOSHIX_EXEC_ENABLED;
-    await expect(executeUnrestrictedCommand("id", { shell: "wsl", cwd: os.tmpdir() }))
-      .rejects.toThrow(/exec is disabled/);
-    enable();
-    await expect(executeUnrestrictedCommand("id", { shell: "wsl" }))
-      .rejects.toThrow(/wsl_owner_worker_requires_windows_anchor_cwd/);
-    await expect(executeUnrestrictedCommand("id", { shell: "wsl", cwd: os.tmpdir() }))
-      .rejects.toThrow(/wsl_owner_worker/);
+  it("rejects unsupported shell names after the Windows-only transition", async () => {
+    await expect(executeUnrestrictedCommand("echo hello", { shell: "wsl", cwd: os.tmpdir() }))
+      .rejects.toThrow(/unsupported_shell/);
   });
 
   it("audits every attempt, including denied ones", async () => {

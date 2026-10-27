@@ -2,6 +2,9 @@ import { McpServer } from "../adapters/inbound/mcp/legacy-sdk-bridge.js";
 import { StreamableHTTPServerTransport } from "../adapters/inbound/mcp/legacy-sdk-bridge.js";
 import { registerTools } from "./registry.js";
 import { toolDocsPage, toolsPage, dashboardPage, authorizePage, getDistinctToolNames, toolsList } from "./pages.js";
+import {windowsSettingsPage} from "./windows-settings-page.js";
+import {listWorkspaceRoots} from "../security/workspace-guard.js";
+import {inspectGitReadiness} from "../services/git/git-readiness.js";
 import { OAuthProvider, OAUTH_SCOPES } from "./oauth.js";
 import { mcpMetrics } from "./metrics.js";
 import { createMetricsServer } from "./metrics-server.js";
@@ -217,19 +220,34 @@ async function handleRequest(
     if(!authorizeMonitoringRequest(req,url,res))return;
     sendJSON(res,200,{status:"ok"});return;
   }
+  if(path==="/operator/settings" && method==="GET"){
+    // Local product UX backed by the authenticated operator cookie; OAuth
+    // monitoring tokens cannot enumerate every Windows project path.
+    if(process.platform!=="win32"){sendJSON(res,404,{error:"windows_only"});return;}
+    const session=operatorSessions.get(operatorCookie(req));
+    if(!session){res.setHeader("Location","/operator/login?next=settings");res.writeHead(303);res.end();return;}
+    const roots=listWorkspaceRoots().slice(0,75);
+    const projects=await Promise.all(roots.map(async (root)=>{
+      const git=root.exists?(await inspectGitReadiness(root.path)).status:"missing" as const;
+      return {path:root.path,exists:root.exists,active:root.active,persistent:root.persistent,git};
+    }));
+    sendHTML(res,200,windowsSettingsPage({publicBaseUrl:PUBLIC_BASE_URL,port:PORT,projects}));
+    return;
+  }
   if(path==="/operator/login" && method==="GET"){
-    sendHTML(res,200,`<!doctype html><html><head><meta charset="utf-8"></head><body><form method="post" action="/operator/login"><label>Operator secret<input type="password" autocomplete="off" name="secret" required></label><button type="submit">Sign in</button></form></body></html>`);return;
+    sendHTML(res,200,`<!doctype html><html><head><meta charset="utf-8"></head><body><form method="post" action="/operator/login"><label>Operator secret<input type="password" autocomplete="off" name="secret" required></label><input type="hidden" name="next" value="${url.searchParams.get("next")==="settings"?"settings":""}"><button type="submit">Sign in</button></form></body></html>`);return;
   }
   if(path==="/operator/login" && method==="POST"){
     const loginRate=operatorLoginLimiter.allow(remoteIp);
     if(!loginRate.allowed){res.setHeader("Retry-After",String(loginRate.retryAfter));sendJSON(res,429,{error:"login_rate_limited"});return;}
     if(origin&&origin!==CONFIG.publicBaseUrl){sendJSON(res,403,{error:"origin_not_allowed"});return;}
-    const supplied=new URLSearchParams((await readBody(req,4096)).toString("utf8")).get("secret")??"";
+    const loginForm=new URLSearchParams((await readBody(req,4096)).toString("utf8"));
+    const supplied=loginForm.get("secret")??"";
     if(!oauth.verifyBootstrapSecret(supplied)){sendJSON(res,403,{error:"invalid_operator_secret"});return;}
     try{
       const session=operatorSessions.issue();
       res.setHeader("Set-Cookie",`hx_operator=${session.id}; Path=/; HttpOnly; SameSite=Strict; Max-Age=1800${CONFIG.publicBaseUrl.startsWith("https:")?"; Secure":""}`);
-      res.setHeader("Location","/dashboard");res.writeHead(303);res.end();
+      res.setHeader("Location",loginForm.get("next")==="settings"?"/operator/settings":"/dashboard");res.writeHead(303);res.end();
     }catch{sendJSON(res,429,{error:"operator_session_limit"});}
     return;
   }
@@ -693,7 +711,8 @@ async function handleAdminRequest(
     const loginRate=adminLoginLimiter.allow(remoteIp);
     if(!loginRate.allowed){res.setHeader("Retry-After",String(loginRate.retryAfter));sendJSON(res,429,{error:"login_rate_limited"});return;}
     if(origin&&origin!==CONFIG.publicBaseUrl){sendJSON(res,403,{error:"origin_not_allowed"});return;}
-    const supplied=new URLSearchParams((await readBody(req,4096)).toString("utf8")).get("secret")??"";
+    const loginForm=new URLSearchParams((await readBody(req,4096)).toString("utf8"));
+    const supplied=loginForm.get("secret")??"";
     if(!oauth.verifyBootstrapSecret(supplied)){sendJSON(res,403,{error:"invalid_operator_secret"});return;}
     try{
       const session=adminSessions.issue();

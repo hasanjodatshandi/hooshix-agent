@@ -1,8 +1,5 @@
 import fs from "node:fs";
 import { WorkspaceContextInvalidError } from "../core/errors.js";
-import {isWSLWorkspaceURI} from "./wsl-workspace-uri.js";
-import {getWSLWorkspaceBinding} from "./wsl-workspace-binding.js";
-import {probeWSLWorkspace} from "./wsl-workspace-client.js";
 import {
   canonicalizeWorkspacePath,
   listPersistedWorkspaceRoots,
@@ -31,13 +28,7 @@ export function resolveTaskWorkspace(executionContext: { workspace: string | nul
   } catch (error) {
     throw new WorkspaceContextInvalidError("WORKSPACE_CANONICALIZATION_FAILED", requested, error instanceof Error ? error.message : String(error));
   }
-  if (isWSLWorkspaceURI(canonical)) {
-    // Windows LocalSystem cannot stat Linux. Re-attest the pinned root
-    // through an owner-SID-bound worker; never substitute host CWD.
-    const binding = getWSLWorkspaceBinding(canonical);
-    if (!binding || !probeWSLWorkspace(binding))
-      throw new WorkspaceContextInvalidError("PATH_NO_LONGER_EXISTS", canonical);
-  } else if (!fs.existsSync(canonical)) {
+  if (!fs.existsSync(canonical)) {
     throw new WorkspaceContextInvalidError("PATH_NO_LONGER_EXISTS", canonical);
   }
   const allowed = listPersistedWorkspaceRoots().some(

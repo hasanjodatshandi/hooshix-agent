@@ -137,12 +137,13 @@ const (
 
 // Menu command IDs, dispatched in dispatchMenu.
 const (
-	menuStatus  = 1000
-	menuLogs    = 1001
-	menuStart   = 1002
-	menuStop    = 1003
-	menuExit    = 1004
-	menuRestart = 1005
+	menuStatus   = 1000
+	menuLogs     = 1001
+	menuStart    = 1002
+	menuStop     = 1003
+	menuExit     = 1004
+	menuRestart  = 1005
+	menuSettings = 1006
 )
 
 // wndClassEx mirrors the Win32 WNDCLASSEXW structure exactly.
@@ -287,6 +288,7 @@ func (host *menuHost) appendStaticMenuItems() {
 		appendMenu.Call(uintptr(host.menu), flags, id, uintptr(unsafe.Pointer(utf16)))
 	}
 	add(mfSeparator, 0, "-")
+	add(mfString, menuSettings, "Open Windows settings")
 	add(mfString, menuLogs, "Open logs")
 	add(mfString, menuStart, "Start service")
 	add(mfString, menuStop, "Stop service")
@@ -438,6 +440,8 @@ func (host *menuHost) showMenu() {
 
 func (host *menuHost) dispatchMenu(id uint32) {
 	switch id {
+	case menuSettings:
+		host.app.openSettings()
 	case menuLogs:
 		host.app.openLogs()
 	case menuStart:

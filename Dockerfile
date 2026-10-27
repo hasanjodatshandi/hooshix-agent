@@ -15,6 +15,7 @@ RUN pnpm install --frozen-lockfile
 # Copy source and build
 COPY tsconfig.json ./
 COPY src ./src
+COPY scripts/clean-dist.mjs ./scripts/clean-dist.mjs
 RUN pnpm run build
 
 # Stage 2: Production

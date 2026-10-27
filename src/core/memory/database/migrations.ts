@@ -11,7 +11,7 @@ const SAFE_IDENTIFIER = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
  * CURRENT head instead of a hardcoded version that silently rots as new
  * migrations land. If you add a migration, bump this to match it.
  */
-export const LATEST_MIGRATION_VERSION = 28;
+export const LATEST_MIGRATION_VERSION = 29;
 
 export function ensureColumn(
   db: Database.Database,
@@ -550,6 +550,9 @@ export function runMigrations(db: Database.Database): void {
     ensureColumn(db,"task_leases","context_id","TEXT");
   });
 
+  // Retain only the historical compatibility schema in SQLite for users who
+  // roll back to a prior release. The Windows-only application never uses or
+  // exposes these tables; deleting user data would make rollback unsafe.
   migrate(db,26,"wsl-workspace-owner-bindings",()=>{
     db.exec(`
       CREATE TABLE wsl_workspace_bindings (
@@ -586,5 +589,7 @@ export function runMigrations(db: Database.Database): void {
       CREATE INDEX idx_wsl_backup_principal ON wsl_file_backup_owners(principal_id,workspace_uri);
     `);
   });
+
+  migrate(db,29,"windows-only-compatibility-marker",()=>{});
 
 }

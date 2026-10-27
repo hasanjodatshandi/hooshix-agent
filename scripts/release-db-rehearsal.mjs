@@ -28,6 +28,7 @@ try {
   const integrityBefore = copy.pragma("integrity_check", { simple: true });
   if (integrityBefore !== "ok") throw new Error("Backup integrity check failed: " + integrityBefore);
   const before = copy.prepare("SELECT COUNT(*) AS count FROM tasks").get().count;
+  const schemaVersionBefore = copy.prepare("SELECT MAX(version) AS version FROM schema_migrations").get().version;
 
   runMigrations(copy);
 
@@ -59,12 +60,13 @@ try {
     sourceUnmodified: true,
     rehearsalCopy: target,
     restoreRehearsalCopy: restoredTarget,
-    sensitiveCopy: true,
+    sensitiveCopiesTemporary: true,
     integrityBefore,
     integrityAfter,
     foreignKeyIssues,
     taskCountPreserved: before,
     persistedRootCount: roots,
+    sourceSchemaVersion: schemaVersionBefore,
     schemaVersion,
     restoreDrill: {
       result: "PASS",
@@ -84,7 +86,28 @@ try {
   }, null, 2));
   process.exitCode = 1;
 } finally {
-  restored?.close();
-  copy?.close();
-  live?.close();
+  // Rehearsal databases contain live customer data. Never leave the backups,
+  // including SQLite WAL/SHM sidecars, on disk after a run.
+  const errors = [];
+  for (const handle of [restored, copy, live]) {
+    try { handle?.close(); } catch (error) { errors.push(String(error)); }
+  }
+  for (const file of [target, target + "-wal", target + "-shm",
+                      restoredTarget, restoredTarget + "-wal", restoredTarget + "-shm"]) {
+    try { fs.rmSync(file, {force: true}); }
+    catch (error) { errors.push("remove rehearsal artifact: " + String(error)); }
+  }
+  const remaining = [target, target + "-wal", target + "-shm",
+                     restoredTarget, restoredTarget + "-wal", restoredTarget + "-shm"]
+                     .filter(file => fs.existsSync(file));
+  if (errors.length || remaining.length) {
+    process.exitCode = 1;
+    console.error(JSON.stringify({kind: "release_rehearsal_cleanup",
+      result: "FAIL", sensitiveArtifactsRemoved: false,
+      remainingCount: remaining.length, errors}, null, 2));
+  } else {
+    console.log(JSON.stringify({kind: "release_rehearsal_cleanup",
+      result: "PASS", sensitiveArtifactsRemoved: true,
+      remainingCount: 0}, null, 2));
+  }
 }

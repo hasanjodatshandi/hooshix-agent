@@ -1,0 +1,95 @@
+HooshiX MCP - Windows Free Edition: first-time setup
+=================================================
+License: Apache-2.0. Free to use and redistribute under the license.
+This installer supports Windows only. No WSL or Linux distribution is
+required. Remote HTTPS access needs a secure reverse proxy or tunnel.
+If using the HooshiX public Tunnel Gateway, install and pair the separate
+HooshiXAgent Windows service; it is NOT bundled with this MCP installer.
+
+1. INSTALL ON WINDOWS
+   - Double-click the official HooshiX Windows installer.
+   - Approve the Windows administrator prompt.
+   - The service starts automatically and a tray icon appears at sign-in.
+   - GREEN means LOCAL HooshiX health is good. It does NOT mean ChatGPT
+     or your Internet HTTPS endpoint can reach this computer.
+   - The Windows service listens by default on 127.0.0.1:3001.
+   - Windows-only use does not require Git, but Git tools need a Git
+     installation reachable under the relevant Windows account.
+
+2. CREATE YOUR OWN HTTPS ENDPOINT
+   - Set up a customer-specific hostname with valid HTTPS/TLS and a
+     secured reverse proxy or tunnel to the local service listener.
+   - NEVER publish the plain HTTP port 3001 directly to the Internet.
+   - The built-in default https://mcp.hooshix-agent.ir is a PROJECT
+     placeholder, NOT an endpoint allocated to your computer.
+   - A green tray icon cannot validate DNS, TLS, reverse-proxy routing,
+     external firewalls or OAuth access.
+   - For the optional HooshiX Tunnel Gateway route, the paired HooshiXAgent
+     must expose only the intended loopback listener (127.0.0.1:3001).
+     Bind your hostname to that device and endpoint in the Panel; an old
+     closed Sandbox device identity is not a valid current route.
+
+   If installing from an administrator PowerShell for the first time,
+   you may specify an HTTPS origin:
+        & ".\HooshiX-Windows-Free-unsigned.exe" --base-url https://YOUR-HOST.example
+
+   Alternatively, an administrator can back up and edit the
+   HOOSHIX_PUBLIC_BASE_URL value in the installed settings document:
+        %ProgramData%\HooshiXMCP\settings.json
+   Do not alter node, entry, workingDirectory, dataRoot, or other
+   security fields. Apply a reviewed configuration change by restarting
+   the Windows service with appropriate local authorization.
+   An ordinary re-run of Setup intentionally PRESERVES existing settings;
+   it does not overwrite an origin that an operator configured.
+
+3. CONNECT FROM CHATGPT
+   - Configure a custom MCP connector in your eligible ChatGPT client
+     using your endpoint: https://YOUR-HOST.example/mcp
+   - Follow that client's current OAuth authorization process.
+   - Confirm the consent page is on YOUR verified public HTTPS origin and
+     explicitly select the minimum scopes needed (read-only for the first
+     smoke test). If the operator secret is requested, retrieve it on the
+     very same installed Windows machine; never enter it on an unverified
+     host or the shared project default hostname.
+   - Do NOT paste the operator bootstrap secret into chat or into an
+     MCP bearer-token field; it is a different, privileged credential.
+   - To sign into the protected Windows settings page from your own
+     browser, retrieve the operator bootstrap secret LOCALLY using
+     appropriate Windows filesystem permissions:
+        %ProgramData%\HooshiXMCP\secrets\.token
+     Keep this secret private. Do not send it to support, screenshots
+     or chat. The operator settings page is /operator/settings.
+   - Confirm the MCP tool list loads and an approved READ-ONLY test
+     (e.g. get_system_info) succeeds before requesting file writes.
+
+4. CHOOSE WINDOWS PROJECTS AND REVIEW GIT
+   - Open the authenticated Windows settings page from the tray menu.
+   - The page lists approved project roots and read-only Git status.
+   - New roots require an explicit HooshiX Task and human approval;
+     the page itself does not authorize arbitrary file paths.
+   - Git can reject a repository owned by another Windows account.
+     Configure the account or explicit trust correctly; do not
+     disable Git safe-directory protection globally.
+   - Never point test tasks at customer source data without consent.
+
+5. TROUBLESHOOTING
+   From a Windows PowerShell on the installed host:
+       Get-Service HooshiXMCP
+       Invoke-WebRequest -UseBasicParsing http://127.0.0.1:3001/health/live
+
+   HTTP 200 checks LOCAL service only. If ChatGPT is still offline,
+   inspect your HTTPS reverse proxy, public domain/TLS, network and OAuth
+   configuration. Review operator logs without sharing tokens.
+
+6. MAINTENANCE
+   - Run the signed-off full installer again to upgrade or repair.
+   - Explicit --repair / --rollback maintenance uses an administrator.
+   - Normal uninstall retains the customer's settings and database.
+   - --purge-data is destructive and must be deliberately requested.
+   - Close busy tray / owner Git workers before an upgrade; setup will
+     refuse to overwrite locked files and never kill unrelated processes.
+
+IMPORTANT: Installation can complete in one step on Windows, but enabling a
+CUSTOMER-SPECIFIC REMOTE HTTPS ENDPOINT and ChatGPT OAuth is a separate,
+operator-controlled networking and authorization step. Do not claim a
+customer is connected until an actual remote read-only MCP call succeeds.
