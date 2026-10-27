@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"golang.org/x/sys/windows"
 )
 
 func TestUserOwnedWorkerSubprocess(t *testing.T) {
@@ -42,6 +44,23 @@ func TestGitOwnerWorkerRoundTrip(t *testing.T) {
 	owner, err := fileOwnerSID(canonical)
 	if err != nil {
 		t.Fatal(err)
+	}
+	// Windows CI may give temporary folders to the Administrators GROUP rather
+	// than the process user SID. Correct ownership of only this disposable
+	// fixture; production Serve/Proxy owner checks remain strict and unchanged.
+	if !sameSID(owner, sid) && os.Getenv("HOOSHIX_REQUIRE_GIT_WORKER_E2E") == "1" {
+		userSID, e := windows.StringToSid(sid)
+		if e != nil {
+			t.Fatal(e)
+		}
+		if e := windows.SetNamedSecurityInfo(canonical, windows.SE_FILE_OBJECT,
+			windows.OWNER_SECURITY_INFORMATION, userSID, nil, nil, nil); e != nil {
+			t.Fatalf("cannot set temporary CI fixture owner to runner SID: %v", e)
+		}
+		owner, err = fileOwnerSID(canonical)
+		if err != nil {
+			t.Fatal(err)
+		}
 	}
 	if !sameSID(owner, sid) {
 		if os.Getenv("HOOSHIX_REQUIRE_GIT_WORKER_E2E") == "1" {
