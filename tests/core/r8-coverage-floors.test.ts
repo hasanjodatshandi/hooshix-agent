@@ -15,9 +15,9 @@ import { describe, expect, it } from "vitest";
  * fails it. When a module's measured coverage rises materially above its floor,
  * raise the floor toward the new value — never lower it.
  *
- * If coverage/coverage-summary.json is absent this test SKIPS rather than
- * failing, because a plain `vitest run` (without --coverage) legitimately
- * produces no summary. The CI coverage job produces it.
+ * A plain `vitest run` may lack a summary; in that mode report NOT ENFORCED.
+ * CI must rerun this test after `test:coverage` with the mandatory env flag,
+ * so missing coverage evidence fails closed rather than producing false green.
  */
 
 interface FileCoverage {
@@ -63,8 +63,10 @@ describe("R8.03 per-file coverage floors for security-critical modules", () => {
   const summaryPath = path.resolve("coverage", "coverage-summary.json");
 
   it("enforces a statements and branches floor on every listed module", () => {
+    const mandatory = process.env.HOOSHIX_REQUIRE_R803_COVERAGE_FLOORS === "1";
     if (!fs.existsSync(summaryPath)) {
-      console.log("R8.03 SKIPPED: coverage/coverage-summary.json absent (run pnpm run test:coverage)");
+      if (mandatory) throw new Error("R8.03: required coverage/coverage-summary.json is absent");
+      console.log("R8.03 NOT ENFORCED: coverage summary absent (run pnpm run test:coverage)");
       return;
     }
     const summary = JSON.parse(fs.readFileSync(summaryPath, "utf8")) as Summary;
@@ -89,6 +91,28 @@ describe("R8.03 per-file coverage floors for security-critical modules", () => {
         failures.push(`${file}: branches ${entry.branches.pct}% < floor ${branches}%`);
     }
     expect(failures, failures.join("\n")).toEqual([]);
+    if (mandatory) console.log(`R8.03 ENFORCED: ${SECURITY_FLOORS.length} security-critical module floors passed`);
+  });
+
+  it("CI runs the mandatory R8.03 check against a freshly generated summary", () => {
+    const workflow = fs.readFileSync(path.resolve(".github/workflows/ci.yml"), "utf8");
+    const start = workflow.indexOf("- name: Per-file coverage evidence");
+    const end = workflow.indexOf("- name: Active deployment and tracked secret policy", start);
+    expect(start).toBeGreaterThan(-1);
+    expect(end).toBeGreaterThan(start);
+    const step = workflow.slice(start, end);
+    const commands = [
+      "rm -f coverage/coverage-summary.json",
+      "pnpm run test:coverage --maxWorkers=1 --no-file-parallelism",
+      "test -s coverage/coverage-summary.json",
+      "HOOSHIX_REQUIRE_R803_COVERAGE_FLOORS=1 pnpm exec vitest run tests/core/r8-coverage-floors.test.ts --maxWorkers=1 --no-file-parallelism",
+    ];
+    let prior = -1;
+    for (const command of commands) {
+      const position = step.indexOf(command);
+      expect(position, command).toBeGreaterThan(prior);
+      prior = position;
+    }
   });
 
   it("the floor list stays in sync with the files that actually exist", () => {
