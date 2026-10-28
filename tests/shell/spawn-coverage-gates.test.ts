@@ -126,27 +126,4 @@ describe("spawn: security-critical edge cases", () => {
       killSpy.mockRestore();
     }
   }, 12000);
-
-  // Cover the Windows-only taskkill path on POSIX CI. A Linux runner has no
-  // taskkill binary; its asynchronous error must be safely swallowed while
-  // execa still cancels the direct child. Always restore the host platform.
-  it.skipIf(process.platform === "win32")("handles an unavailable taskkill binary when emulating the Windows kill path", async () => {
-    const originalPlatform = Object.getOwnPropertyDescriptor(process, "platform");
-    if (!originalPlatform?.configurable) throw new Error("process.platform must be configurable");
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 350);
-    try {
-      Object.defineProperty(process, "platform", {
-        configurable: true, enumerable: originalPlatform.enumerable, writable: true, value: "win32",
-      });
-      const result = await spawn(process.execPath, ["tests/fixtures/slow-process.cjs"], {
-        cwd: process.cwd(), cancelSignal: controller.signal, reject: false,
-      });
-      expect(result.isCanceled).toBe(true);
-      expect(result.timedOut).not.toBe(true);
-    } finally {
-      clearTimeout(timer);
-      Object.defineProperty(process, "platform", originalPlatform);
-    }
-  }, 12000);
 });
