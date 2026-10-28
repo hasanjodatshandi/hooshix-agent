@@ -53,7 +53,11 @@ jobs:
       - name: Test security, migrations and HTTP process contracts
         run: pnpm exec vitest run --maxWorkers=1 --no-file-parallelism
       - name: Per-file coverage evidence
-        run: pnpm run test:coverage --maxWorkers=1 --no-file-parallelism
+        run: |
+          rm -f coverage/coverage-summary.json
+          pnpm run test:coverage --maxWorkers=1 --no-file-parallelism
+          test -s coverage/coverage-summary.json
+          HOOSHIX_REQUIRE_R803_COVERAGE_FLOORS=1 pnpm exec vitest run tests/core/r8-coverage-floors.test.ts --maxWorkers=1 --no-file-parallelism
       - name: Active deployment and tracked secret policy
         run: node scripts/r7-secret-policy-check.mjs
       - name: Dependency advisory gate
