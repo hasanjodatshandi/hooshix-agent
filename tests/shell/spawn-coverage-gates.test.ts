@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { spawn } from "../../src/services/spawn.js";
 
 /**
@@ -69,6 +69,84 @@ describe("spawn: security-critical edge cases", () => {
       expect(result.timedOut).not.toBe(true);
     } finally {
       clearTimeout(timer);
+    }
+  }, 12000);
+
+  // POSIX has a safety fallback when signalling the child process group fails.
+  // Exercise it with real cancellation while intercepting ONLY SIGTERM calls.
+  it.skipIf(process.platform === "win32")("falls back to killing the direct child when group signalling fails", async () => {
+    const originalKill = process.kill.bind(process);
+    const attempts: number[] = [];
+    const killSpy = vi.spyOn(process, "kill").mockImplementation((pid, signal) => {
+      if (signal === "SIGTERM" && pid < 0) {
+        attempts.push(pid);
+        throw new Error("simulated group signal refusal");
+      }
+      if (signal === "SIGTERM" && pid > 0) attempts.push(pid);
+      return originalKill(pid, signal);
+    });
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 350);
+    try {
+      const result = await spawn(process.execPath, ["tests/fixtures/slow-process.cjs"], {
+        cwd: process.cwd(), cancelSignal: controller.signal, reject: false,
+      });
+      expect(result.isCanceled).toBe(true);
+      expect(result.timedOut).not.toBe(true);
+      expect(attempts.some((pid) => pid < 0)).toBe(true);
+      expect(attempts.some((pid) => pid > 0)).toBe(true);
+    } finally {
+      clearTimeout(timer);
+      killSpy.mockRestore();
+    }
+  }, 12000);
+
+  it.skipIf(process.platform === "win32")("does not replace cancellation when both POSIX kill attempts fail", async () => {
+    const originalKill = process.kill.bind(process);
+    const attempts: number[] = [];
+    const killSpy = vi.spyOn(process, "kill").mockImplementation((pid, signal) => {
+      if (signal === "SIGTERM") {
+        attempts.push(pid);
+        throw new Error("simulated already-exited process");
+      }
+      return originalKill(pid, signal);
+    });
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 350);
+    try {
+      const result = await spawn(process.execPath, ["tests/fixtures/slow-process.cjs"], {
+        cwd: process.cwd(), cancelSignal: controller.signal, reject: false,
+      });
+      expect(result.isCanceled).toBe(true);
+      expect(result.timedOut).not.toBe(true);
+      expect(attempts.some((pid) => pid < 0)).toBe(true);
+      expect(attempts.some((pid) => pid > 0)).toBe(true);
+    } finally {
+      clearTimeout(timer);
+      killSpy.mockRestore();
+    }
+  }, 12000);
+
+  // Cover the Windows-only taskkill path on POSIX CI. A Linux runner has no
+  // taskkill binary; its asynchronous error must be safely swallowed while
+  // execa still cancels the direct child. Always restore the host platform.
+  it.skipIf(process.platform === "win32")("handles an unavailable taskkill binary when emulating the Windows kill path", async () => {
+    const originalPlatform = Object.getOwnPropertyDescriptor(process, "platform");
+    if (!originalPlatform?.configurable) throw new Error("process.platform must be configurable");
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 350);
+    try {
+      Object.defineProperty(process, "platform", {
+        configurable: true, enumerable: originalPlatform.enumerable, writable: true, value: "win32",
+      });
+      const result = await spawn(process.execPath, ["tests/fixtures/slow-process.cjs"], {
+        cwd: process.cwd(), cancelSignal: controller.signal, reject: false,
+      });
+      expect(result.isCanceled).toBe(true);
+      expect(result.timedOut).not.toBe(true);
+    } finally {
+      clearTimeout(timer);
+      Object.defineProperty(process, "platform", originalPlatform);
     }
   }, 12000);
 });
