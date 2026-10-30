@@ -42,12 +42,36 @@ type Settings struct {
 var ossEnvironmentKeys = []string{"SystemRoot", "SystemDrive", "windir", "PATH", "PATHEXT", "COMSPEC", "TEMP", "TMP", "USERPROFILE", "APPDATA", "LOCALAPPDATA", "ProgramData"}
 
 // DefaultSettingsPath is where the service looks when no -settings flag is given.
+// The install-folder document wins so the operator can edit it beside the
+// program. ProgramData remains a compatibility fallback for installs created
+// before the document moved next to the executable.
 func DefaultSettingsPath() (string, error) {
+	if executable, err := os.Executable(); err == nil {
+		if candidate, ok := settingsPathBesideExecutable(executable); ok {
+			return candidate, nil
+		}
+	}
 	base := os.Getenv("ProgramData")
 	if base == "" {
 		return "", fmt.Errorf("ProgramData is not defined; cannot locate the HooshiX MCP settings file")
 	}
 	return filepath.Join(base, "HooshiXMCP", "settings.json"), nil
+}
+
+// settingsPathBesideExecutable resolves the install-folder settings document.
+// The packaged layout is <install>\bin\<service>.exe, so the document lives one
+// level above bin, beside the install folders.
+func settingsPathBesideExecutable(executable string) (string, bool) {
+	if strings.TrimSpace(executable) == "" {
+		return "", false
+	}
+	installRoot := filepath.Dir(filepath.Dir(executable))
+	candidate := filepath.Join(installRoot, "settings.json")
+	info, err := os.Stat(candidate)
+	if err != nil || info.IsDir() {
+		return candidate, false
+	}
+	return candidate, true
 }
 
 // LoadSettings reads, validates and freezes one settings document.

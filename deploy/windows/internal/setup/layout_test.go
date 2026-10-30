@@ -25,6 +25,12 @@ func TestLayoutSettingsPointAtTheInstalledRuntime(t *testing.T) {
 	if settings.Env["HOOSHIX_PUBLIC_BASE_URL"] != DefaultPublicBaseURL {
 		t.Errorf("an empty base URL produced %q, want the deployment default", settings.Env["HOOSHIX_PUBLIC_BASE_URL"])
 	}
+	if got, want := layout.SettingsFile(), filepath.Join(layout.InstallDir, "settings.json"); got != want {
+		t.Errorf("settings file = %q, want %q (beside the installed program)", got, want)
+	}
+	if got, want := layout.LegacySettingsFile(), filepath.Join(layout.DataRoot, "settings.json"); got != want {
+		t.Errorf("legacy settings file = %q, want %q", got, want)
+	}
 	// The permission knobs are opt-ins. Shipping them switched on would hand
 	// every fresh install a remote code execution endpoint.
 	for _, key := range []string{"HOOSHIX_PERMISSION_LEVEL", "HOOSHIX_DIRECT_AUTO_APPROVE", "HOOSHIX_EXEC_ENABLED", "CTX_ISOLATION_MODE"} {
@@ -42,8 +48,41 @@ func TestLayoutSettingsPointAtTheInstalledRuntime(t *testing.T) {
 	}
 }
 
-func TestWriteSettingsNeverOverwritesAnExistingDocument(t *testing.T) {
-	// Only DataRoot is filled in: the installer gets here after DefaultLayout has
+func TestWriteSettingsMigratesLegacyDocumentToInstallFolder(t *testing.T) {
+	root := t.TempDir()
+	layout, err := NewLayout(filepath.Join(root, "Program Files"), filepath.Join(root, "ProgramData"))
+	if err != nil {
+		t.Fatalf("build the layout: %v", err)
+	}
+	if err := os.MkdirAll(layout.DataRoot, 0o750); err != nil {
+		t.Fatalf("create data root: %v", err)
+	}
+	legacy := layout.Settings("https://legacy.example")
+	raw, err := SettingsJSON(legacy)
+	if err != nil {
+		t.Fatalf("render legacy settings: %v", err)
+	}
+	if err := os.WriteFile(layout.LegacySettingsFile(), raw, 0o600); err != nil {
+		t.Fatalf("write legacy settings: %v", err)
+	}
+
+	created, err := layout.WriteSettings(layout.Settings("https://default.example"))
+	if err != nil || created {
+		t.Fatalf("migrate: created=%v err=%v", created, err)
+	}
+	migrated, err := os.ReadFile(layout.SettingsFile())
+	if err != nil {
+		t.Fatalf("read install-folder settings: %v", err)
+	}
+	if !strings.Contains(string(migrated), "https://legacy.example") {
+		t.Fatalf("the install-folder document lost the operator setting: %s", migrated)
+	}
+	if _, err := os.Stat(layout.LegacySettingsFile()); err != nil {
+		t.Fatalf("legacy settings should remain available as a fallback: %v", err)
+	}
+}
+
+func TestWriteSettingsNeverOverwritesAnExistingDocument(t *testing.T) {	// Only DataRoot is filled in: the installer gets here after DefaultLayout has
 	// checked the roots, and the settings write touches nothing else.
 	layout := Layout{DataRoot: t.TempDir()}
 	created, err := layout.WriteSettings(layout.Settings("https://mcp.example"))

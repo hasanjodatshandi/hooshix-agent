@@ -156,8 +156,19 @@ func normalizePath(path string) string {
 	return strings.Trim(normalized, "/")
 }
 
-// SettingsFile is the path of the machine-wide settings document.
+// SettingsFile is the path of the settings document. It sits beside the
+// installed program so the operator can open and edit it without digging into
+// ProgramData; only runtime data stays in the data root.
 func (layout Layout) SettingsFile() string {
+	if layout.InstallDir != "" {
+		return filepath.Join(layout.InstallDir, "settings.json")
+	}
+	return filepath.Join(layout.DataRoot, "settings.json")
+}
+
+// LegacySettingsFile is where older installs kept the document. It is read only
+// to migrate an existing operator document into the install folder.
+func (layout Layout) LegacySettingsFile() string {
 	return filepath.Join(layout.DataRoot, "settings.json")
 }
 
@@ -247,7 +258,14 @@ func SettingsJSON(settings host.Settings) ([]byte, error) {
 // Refuse unsafe upgrades BEFORE stopping the service or extracting files.
 // Preserve operator-owned origin, port, permissions and credentials untouched.
 func (layout Layout) CheckExistingSettingsRuntime() error {
-	raw, err := os.ReadFile(layout.SettingsFile())
+	path := layout.SettingsFile()
+	raw, err := os.ReadFile(path)
+	if os.IsNotExist(err) {
+		legacy := layout.LegacySettingsFile()
+		if legacy != path {
+			raw, err = os.ReadFile(legacy)
+		}
+	}
 	if os.IsNotExist(err) {
 		return nil
 	}
@@ -275,7 +293,9 @@ func (layout Layout) CheckExistingSettingsRuntime() error {
 
 // WriteSettings creates the settings document, refusing to overwrite an
 // existing one. A re-run of setup.exe upgrades the program files and must not
-// quietly reset the URL, port or permission level the operator edited.
+// quietly reset the URL, port or permission level the operator edited. An
+// existing document in the legacy ProgramData location is copied into the
+// install folder before a fresh default can be written.
 func (layout Layout) WriteSettings(settings host.Settings) (bool, error) {
 	path := layout.SettingsFile()
 	if _, err := os.Stat(path); err == nil {
@@ -283,8 +303,24 @@ func (layout Layout) WriteSettings(settings host.Settings) (bool, error) {
 	} else if !os.IsNotExist(err) {
 		return false, fmt.Errorf("check %s: %w", path, err)
 	}
+	if legacy := layout.LegacySettingsFile(); legacy != path {
+		if raw, err := os.ReadFile(legacy); err == nil {
+			if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
+				return false, fmt.Errorf("create install folder for settings: %w", err)
+			}
+			if err := os.WriteFile(path, raw, 0o640); err != nil {
+				return false, fmt.Errorf("migrate %s: %w", legacy, err)
+			}
+			return false, nil
+		} else if !os.IsNotExist(err) {
+			return false, fmt.Errorf("read legacy settings %s: %w", legacy, err)
+		}
+	}
 	if err := os.MkdirAll(layout.DataRoot, 0o750); err != nil {
 		return false, fmt.Errorf("create data root %s: %w", layout.DataRoot, err)
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
+		return false, fmt.Errorf("create install folder for settings: %w", err)
 	}
 	raw, err := SettingsJSON(settings)
 	if err != nil {
