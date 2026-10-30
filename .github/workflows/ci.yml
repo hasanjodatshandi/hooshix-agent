@@ -105,10 +105,14 @@ jobs:
         run: |
           $env:HOOSHIX_REQUIRE_GIT_WORKER_E2E = "1"
           go test ./... -count=1
+          if ($LASTEXITCODE -ne 0) { throw "Go package tests failed" }
           Remove-Item Env:\HOOSHIX_REQUIRE_GIT_WORKER_E2E
           go test ./internal/host -run TestStatusWriteSurvivesConcurrentPublishers -count=100
+          if ($LASTEXITCODE -ne 0) { throw "Go stress tests failed" }
           go vet ./...
+          if ($LASTEXITCODE -ne 0) { throw "Go vet failed" }
           go build ./...
+          if ($LASTEXITCODE -ne 0) { throw "Go build failed" }
       - name: Validate owner-session Windows Git smoke script syntax
         shell: pwsh
         run: |
