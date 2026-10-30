@@ -35,7 +35,7 @@ HooshiXAgent Windows service; it is NOT bundled with this MCP installer.
 
    Alternatively, an administrator can back up and edit the
    HOOSHIX_PUBLIC_BASE_URL value in the installed settings document:
-        %ProgramData%\HooshiXMCP\settings.json
+        %ProgramFiles%\HooshiX MCP\settings.json
    Do not alter node, entry, workingDirectory, dataRoot, or other
    security fields. Apply a reviewed configuration change by restarting
    the Windows service with appropriate local authorization.

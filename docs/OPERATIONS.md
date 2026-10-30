@@ -28,7 +28,7 @@ On a Windows machine the connector runs as the **`HooshiX MCP` SCM service** (`s
 | Action | How |
 |---|---|
 | Install on a new machine | `pnpm run installer:windows`, then double-click `deploy/windows/build/HooshiX-MCP-Setup-<version>.exe` |
-| Upgrade after a code change | `pnpm build`, then run Setup.exe again — it replaces the program files and keeps `%ProgramData%\HooshiXMCP\settings.json` |
+| Upgrade after a code change | `pnpm build`, then run Setup.exe again — it replaces the program files and keeps `%ProgramFiles%\HooshiX MCP\settings.json` |
 | Start / stop / restart | the tray icon menu, or `hooshix-mcp-service service start\|stop\|restart` (unelevated: the service DACL grants exactly query, start, stop) |
 | Status | `hooshix-mcp-service status` — the SCM state plus what the server published |
 | Host log | `%ProgramData%\HooshiXMCP\service.log` (rotated), or `Open logs` in the tray menu |
@@ -82,7 +82,7 @@ All configuration is one typed, deeply frozen contract: `loadAppConfig()` in `sr
 | `HOOSHIX_PERMISSION_LEVEL` | `READ_ONLY` | One of `READ_ONLY`, `PROJECT_ACCESS`, `DEVELOPER_MODE`, `ADMIN_MODE` (full names only; startup fails otherwise). Effective ceiling at runtime: READ / PROJECT_ACCESS / DEVELOPER / ADMIN |
 | `HOOSHIX_WORKSPACE` | — | Bootstrap candidate roots (comma-separated) |
 | `HOOSHIX_UNRESTRICTED` | — | Server allow ceiling; never an implicit grant |
-| `HOOSHIX_DIRECT_AUTO_APPROVE` | — | `1` allows direct high-risk calls outside a task step |
+| `HOOSHIX_DIRECT_AUTO_APPROVE` | — | `1` lets a direct MCP call self-approve a high-risk action that a permission level would otherwise route through a task step. It is **not** a universal bypass: tools pinned to `approval: "always"` (`delete_file`, `git_*` mutations, package operations, `add_workspace_roots`/`remove_workspace_root`) still fail with `verified_task_approval_required` until a governed, approved task step runs them. Keep it `0`. |
 | `HOOSHIX_RETENTION_DAYS` | 90 | Retention window; `0` disables |
 | `HOOSHIX_TERMINATION_GRACE_MS` | 5000 | Grace period before force-killing a step |
 | `HOOSHIX_OAUTH_*` (7) | — | OAuth client/resource/token settings |

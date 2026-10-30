@@ -153,7 +153,7 @@ Paths outside the configured roots are rejected — no runtime toggle exists to 
 | `remove_workspace_root` | Remove a non-active directory from the allowed roots pool |
 | `get_workspace` | View the active workspace and the allowed roots pool |
 
-**Note:** `delete_file` requires approval through a task step for security. Use `task_create` + `task_run` for delete operations. The same applies to `git_commit`, `git_clone`, `git_branch`, `git_checkout`, `git_add`, package operations, and `task_rollback` — even on direct MCP calls (see `HOOSHIX_DIRECT_AUTO_APPROVE` above).
+**Note:** `delete_file` requires approval through a task step for security. Use `task_create` + `task_run` for delete operations. The same applies to `git_commit`, `git_clone`, `git_branch`, `git_checkout`, `git_add`, package operations, and `task_rollback` — even on direct MCP calls, and `HOOSHIX_DIRECT_AUTO_APPROVE=1` does not lift them (see `docs/OPERATIONS.md`).
 
 ## Dynamic Context Injection (Template Variables)
 
@@ -263,7 +263,7 @@ HooshiX automatically recovers from failures when possible:
 - **denylist فایل‌های حساس:** `.env*`, `.token`, `.npmrc`, `.netrc`, `.htpasswd`, `credentials.json`, `secrets.*`, کلیدهای SSH (`.ssh`), `.gnupg`, `.aws`, `.azure`, و پسوندهای `.pem/.key/.pfx/.p12/.kdbx` همیشه در read/write/delete/modify رد می‌شوند.
 - فایل‌ها و جست‌وجوها محدودیت اندازه/تعداد دارند؛ writeها atomic و fsync هستند و `create_file` نیز exclusive-atomic است.
 - پیش از overwrite، modify یا delete یک backup در SQLite ذخیره می‌شود و با `restore_file` قابل بازگردانی است؛ restore خودش محتوای جاری جایگزین‌شده را backup می‌گیرد (`displacedBackupId`).
-- processها با `shell: false`، executable allowlist (بدون PowerShell)، argument validation، timeout و output cap اجرا می‌شوند. ابزارهای code-execution (node/python script، `npm run`، git/gh mutating) نیازمند approval هستند. **approval در فراخوانی مستقیم MCP هم الزامی است**؛ اگر می‌خواهید رفتار قبلی (auto-approve مستقیم) را داشته باشید `HOOSHIX_DIRECT_AUTO_APPROVE=1` را ست کنید.
+- processها با `shell: false`، executable allowlist (بدون PowerShell)، argument validation، timeout و output cap اجرا می‌شوند. ابزارهای code-execution (node/python script، `npm run`، git/gh mutating) نیازمند approval هستند. **approval در فراخوانی مستقیم MCP هم الزامی است**؛ `HOOSHIX_DIRECT_AUTO_APPROVE=1` تنها approvalهایی را که سطح دسترسی ایجاب می‌کند از مسیر task step آزاد می‌کند و ابزارهای `approval: "always"` همچنان `verified_task_approval_required` برمی‌گردانند. مقدار پیش‌فرض و ایمن `0` است.
 - Git clone فقط URL امن HTTPS بدون credential توکار و مقصد جدید داخل workspace را می‌پذیرد. `task_rollback` فقط snapshot واقعی task (نه backup فایل) را می‌پذیرد، HEAD را با اعتبارسنجی `/^[0-9a-f]{40}$/` و argv جدا از هم اجرا می‌کند و cwd آن باید داخل workspace و منطبق بر snapshot باشد.
 - package operation فقط پس از یک command مستقلِ verification موفق اعلام می‌شود؛ winget و Chocolatey به `ADMIN_MODE` نیاز دارند.
 - audit logها محتوی فایل و خروجی command را کپی نمی‌کنند و آرگومان‌های شبیه secret (حتی مقادیر خام مثل `sk-...`, `ghp_...`) را redacted می‌کنند. خروجی لازم در execution history همان task نگهداری می‌شود.

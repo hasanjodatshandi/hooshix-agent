@@ -60,15 +60,17 @@ One elevation prompt covers everything. In order, the installer:
    (the message names the menu item, it never kills a process);
 3. extracts under `%ProgramFiles%\HooshiX MCP`, rejecting any entry that would
    escape the directory, arrive as a symbolic link, or exceed the byte bound;
-4. writes `%ProgramData%\HooshiXMCP\settings.json` **only when absent**, so an
-   upgrade keeps the operator's origin, port and any knob they switched on;
+4. writes `%ProgramFiles%\HooshiX MCP\settings.json` **only when absent** — a
+   document left there by an older build under `%ProgramData%\HooshiXMCP` is
+   copied up instead of overwritten, so an upgrade keeps the operator's origin,
+   port and any knob they switched on;
 5. copies its own payload-less head to `bin\uninstall.exe`, which is what the
    entry in Programs runs, so removing an install never needs the download;
 6. writes the HKLM startup value for the tray and the Programs entry, registers
    the service and starts it.
 
-What lands on the machine is exactly `%Program Files%\HooshiX MCP`,
-`%ProgramData%\HooshiXMCP\settings.json`, `HKLM\...\Run\HooshiX MCP tray` and
+What lands on the machine is exactly `%Program Files%\HooshiX MCP` — including
+its `settings.json` — `HKLM\...\Run\HooshiX MCP tray` and
 `HKLM\...\Uninstall\HooshiXMCP`. `--uninstall` removes those two keys and the
 install directory and keeps the data root — the database, approvals and logs are
 the operator's, so `--purge-data` has to be asked for. `--base-url` sets the
@@ -89,7 +91,7 @@ duplicate: the listener on the port and the operator's data. In order:
 1. **Read the live environment first.** Whatever the old launcher pinned (the
    permission ceiling, `CTX_ISOLATION_MODE`, the database path, the log
    directory, the token file) has to be written into
-   `%ProgramData%\HooshiXMCP\settings.json` before the service starts, because a
+   `%ProgramFiles%\HooshiX MCP\settings.json` before the service starts, because a
    connector that comes back with a different ceiling looks identical from the
    outside. Those go in the `env` map, which overrides the defaults
    `internal/host/settings.go` would otherwise apply — including
@@ -109,8 +111,11 @@ duplicate: the listener on the port and the operator's data. In order:
 
 ## Settings document
 
-`%ProgramData%\HooshiXMCP\settings.json` is the machine-wide description of the
-install. Nothing here is baked into the binary, so moving the app or changing
+`%ProgramFiles%\HooshiX MCP\settings.json` is the machine-wide description of the
+install, kept beside the program so one folder holds the whole deployment. The
+host looks for it there first and falls back to `%ProgramData%\HooshiXMCP` only
+when it is absent, which is how an install upgraded before the move keeps
+working. Nothing here is baked into the binary, so moving the app or changing
 the port is a file edit:
 
 ```json
@@ -181,7 +186,7 @@ a glance.
 ## Tray icon
 
 ```bat
-hooshix-mcp-tray                      :: reads %ProgramData%\HooshiXMCP\settings.json
+hooshix-mcp-tray                      :: reads %ProgramFiles%\HooshiX MCP\settings.json
 hooshix-mcp-tray -settings <path>     :: explicit settings document
 ```
 

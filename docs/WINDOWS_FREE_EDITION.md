@@ -20,7 +20,7 @@ on upgrades.
 Running the same full installer EXE again updates or repairs the existing installation.
 For explicit maintenance, open an **administrator Windows terminal** and execute
 the downloaded full installer with `--repair`. Repair preserves the existing
-`%ProgramData%\HooshiXMCP\settings.json`, SQLite database, logs and credentials.
+`%ProgramFiles%\HooshiX MCP\settings.json`, SQLite database, logs and credentials.
 
 Every replacement of an existing program tree captures one prior-version snapshot
 under `%ProgramData%\HooshiXMCP\recovery\previous-program`. If the upgrade

@@ -25,7 +25,7 @@
     "release:db-rehearsal": "node scripts/release-db-rehearsal.mjs"
   },
   "dependencies": {
-    "@modelcontextprotocol/node": "2.1.1",
+    "@modelcontextprotocol/node": "2.1.2",
     "@modelcontextprotocol/server": "2.3.0",
     "better-sqlite3": "13.0.3",
     "execa": "10.0.1",

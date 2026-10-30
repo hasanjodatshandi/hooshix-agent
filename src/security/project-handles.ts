@@ -101,6 +101,15 @@ class ProjectHandleStore {
     // A handle never crosses credentials: another connection's handle is
     // indistinguishable from a forged one (no existence disclosure).
     if (item.principalId !== principalId) return { ok: false, error: "unknown" };
+    // A removed root revokes every handle minted for it immediately. The
+    // in-memory capability must not outlive the persisted grant it was minted
+    // from; otherwise a stale chat could keep reading a root the operator has
+    // already removed from the allowed pool.
+    const pool = listWorkspaceRoots();
+    if (!pool.some((root) => sameRootIdentity(root.path, item.root))) {
+      this.entries.delete(handle);
+      return { ok: false, error: "unknown" };
+    }
     return { ok: true, record: item };
   }
 
